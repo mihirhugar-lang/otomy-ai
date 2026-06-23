@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrusherOps — Live Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+    --orange: #f97316;
+    --accent: #6366f1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size: 14px; }
+
+  .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 16px; font-weight: 700; color: var(--text); }
+  .header .sync-info { font-size: 11px; color: var(--muted); text-align: right; }
+  .header .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 4px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .tabs { display: flex; background: var(--card); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .content { padding: 12px; max-width: 1000px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  @media(min-width:480px){ .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .kpi .value { font-size: 20px; font-weight: 700; }
+  .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .yellow { color: var(--yellow); }
+  .blue { color: var(--blue); }
+
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  .card-header { padding: 10px 14px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .card-body { padding: 10px 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { color: var(--muted); font-weight: 500; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+  td { padding: 7px 8px; border-bottom: 1px solid rgba(51,65,85,0.5); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+
+  .bar-row { display: flex; align-items: center; margin-bottom: 8px; gap: 8px; }
+  .bar-label { font-size: 12px; width: 90px; flex-shrink: 0; color: var(--text); }
+  .bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.5s; }
+  .bar-val { font-size: 11px; color: var(--muted); width: 80px; text-align: right; flex-shrink: 0; }
+
+  .chart-wrap { height: 120px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 0; }
+  .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .chart-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+  .chart-label { font-size: 9px; color: var(--muted); }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .filter-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-size: 12px; cursor: pointer; }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.1); }
+
+  .empty { color: var(--muted); text-align: center; padding: 24px; font-size: 13px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media(max-width:480px){ .two-col { grid-template-columns: 1fr; } }
+
+  .amt { font-family: "SF Mono",monospace; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⛏ CrusherOps</h1>
+  <div class="sync-info">
+    <span class="dot"></span>
+    <span id="last-sync">Loading…</span><br>
+    <span id="today-date" style="font-size:10px;"></span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('today')">Today</div>
+  <div class="tab" onclick="switchTab('mtd')">Month</div>
+  <div class="tab" onclick="switchTab('sales')">Sales</div>
+  <div class="tab" onclick="switchTab('expenses')">Expenses</div>
+  <div class="tab" onclick="switchTab('trend')">Trend</div>
+</div>
+
+<div class="content">
+
+  <!-- TODAY TAB -->
+  <div id="tab-today" class="tab-panel active">
+    <div class="kpi-grid" id="today-kpi"></div>
+
+    <div class="two-col">
+      <div>
+        <div class="section-title">Sales by Material</div>
+        <div class="card"><div class="card-body" id="today-materials"></div></div>
+      </div>
+      <div>
+        <div class="section-title">Expenses by Category</div>
+        <div class="card"><div class="card-body" id="today-categories"></div></div>
+      </div>
+    </div>
+
+    <div class="section-title">Payment Mode</div>
+    <div class="card"><div class="card-body" id="today-payment"></div></div>
+
+    <div class="section-title">Today's Tickets</div>
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table><thead><tr>
+          <th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Amount</th><th>Mode</th>
+        </tr></thead><tbody id="today-tickets"></tbody></table>
+      </div>
+    </div>
+
+    <div class="section-title">Vehicle Movements (IOT)</div>
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table><thead><tr>
+          <th>Time</th><th>Vehicle</th><th>Customer</th><th>Material</th><th>Qty</th>
+        </tr></thead><tbody id="today-iot"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONTH TAB -->
+  <div id="tab-mtd" class="tab-panel">
+    <div class="kpi-grid" id="mtd-kpi"></div>
+
+    <div class="two-col">
+      <div>
+        <div class="section-title">Sales by Material (MTD)</div>
+        <div class="card"><div class="card-body" id="mtd-materials"></div></div>
+      </div>
+      <div>
+        <div class="section-title">Expenses by Category (MTD)</div>
+        <div class="card"><div class="card-body" id="mtd-categories"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SALES TAB -->
+  <div id="tab-sales" class="tab-panel">
+    <div class="filter-row" id="sales-filters"></div>
+    <div class="card">
+      <div class="card-header">
+        <span>Recent Sales <span id="sales-count" style="color:var(--muted);font-weight:400;font-size:12px;"></span></span>
+        <span id="sales-total" style="color:var(--green);font-size:13px;font-weight:700;"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table><thead><tr>
+          <th>Date</th><th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate</th><th>Amount</th><th>Mode</th>
+        </tr></thead><tbody id="sales-list"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPENSES TAB -->
+  <div id="tab-expenses" class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span>Recent Expenses</span>
+        <span id="exp-total" style="color:var(--red);font-size:13px;font-weight:700;"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table><thead><tr>
+          <th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Mode</th>
+        </tr></thead><tbody id="exp-list"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TREND TAB -->
+  <div id="tab-trend" class="tab-panel">
+    <div class="section-title">30-Day Revenue Trend</div>
+    <div class="card">
+      <div class="card-body">
+        <div class="chart-wrap" id="trend-chart"></div>
+      </div>
+    </div>
+    <div class="section-title">Daily Breakdown</div>
+    <div class="card">
+      <div style="overflow-x:auto;">
+        <table><thead><tr>
+          <th>Date</th><th>Tickets</th><th>Qty MT</th><th>Revenue</th><th>Expenses</th><th>Net</th>
+        </tr></thead><tbody id="trend-table"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let DATA = {};
+let salesData = [];
+let expData = [];
+let currentTab = 'today';
+let salesFilter = null;
+
+async function load() {
+  try {
+    const [dash, sales, exp, meta] = await Promise.all([
+      fetch('data/dashboard.json?t=' + Date.now()).then(r => r.json()),
+      fetch('data/sales.json?t=' + Date.now()).then(r => r.json()),
+      fetch('data/expenses.json?t=' + Date.now()).then(r => r.json()),
+      fetch('data/meta.json?t=' + Date.now()).then(r => r.json()),
+    ]);
+    DATA = dash;
+    salesData = sales;
+    expData = exp;
+
+    const syncTime = new Date(meta.last_sync);
+    const mins = Math.round((Date.now() - syncTime) / 60000);
+    document.getElementById('last-sync').textContent = mins < 1 ? 'Just synced' : `${mins}m ago`;
+    document.getElementById('today-date').textContent = fmt_date(DATA.today);
+
+    renderAll();
+  } catch(e) {
+    document.getElementById('last-sync').textContent = 'Data unavailable';
+    console.error(e);
+  }
+}
+
+function fmt_inr(v) {
+  const n = parseFloat(v) || 0;
+  return '₹' + n.toLocaleString('en-IN', {maximumFractionDigits: 0});
+}
+
+function fmt_date(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+}
+
+function fmt_time(s) {
+  if (!s) return '';
+  return s.split('T').join(' ').slice(0,16);
+}
+
+function payment_badge(mode) {
+  const m = (mode||'').toUpperCase();
+  if (m === 'CASH') return '<span class="badge badge-green">Cash</span>';
+  if (m === 'CREDIT') return '<span class="badge badge-yellow">Credit</span>';
+  if (m.includes('UPI') || m.includes('CARD')) return '<span class="badge badge-blue">UPI</span>';
+  if (m.includes('BANK') || m.includes('CHEQUE') || m.includes('NEFT')) return '<span class="badge badge-blue">Bank</span>';
+  return '<span class="badge badge-yellow">' + mode + '</span>';
+}
+
+function bar_rows(obj, total, color) {
+  const entries = Object.entries(obj).sort((a,b) => b[1] - a[1]);
+  if (!entries.length) return '<div class="empty">No data</div>';
+  const max = entries[0][1];
+  return entries.map(([k,v]) => `
+    <div class="bar-row">
+      <div class="bar-label">${k}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%;background:${color}"></div></div>
+      <div class="bar-val amt">${fmt_inr(v)}</div>
+    </div>`).join('');
+}
+
+function renderAll() {
+  renderToday();
+  renderMTD();
+  renderSales();
+  renderExpenses();
+  renderTrend();
+}
+
+function renderToday() {
+  const s = DATA.summary_today || {};
+  const netColor = s.net >= 0 ? 'green' : 'red';
+  document.getElementById('today-kpi').innerHTML = `
+    <div class="kpi"><div class="label">Revenue</div><div class="value green amt">${fmt_inr(s.revenue)}</div><div class="sub">${s.tickets} tickets</div></div>
+    <div class="kpi"><div class="label">Expenses</div><div class="value red amt">${fmt_inr(s.expenses)}</div><div class="sub">direct costs</div></div>
+    <div class="kpi"><div class="label">Wages</div><div class="value yellow amt">${fmt_inr(s.wages)}</div><div class="sub">labour</div></div>
+    <div class="kpi"><div class="label">Net P&L</div><div class="value ${netColor} amt">${fmt_inr(s.net)}</div><div class="sub">today</div></div>
+  `;
+
+  // Materials
+  const mats = DATA.materials_today || {};
+  const matTotal = Object.values(mats).reduce((a,m) => a + m.amount, 0);
+  const matEntries = Object.entries(mats).sort((a,b) => b[1].amount - a[1].amount);
+  document.getElementById('today-materials').innerHTML = matEntries.length
+    ? matEntries.map(([k,v]) => `
+        <div class="bar-row">
+          <div class="bar-label">${k}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%;background:var(--green)"></div></div>
+          <div class="bar-val amt">${fmt_inr(v.amount)}</div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px 98px;">${v.qty.toFixed(1)} MT · ${v.count} tickets</div>
+      `).join('')
+    : '<div class="empty">No sales today</div>';
+
+  // Categories
+  document.getElementById('today-categories').innerHTML = bar_rows(DATA.expense_categories_today || {}, 1, 'var(--red)') || '<div class="empty">No expenses today</div>';
+
+  // Payment modes
+  document.getElementById('today-payment').innerHTML = bar_rows(DATA.payment_modes_today || {}, 1, 'var(--blue)') || '<div class="empty">No payments today</div>';
+
+  // Tickets table — filter from salesData
+  const todayStr = DATA.today;
+  const tickets = salesData.filter(s => s.date === todayStr);
+  document.getElementById('today-tickets').innerHTML = tickets.length
+    ? tickets.map(s => `<tr>
+        <td><span style="color:var(--accent)">${s.ticket_no||'—'}</span></td>
+        <td>${s.customer}</td>
+        <td>${s.material}</td>
+        <td class="amt">${s.qty.toFixed(2)}</td>
+        <td class="amt" style="color:var(--green)">${fmt_inr(s.amount)}</td>
+        <td>${payment_badge(s.payment)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" class="empty">No tickets today</td></tr>';
+
+  // IOT
+  const iot = DATA.iot_today || [];
+  document.getElementById('today-iot').innerHTML = iot.length
+    ? iot.map(m => `<tr>
+        <td style="color:var(--muted)">${fmt_time(m.time)}</td>
+        <td style="color:var(--accent)">${m.vehicle}</td>
+        <td>${m.customer}</td>
+        <td>${m.material}</td>
+        <td class="amt">${m.qty.toFixed(2)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No IOT movements today</td></tr>';
+}
+
+function renderMTD() {
+  const s = DATA.summary_mtd || {};
+  const netColor = s.net >= 0 ? 'green' : 'red';
+  document.getElementById('mtd-kpi').innerHTML = `
+    <div class="kpi"><div class="label">Revenue MTD</div><div class="value green amt">${fmt_inr(s.revenue)}</div><div class="sub">${s.tickets} tickets</div></div>
+    <div class="kpi"><div class="label">Expenses MTD</div><div class="value red amt">${fmt_inr(s.expenses)}</div></div>
+    <div class="kpi"><div class="label">Wages MTD</div><div class="value yellow amt">${fmt_inr(s.wages)}</div></div>
+    <div class="kpi"><div class="label">Net MTD</div><div class="value ${netColor} amt">${fmt_inr(s.net)}</div></div>
+  `;
+
+  const mats = DATA.materials_mtd || {};
+  const matEntries = Object.entries(mats).sort((a,b) => b[1].amount - a[1].amount);
+  const matTotal = matEntries.reduce((a,[,v]) => a + v.amount, 0);
+  document.getElementById('mtd-materials').innerHTML = matEntries.length
+    ? matEntries.map(([k,v]) => `
+        <div class="bar-row">
+          <div class="bar-label">${k}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%;background:var(--green)"></div></div>
+          <div class="bar-val amt">${fmt_inr(v.amount)}</div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px 98px;">${v.qty.toFixed(1)} MT · ${v.count} tickets</div>
+      `).join('')
+    : '<div class="empty">No sales this month</div>';
+
+  document.getElementById('mtd-categories').innerHTML = bar_rows(DATA.expense_categories_mtd || {}, 1, 'var(--red)') || '<div class="empty">No expenses this month</div>';
+}
+
+function renderSales() {
+  // Build material filter buttons
+  const materials = [...new Set(salesData.map(s => s.material).filter(Boolean))].sort();
+  document.getElementById('sales-filters').innerHTML = `
+    <button class="filter-btn ${salesFilter===null?'active':''}" onclick="setSalesFilter(null)">All</button>
+    ${materials.map(m => `<button class="filter-btn ${salesFilter===m?'active':''}" onclick="setSalesFilter('${m}')">${m}</button>`).join('')}
+  `;
+
+  const filtered = salesFilter ? salesData.filter(s => s.material === salesFilter) : salesData;
+  const total = filtered.reduce((a,s) => a + s.amount, 0);
+  document.getElementById('sales-count').textContent = `(${filtered.length})`;
+  document.getElementById('sales-total').textContent = fmt_inr(total);
+
+  document.getElementById('sales-list').innerHTML = filtered.length
+    ? filtered.map(s => `<tr>
+        <td style="color:var(--muted)">${fmt_date(s.date)}</td>
+        <td style="color:var(--accent)">${s.ticket_no||'—'}</td>
+        <td>${s.customer}</td>
+        <td>${s.material}</td>
+        <td class="amt">${s.qty.toFixed(2)}</td>
+        <td class="amt">${fmt_inr(s.rate)}</td>
+        <td class="amt" style="color:var(--green)">${fmt_inr(s.amount)}</td>
+        <td>${payment_badge(s.payment)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="8" class="empty">No sales found</td></tr>';
+}
+
+function setSalesFilter(mat) {
+  salesFilter = mat;
+  renderSales();
+}
+
+function renderExpenses() {
+  const total = expData.reduce((a,e) => a + e.amount, 0);
+  document.getElementById('exp-total').textContent = fmt_inr(total);
+  document.getElementById('exp-list').innerHTML = expData.length
+    ? expData.map(e => `<tr>
+        <td style="color:var(--muted)">${fmt_date(e.date)}</td>
+        <td>${e.category}</td>
+        <td style="color:var(--muted)">${e.description}</td>
+        <td class="amt" style="color:var(--red)">${fmt_inr(e.amount)}</td>
+        <td>${payment_badge(e.payment)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No expenses found</td></tr>';
+}
+
+function renderTrend() {
+  const trend = DATA.daily_trend || [];
+  const maxRev = Math.max(...trend.map(d => d.revenue), 1);
+
+  document.getElementById('trend-chart').innerHTML = trend.map(d => {
+    const h = Math.max((d.revenue / maxRev) * 100, 2);
+    const dd = d.date.slice(8,10);
+    const color = d.revenue > 0 ? 'var(--green)' : 'var(--border)';
+    return `<div class="chart-bar-wrap">
+      <div class="chart-bar" style="height:${h}%;background:${color}" title="${d.date}: ${fmt_inr(d.revenue)}"></div>
+      <div class="chart-label">${dd}</div>
+    </div>`;
+  }).join('');
+
+  const rows = [...trend].reverse().map(d => {
+    const net = d.revenue - d.expenses;
+    const nc = net >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="color:var(--muted)">${fmt_date(d.date)}</td>
+      <td>${d.tickets}</td>
+      <td class="amt">${d.qty.toFixed(1)}</td>
+      <td class="amt" style="color:var(--green)">${fmt_inr(d.revenue)}</td>
+      <td class="amt" style="color:var(--red)">${fmt_inr(d.expenses)}</td>
+      <td class="amt" style="color:${nc}">${fmt_inr(net)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('trend-table').innerHTML = rows || '<tr><td colspan="6" class="empty">No data</td></tr>';
+}
+
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const tabEl = document.querySelector(`.tab[onclick="switchTab('${name}')"]`);
+  if (tabEl) tabEl.classList.add('active');
+  const panel = document.getElementById('tab-' + name);
+  if (panel) panel.classList.add('active');
+}
+
+// Load data on start and refresh every 5 minutes
+load();
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>
