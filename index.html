@@ -1109,6 +1109,16 @@ async function _routeAPI(url){
   if(url.includes('/api/parts'))
     return _jresp([]);
 
+  // ERP Cash Ledger
+  if(url.includes('/api/sync/erp/cash')){
+    const p=new URLSearchParams(url.includes('?')?url.split('?')[1]:'');
+    return _erpLedger('cash',p.get('from_date'),p.get('to_date'));
+  }
+  // ERP Bank Transactions
+  if(url.includes('/api/sync/erp/bank')){
+    const p=new URLSearchParams(url.includes('?')?url.split('?')[1]:'');
+    return _erpLedger('bank',p.get('from_date'),p.get('to_date'));
+  }
   // ERP sync data
   if(url.includes('/api/erp') || url.includes('/api/iot'))
     return _jresp({sales:[],bank:[],cash:[],iot:[],debtors:[],creditors:[]});
@@ -1152,6 +1162,26 @@ async function _filterList(file,from,to){
     if(from) rows=rows.filter(r=>r.date>=from);
     if(to)   rows=rows.filter(r=>r.date<=to);
     return _jresp(rows);
+  }catch{return _jresp([]);}
+}
+async function _erpLedger(type, from, to){
+  try{
+    const r=await fetch('data/erp_ledger.json?t='+Date.now());
+    if(!r.ok)return _jresp([]);
+    const d=await r.json();
+    const rows=d[type]||[];
+    const op=d.opening||{};
+    const filtered=rows.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to));
+    // Opening balance = last balance before 'from', or original opening
+    const prev=rows.filter(r=>from&&r.date<from);
+    const opBal=prev.length?prev[prev.length-1].balance:(type==='cash'?op.cash:op.bank)||0;
+    const opDate=from||op.date||'';
+    let opRow;
+    if(type==='cash')
+      opRow={date:opDate,ledger:'Opening Balance',description:'Balance B/F',received:0,paid:0,balance:opBal};
+    else
+      opRow={date:opDate,bank_name:'Opening Balance',description:'Balance B/F',credit:0,debit:0,balance:opBal};
+    return _jresp([opRow,...filtered]);
   }catch{return _jresp([]);}
 }
 // On remote: block the enforceLaunchLogin redirect — we handle auth via our overlay
