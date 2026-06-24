@@ -70,75 +70,70 @@ def erp_auth():
 
 def fetch_sales(sess, from_d, to_d):
     tickets = []
-    cur = from_d
-    while cur <= to_d:
-        ds = cur.strftime("%d-%m-%Y")
-        try:
-            raw = sess.get(f"{ERP_BASE}/crusher/ListCustomerWiseReport"
-                           f"?start={ds}&end={ds}&customerId=-1&type=3",
-                           timeout=35, verify=True).text
-            try:    cw_html = htmllib.unescape(json.loads(raw))
-            except: cw_html = raw
-            for block in cw_html.split("Party Name :"):
-                block = block.strip()
-                if not block: continue
-                party = re.sub(r"<[^>]+>.*", "", block, flags=re.DOTALL).strip().split("\n")[0].strip()[:200]
-                for tr in _TR.finditer(block):
-                    cols = [_clean(c) for c in _TD.findall(tr.group(1))]
-                    if len(cols) < 10: continue
-                    if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
-                    if not re.match(r"\d+:\d+\s*[AP]M", cols[3]): continue
-                    if cols[9].upper().strip() not in _PAY: continue
-                    qty = _num(cols[7])
-                    if qty == 0: continue
-                    dd, mm, yyyy = cols[2].split("-")
-                    tickets.append({
-                        "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
-                        "customer_name": party, "ticket_no": cols[1].strip(),
-                        "vehicle_no": cols[4].strip(),
-                        "material": _norm_material(cols[5]),
-                        "rate_per_mt": _num(cols[6]),
-                        "qty_mt": qty, "mdp_ton": qty,
-                        "amount": _num(cols[8]),
-                        "payment_mode": _norm_pay(cols[9]),
-                        "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
-                    })
-        except Exception as e:
-            print(f"  sales {ds}: {e}")
-        cur += timedelta(days=1)
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    try:
+        raw = sess.get(f"{ERP_BASE}/crusher/ListCustomerWiseReport"
+                       f"?start={fs}&end={ts}&customerId=-1&type=3",
+                       timeout=60, verify=True).text
+        try:    cw_html = htmllib.unescape(json.loads(raw))
+        except: cw_html = raw
+        for block in cw_html.split("Party Name :"):
+            block = block.strip()
+            if not block: continue
+            party = re.sub(r"<[^>]+>.*", "", block, flags=re.DOTALL).strip().split("\n")[0].strip()[:200]
+            for tr in _TR.finditer(block):
+                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
+                if len(cols) < 10: continue
+                if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
+                if not re.match(r"\d+:\d+\s*[AP]M", cols[3]): continue
+                if cols[9].upper().strip() not in _PAY: continue
+                qty = _num(cols[7])
+                if qty == 0: continue
+                dd, mm, yyyy = cols[2].split("-")
+                tickets.append({
+                    "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
+                    "customer_name": party, "ticket_no": cols[1].strip(),
+                    "vehicle_no": cols[4].strip(),
+                    "material": _norm_material(cols[5]),
+                    "rate_per_mt": _num(cols[6]),
+                    "qty_mt": qty, "mdp_ton": qty,
+                    "amount": _num(cols[8]),
+                    "payment_mode": _norm_pay(cols[9]),
+                    "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
+                })
+    except Exception as e:
+        print(f"  sales fetch error: {e}")
     return tickets
 
 def fetch_expenses(sess, from_d, to_d):
     entries = []
-    cur = from_d
-    while cur <= to_d:
-        ds = cur.strftime("%d-%m-%Y")
-        try:
-            url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
-                   f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
-                   f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
-            data = json.loads(sess.get(url, timeout=35, verify=True).text)
-            seq = 0
-            for row in data.get("data", []):
-                cells = [_clean(c) for c in row]
-                if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
-                amt = _num(cells[1]) if len(cells) > 1 else 0
-                if amt <= 0: continue
-                category = cells[3].strip() if len(cells) > 3 else "Other"
-                desc = cells[2].strip() if len(cells) > 2 else category
-                remarks = cells[7].strip() if len(cells) > 7 else ""
-                if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
-                pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
-                seq += 1
-                entries.append({
-                    "id": seq, "date": str(cur), "category": category[:50],
-                    "description": desc[:300], "amount": amt,
-                    "payment_mode": pay_mode, "notes": remarks[:200],
-                    "vendor_id": None, "erp_synced": True,
-                })
-        except Exception as e:
-            print(f"  expenses {ds}: {e}")
-        cur += timedelta(days=1)
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    try:
+        url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
+               f"?startDt={fs}&endDt={ts}&categoryId=-1&vehicleId=-1"
+               f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=2000")
+        data = json.loads(sess.get(url, timeout=60, verify=True).text)
+        seq = 0
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
+            amt = _num(cells[1]) if len(cells) > 1 else 0
+            if amt <= 0: continue
+            category = cells[3].strip() if len(cells) > 3 else "Other"
+            desc = cells[2].strip() if len(cells) > 2 else category
+            remarks = cells[7].strip() if len(cells) > 7 else ""
+            if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
+            pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
+            seq += 1
+            entry_date = _parse_date(cells[0], to_d) if cells[0] else to_d
+            entries.append({
+                "id": seq, "date": str(entry_date), "category": category[:50],
+                "description": desc[:300], "amount": amt,
+                "payment_mode": pay_mode, "notes": remarks[:200],
+                "vendor_id": None, "erp_synced": True,
+            })
+    except Exception as e:
+        print(f"  expenses fetch error: {e}")
     return entries
 
 def fetch_cash_ledger(sess, from_d, to_d):
