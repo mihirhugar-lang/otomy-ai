@@ -3,522 +3,438 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CrusherOps — Login</title>
+<meta name="theme-color" content="#38aeea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CrusherOps">
+<title>CrusherOps ERP</title>
 <style>
-  /* LOGIN */
-  #login-screen {
-    position: fixed; inset: 0; background: #0f172a;
-    display: flex; align-items: center; justify-content: center; z-index: 999;
-  }
-  .login-box {
-    background: #1e293b; border: 1px solid #334155; border-radius: 16px;
-    padding: 36px 32px; width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  }
-  .login-box h2 { font-size: 22px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
-  .login-box p  { font-size: 13px; color: #64748b; margin-bottom: 28px; }
-  .login-box label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
-  .login-box input {
-    width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid #334155;
-    border-radius: 8px; color: #f1f5f9; font-size: 14px; margin-bottom: 16px; outline: none;
-  }
-  .login-box input:focus { border-color: #6366f1; }
-  .login-box button {
-    width: 100%; padding: 11px; background: #6366f1; color: #fff; border: none;
-    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px;
-  }
-  .login-box button:hover { background: #4f46e5; }
-  .login-error { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: center; display: none; }
-</style>
-  :root {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --border: #334155;
-    --text: #f1f5f9;
-    --muted: #94a3b8;
-    --green: #22c55e;
-    --red: #ef4444;
-    --yellow: #eab308;
-    --blue: #3b82f6;
-    --orange: #f97316;
-    --accent: #6366f1;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size: 14px; }
+/* ── LOGIN ── */
+#login-screen{position:fixed;inset:0;background:linear-gradient(135deg,#fff7ed 0%,#f6f8fb 48%,#eef4ff 100%);display:flex;align-items:center;justify-content:center;z-index:9999}
+.login-box{background:#fff;border:1px solid rgba(228,231,236,.9);border-radius:24px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 18px 45px rgba(17,24,39,.12)}
+.login-logo{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:900;color:#17202a;margin-bottom:4px}.login-logo span{color:#f59e0b}
+.login-sub{font-size:13px;color:#667085;margin-bottom:28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.login-label{display:block;font-size:11px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.login-input{width:100%;border:1.5px solid #e0e0e0;border-radius:8px;padding:10px 12px;font-size:14px;background:#fafafa;margin-bottom:16px;outline:none;transition:border-color .15s;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.login-input:focus{border-color:#1a237e;background:#fff}
+.login-btn{width:100%;padding:12px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;transition:background .15s;margin-top:4px}
+.login-btn:hover{background:#0d1457}
+.login-err{color:#c62828;font-size:12px;margin-top:10px;text-align:center;display:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.sync-badge{display:inline-block;margin-top:18px;font-size:11px;color:#667085;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 
-  .header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
-  .header h1 { font-size: 16px; font-weight: 700; color: var(--text); }
-  .header .sync-info { font-size: 11px; color: var(--muted); text-align: right; }
-  .header .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 4px; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-  .tabs { display: flex; background: var(--card); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tab { flex: 0 0 auto; padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-  .content { padding: 12px; max-width: 1000px; margin: 0 auto; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
-  @media(min-width:480px){ .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
-  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-  .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-  .kpi .value { font-size: 20px; font-weight: 700; }
-  .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
-  .green { color: var(--green); }
-  .red { color: var(--red); }
-  .yellow { color: var(--yellow); }
-  .blue { color: var(--blue); }
-
-  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
-
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
-  .card-header { padding: 10px 14px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .card-body { padding: 10px 14px; }
-
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { color: var(--muted); font-weight: 500; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
-  td { padding: 7px 8px; border-bottom: 1px solid rgba(51,65,85,0.5); }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(255,255,255,0.03); }
-
-  .badge { display: inline-block; padding: 2px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
-  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
-  .badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
-  .badge-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
-  .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
-
-  .bar-row { display: flex; align-items: center; margin-bottom: 8px; gap: 8px; }
-  .bar-label { font-size: 12px; width: 90px; flex-shrink: 0; color: var(--text); }
-  .bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.5s; }
-  .bar-val { font-size: 11px; color: var(--muted); width: 80px; text-align: right; flex-shrink: 0; }
-
-  .chart-wrap { height: 120px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 0; }
-  .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .chart-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
-  .chart-label { font-size: 9px; color: var(--muted); }
-
-  .filter-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-  .filter-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--muted); font-size: 12px; cursor: pointer; }
-  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.1); }
-
-  .empty { color: var(--muted); text-align: center; padding: 24px; font-size: 13px; }
-
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  @media(max-width:480px){ .two-col { grid-template-columns: 1fr; } }
-
-  .amt { font-family: "SF Mono",monospace; }
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#111827;--muted:#667085;--line:#e4e7ec;--panel:#fffaf0;--paper:#fff;
+  --nav:#17202a;--nav2:#2b1708;--amber:#d97706;--amber2:#f59e0b;
+  --green:#147a4b;--red:#b42318;--blue:#175cd3;--slate:#344054;
+  --shadow:0 18px 45px rgba(17,24,39,.10);
+}
+body{font-family:Georgia,'Times New Roman',serif;background:
+  radial-gradient(circle at 15% 10%,rgba(245,158,11,.20),transparent 28%),
+  linear-gradient(135deg,#fff7ed 0%,#f6f8fb 48%,#eef4ff 100%);
+  color:var(--ink);display:flex;min-height:100vh}
+.sidebar{width:238px;background:linear-gradient(180deg,var(--nav),var(--nav2));color:#fff;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:200;overflow-y:auto;transition:width .2s;box-shadow:12px 0 35px rgba(17,24,39,.22)}
+.sidebar-logo{padding:20px 18px;border-bottom:1px solid rgba(255,255,255,.1);font-size:18px;font-weight:900;letter-spacing:.5px}
+.sidebar-logo span{color:#fbbf24}
+.nav-section{padding:10px 0 4px 16px;font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:1px;margin-top:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:rgba(245,158,11,.18);border-left-color:#f59e0b;color:#fcd34d;font-weight:700}
+.nav-item .icon{font-size:15px;width:18px;text-align:center}
+.mobile-menu-btn{display:none;border:1px solid rgba(146,64,14,.25);background:#fff7ed;color:#7c2d12;border-radius:12px;width:40px;height:38px;align-items:center;justify-content:center;font-size:20px;font-weight:900;box-shadow:0 8px 20px rgba(17,24,39,.08);cursor:pointer}
+.mobile-nav-backdrop{display:none}
+.main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:12px 26px;border-bottom:1px solid rgba(228,231,236,.75);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 10px 30px rgba(17,24,39,.05)}
+.topbar-title{font-size:17px;font-weight:900;color:#1f2937}
+.topbar-date{font-size:12px;color:#777}
+.content{padding:24px 28px;flex:1}
+.section{display:none}.section.active{display:block}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.page-header h2{font-size:18px;font-weight:700;color:#1a237e}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:linear-gradient(180deg,#fff,#fffaf5);border-radius:18px;padding:16px 18px;box-shadow:var(--shadow);border:1px solid rgba(245,158,11,.18);border-top:4px solid var(--amber)}
+.kpi.green{border-top-color:#2e7d32}.kpi.blue{border-top-color:#1565c0}.kpi.red{border-top-color:#c62828}.kpi.navy{border-top-color:#1a237e}
+.kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.kpi-value{font-size:24px;font-weight:900;letter-spacing:-.5px}
+.kpi-sub{font-size:11px;color:#aaa;margin-top:3px}
+.card{background:rgba(255,255,255,.92);border:1px solid rgba(228,231,236,.9);border-radius:20px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:18px}
+.card h3{font-size:13px;font-weight:900;color:#92400e;margin-bottom:14px;border-bottom:1px solid #fde68a;padding-bottom:9px;text-transform:uppercase;letter-spacing:.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.card-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.btn{padding:9px 20px;border-radius:5px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn-sm{padding:5px 11px;font-size:11px;border-radius:4px}
+.btn-outline{background:#fff;border:1.5px solid #1a237e;color:#1a237e}.btn-outline:hover{background:#1a237e;color:#fff}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
+tbody tr:nth-child(even){background:#fafafa}
+tbody tr:hover{background:#fff3e0}
+tbody td{padding:8px 12px;border-bottom:1px solid #f0f0f0}
+tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px solid #1a237e;font-size:13px}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.b-cash{background:#e8f5e9;color:#2e7d32}.b-credit{background:#fff3e0;color:#e65100}.b-upi{background:#e3f2fd;color:#1565c0}
+.preset-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:rgba(255,255,255,.92);border-radius:16px;box-shadow:var(--shadow);border:1px solid rgba(228,231,236,.9);border-left:5px solid var(--amber)}
+.preset-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-right:2px;white-space:nowrap}
+.pbtn{padding:5px 13px;border-radius:16px;border:1.5px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#555;transition:all .15s;white-space:nowrap}
+.pbtn:hover,.pbtn.act{border-color:var(--amber);color:#92400e;background:#fff7ed}
+.pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}
+.profit-bar{border-radius:8px;padding:14px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+.profit-bar.pos{background:linear-gradient(135deg,#064e3b,#16a34a);color:#fff;box-shadow:var(--shadow)}
+.profit-bar.neg{background:linear-gradient(135deg,#7f1d1d,#dc2626);color:#fff;box-shadow:var(--shadow)}
+.profit-bar .pl{font-size:11px;opacity:.85}.profit-bar .pv{font-size:26px;font-weight:800}
+.control-panel{background:linear-gradient(135deg,#111827,#3f2507 62%,#b45309);color:#fff;border-radius:24px;padding:18px 20px;box-shadow:var(--shadow);margin-bottom:18px}
+.control-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:#fde68a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.control-title{font-size:27px;font-weight:900;line-height:1.05;margin:7px 0 12px}
+.control-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}
+.control-metric{background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:10px}
+.control-metric span{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.control-metric strong{display:block;font-size:18px;margin-top:4px}
+.control-metric.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18));border-color:rgba(187,247,208,.55)}
+.control-metric.glass-green span{color:#dcfce7;opacity:.95}.control-metric.glass-green strong{color:#f0fdf4}
+.bar-row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}
+.bar-track{height:10px;border-radius:20px;background:#f2f4f7;overflow:hidden}.bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f59e0b,#b45309)}
+.trend-bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr));gap:4px;align-items:end;height:120px;padding-top:10px}
+.trend-day{display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:flex-end;font-size:9px;color:var(--muted)}
+.trend-profit{width:100%;border-radius:6px 6px 2px 2px;min-height:4px;background:linear-gradient(180deg,#22c55e,#15803d)}.trend-profit.neg{background:linear-gradient(180deg,#ef4444,#b91c1c)}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.mini-list{list-style:none;display:flex;flex-direction:column;gap:9px}
+.mini-list li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed #e5e7eb;padding-bottom:8px;font-size:13px}
+.mini-list span{font-weight:800;color:#92400e;white-space:nowrap}
+.empty{text-align:center;padding:32px;color:#bbb;font-size:13px}
+.sync-info{font-size:11px;color:#667085;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:4px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media(max-width:1000px){.control-grid{grid-template-columns:repeat(2,1fr)}.insight-grid{grid-template-columns:1fr}}
+@media(max-width:760px){
+  body{display:block}
+  body.mobile-nav-open{overflow:hidden}
+  .mobile-menu-btn{display:inline-flex;flex:0 0 auto}
+  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(17,24,39,.52);z-index:190}
+  body.mobile-nav-open .mobile-nav-backdrop{display:block}
+  .sidebar{width:min(86vw,320px);transform:translateX(-105%);transition:transform .22s ease;z-index:220}
+  body.mobile-nav-open .sidebar{transform:translateX(0)}
+  .main{margin-left:0;width:100%}
+  .topbar{padding:10px 12px;gap:10px}
+  .topbar-title{font-size:16px;flex:1}
+  .content{padding:14px 10px 24px}
+  .kpi-row{grid-template-columns:repeat(2,1fr);gap:9px}
+  .kpi{padding:12px 10px;border-radius:15px}
+  .kpi-value{font-size:20px}
+  .card{padding:14px 12px;border-radius:16px}
+  .card-row,.insight-grid{grid-template-columns:1fr;gap:12px}
+  .control-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .bar-row{grid-template-columns:86px 1fr 74px}
+  .tbl-wrap{overflow-x:auto}
+  table{min-width:700px;font-size:12px}
+  thead th{padding:8px 9px;font-size:10px}
+  tbody td,tfoot td{padding:8px 9px}
+  .preset-bar{flex-wrap:nowrap;overflow-x:auto;padding:10px}
+  .pbtn{flex:0 0 auto;padding:7px 12px}
+}
+@media(max-width:420px){
+  .content{padding:12px 8px 22px}
+  .kpi-value{font-size:19px}
+  .control-grid{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
+<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <h2>⛏ CrusherOps</h2>
-    <p>Operations Dashboard — Sign in to continue</p>
-    <label>Username</label>
-    <input type="text" id="login-user" placeholder="Enter username" autocomplete="username">
-    <label>Password</label>
-    <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-    <button onclick="doLogin()">Sign In</button>
-    <div class="login-error" id="login-error">Incorrect username or password</div>
+    <div class="login-logo">⛏ Crusher<span>Ops</span></div>
+    <div class="login-sub">Operations Dashboard — Sign in to continue</div>
+    <label class="login-label">Username</label>
+    <input class="login-input" type="text" id="lu" placeholder="Enter username" autocomplete="username">
+    <label class="login-label">Password</label>
+    <input class="login-input" type="password" id="lp" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-err" id="lerr">Incorrect username or password</div>
+    <div style="text-align:center"><span class="sync-badge"><span class="sync-dot" style="background:#22c55e"></span>Live data · updates every 10 min</span></div>
   </div>
 </div>
 
-<div class="header">
-  <h1>⛏ CrusherOps</h1>
-  <div class="sync-info">
-    <span class="dot"></span>
-    <span id="last-sync">Loading…</span><br>
-    <span id="today-date" style="font-size:10px;"></span>
+<div class="mobile-nav-backdrop" onclick="toggleMobileNav(false)"></div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">⛏ <span>CrusherOps</span></div>
+  <div class="nav-section">Main</div>
+  <div class="nav-item active" onclick="nav('dashboard')"><span class="icon">⊡</span><span>Dashboard</span></div>
+  <div class="nav-section">Financials</div>
+  <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
+  <div class="nav-item" onclick="nav('expenses')"><span class="icon">📋</span><span>Expenses</span></div>
+  <div class="nav-item" onclick="nav('trend')"><span class="icon">📈</span><span>30-Day Trend</span></div>
+  <div style="position:absolute;bottom:16px;left:0;right:0;padding:0 18px">
+    <div style="font-size:10px;color:rgba(255,255,255,.35);font-family:-apple-system,sans-serif">
+      <span class="sync-dot"></span><span id="sync-time">Loading…</span>
+    </div>
   </div>
-</div>
+</nav>
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('today')">Today</div>
-  <div class="tab" onclick="switchTab('mtd')">Month</div>
-  <div class="tab" onclick="switchTab('sales')">Sales</div>
-  <div class="tab" onclick="switchTab('expenses')">Expenses</div>
-  <div class="tab" onclick="switchTab('trend')">Trend</div>
+<!-- MAIN -->
+<div class="main">
+<div class="topbar">
+  <button class="mobile-menu-btn" onclick="toggleMobileNav(true)">☰</button>
+  <div class="topbar-title" id="page-title">Dashboard</div>
+  <div class="topbar-date" id="topbar-date"></div>
 </div>
-
 <div class="content">
 
-  <!-- TODAY TAB -->
-  <div id="tab-today" class="tab-panel active">
-    <div class="kpi-grid" id="today-kpi"></div>
-
-    <div class="two-col">
-      <div>
-        <div class="section-title">Sales by Material</div>
-        <div class="card"><div class="card-body" id="today-materials"></div></div>
-      </div>
-      <div>
-        <div class="section-title">Expenses by Category</div>
-        <div class="card"><div class="card-body" id="today-categories"></div></div>
-      </div>
-    </div>
-
-    <div class="section-title">Payment Mode</div>
-    <div class="card"><div class="card-body" id="today-payment"></div></div>
-
-    <div class="section-title">Today's Tickets</div>
+<!-- DASHBOARD -->
+<div class="section active" id="section-dashboard">
+  <div class="preset-bar">
+    <span class="preset-label">View:</span>
+    <button class="pbtn act" id="pb-today" onclick="setView('today',this)">Today</button>
+    <button class="pbtn" id="pb-mtd" onclick="setView('mtd',this)">Month Till Date</button>
+  </div>
+  <div id="dash-profit-bar"></div>
+  <div class="kpi-row" id="dash-kpis"></div>
+  <div class="control-panel" id="dash-control"></div>
+  <div class="insight-grid">
     <div class="card">
-      <div style="overflow-x:auto;">
-        <table><thead><tr>
-          <th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Amount</th><th>Mode</th>
-        </tr></thead><tbody id="today-tickets"></tbody></table>
-      </div>
+      <h3>Sales by Material</h3>
+      <div id="dash-materials"></div>
     </div>
-
-    <div class="section-title">Vehicle Movements (IOT)</div>
     <div class="card">
-      <div style="overflow-x:auto;">
-        <table><thead><tr>
-          <th>Time</th><th>Vehicle</th><th>Customer</th><th>Material</th><th>Qty</th>
-        </tr></thead><tbody id="today-iot"></tbody></table>
-      </div>
+      <h3>Expenses by Category</h3>
+      <div id="dash-categories"></div>
     </div>
   </div>
-
-  <!-- MONTH TAB -->
-  <div id="tab-mtd" class="tab-panel">
-    <div class="kpi-grid" id="mtd-kpi"></div>
-
-    <div class="two-col">
-      <div>
-        <div class="section-title">Sales by Material (MTD)</div>
-        <div class="card"><div class="card-body" id="mtd-materials"></div></div>
-      </div>
-      <div>
-        <div class="section-title">Expenses by Category (MTD)</div>
-        <div class="card"><div class="card-body" id="mtd-categories"></div></div>
-      </div>
+  <div class="card">
+    <h3>Today's Tickets</h3>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate</th><th>Amount</th><th>Mode</th><th>Vehicle</th>
+      </tr></thead><tbody id="dash-tickets"></tbody>
+      <tfoot><tr><td colspan="3"><b>TOTAL</b></td><td id="tf-qty"></td><td></td><td id="tf-amt"></td><td colspan="2"></td></tr></tfoot>
+      </table>
     </div>
   </div>
-
-  <!-- SALES TAB -->
-  <div id="tab-sales" class="tab-panel">
-    <div class="filter-row" id="sales-filters"></div>
-    <div class="card">
-      <div class="card-header">
-        <span>Recent Sales <span id="sales-count" style="color:var(--muted);font-weight:400;font-size:12px;"></span></span>
-        <span id="sales-total" style="color:var(--green);font-size:13px;font-weight:700;"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table><thead><tr>
-          <th>Date</th><th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate</th><th>Amount</th><th>Mode</th>
-        </tr></thead><tbody id="sales-list"></tbody></table>
-      </div>
-    </div>
-  </div>
-
-  <!-- EXPENSES TAB -->
-  <div id="tab-expenses" class="tab-panel">
-    <div class="card">
-      <div class="card-header">
-        <span>Recent Expenses</span>
-        <span id="exp-total" style="color:var(--red);font-size:13px;font-weight:700;"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table><thead><tr>
-          <th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Mode</th>
-        </tr></thead><tbody id="exp-list"></tbody></table>
-      </div>
-    </div>
-  </div>
-
-  <!-- TREND TAB -->
-  <div id="tab-trend" class="tab-panel">
-    <div class="section-title">30-Day Revenue Trend</div>
-    <div class="card">
-      <div class="card-body">
-        <div class="chart-wrap" id="trend-chart"></div>
-      </div>
-    </div>
-    <div class="section-title">Daily Breakdown</div>
-    <div class="card">
-      <div style="overflow-x:auto;">
-        <table><thead><tr>
-          <th>Date</th><th>Tickets</th><th>Qty MT</th><th>Revenue</th><th>Expenses</th><th>Net</th>
-        </tr></thead><tbody id="trend-table"></tbody></table>
-      </div>
-    </div>
-  </div>
-
 </div>
 
+<!-- SALES -->
+<div class="section" id="section-sales">
+  <div class="page-header"><h2>Sales Ledger</h2></div>
+  <div class="preset-bar">
+    <span class="preset-label">Filter:</span>
+    <button class="pbtn act" onclick="filterSales(null,this)">All</button>
+    <button class="pbtn" onclick="filterSales('40mm',this)">40mm</button>
+    <button class="pbtn" onclick="filterSales('20mm',this)">20mm</button>
+    <button class="pbtn" onclick="filterSales('12mm',this)">12mm</button>
+    <button class="pbtn" onclick="filterSales('M-Sand',this)">M-Sand</button>
+    <button class="pbtn" onclick="filterSales('P-Sand',this)">P-Sand</button>
+    <button class="pbtn" onclick="filterSales('Dust',this)">Dust</button>
+  </div>
+  <div class="card">
+    <h3>Sales Records — Last 30 Days <span id="sales-count" style="font-weight:400;color:#999"></span></h3>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>Date</th><th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate ₹/MT</th><th>Amount ₹</th><th>Mode</th><th>Vehicle</th>
+      </tr></thead><tbody id="sales-body"></tbody>
+      <tfoot><tr><td colspan="4"><b>TOTAL</b></td><td id="stf-qty"></td><td></td><td id="stf-amt"></td><td colspan="2"></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- EXPENSES -->
+<div class="section" id="section-expenses">
+  <div class="page-header"><h2>Expenses</h2></div>
+  <div class="card">
+    <h3>Expenses — Last 30 Days</h3>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>Date</th><th>Category</th><th>Description</th><th>Amount ₹</th><th>Mode</th>
+      </tr></thead><tbody id="exp-body"></tbody>
+      <tfoot><tr><td colspan="3"><b>TOTAL</b></td><td id="etf-amt"></td><td></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TREND -->
+<div class="section" id="section-trend">
+  <div class="page-header"><h2>30-Day Revenue Trend</h2></div>
+  <div class="card">
+    <h3>Daily Revenue</h3>
+    <div class="trend-bars" id="trend-chart"></div>
+  </div>
+  <div class="card">
+    <h3>Daily Breakdown</h3>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>Date</th><th>Tickets</th><th>Qty MT</th><th>Revenue ₹</th><th>Expenses ₹</th><th>Net ₹</th>
+      </tr></thead><tbody id="trend-body"></tbody></table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+
 <script>
-let DATA = {};
-let salesData = [];
-let expData = [];
-let currentTab = 'today';
-let salesFilter = null;
+const CREDS = [['crusher','Otomy@2026'],['admin','Crusher@2026']];
+let DATA={}, SALES=[], EXPS=[], curView='today', salesFilter=null;
 
-async function load() {
-  try {
-    const [dash, sales, exp, meta] = await Promise.all([
-      fetch('data/dashboard.json?t=' + Date.now()).then(r => r.json()),
-      fetch('data/sales.json?t=' + Date.now()).then(r => r.json()),
-      fetch('data/expenses.json?t=' + Date.now()).then(r => r.json()),
-      fetch('data/meta.json?t=' + Date.now()).then(r => r.json()),
-    ]);
-    DATA = dash;
-    salesData = sales;
-    expData = exp;
-
-    const syncTime = new Date(meta.last_sync);
-    const mins = Math.round((Date.now() - syncTime) / 60000);
-    document.getElementById('last-sync').textContent = mins < 1 ? 'Just synced' : `${mins}m ago`;
-    document.getElementById('today-date').textContent = fmt_date(DATA.today);
-
-    renderAll();
-  } catch(e) {
-    document.getElementById('last-sync').textContent = 'Data unavailable';
-    console.error(e);
+function doLogin(){
+  const u=document.getElementById('lu').value.trim();
+  const p=document.getElementById('lp').value;
+  if(CREDS.some(([a,b])=>a===u&&b===p)){
+    sessionStorage.setItem('auth','1');
+    document.getElementById('login-screen').style.display='none';
+    loadAll();setInterval(loadAll,5*60*1000);
+  } else {
+    document.getElementById('lerr').style.display='block';
   }
 }
 
-function fmt_inr(v) {
-  const n = parseFloat(v) || 0;
-  return '₹' + n.toLocaleString('en-IN', {maximumFractionDigits: 0});
+function inr(v){return '₹'+(parseFloat(v)||0).toLocaleString('en-IN',{maximumFractionDigits:0});}
+function fdate(d){if(!d)return'';return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});}
+
+function pbadge(m){
+  m=(m||'').toUpperCase();
+  if(m==='CASH')return'<span class="badge b-cash">Cash</span>';
+  if(m==='CREDIT')return'<span class="badge b-credit">Credit</span>';
+  return'<span class="badge b-upi">'+(m||'—')+'</span>';
 }
 
-function fmt_date(d) {
-  if (!d) return '';
-  const dt = new Date(d + 'T00:00:00');
-  return dt.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+async function loadAll(){
+  try{
+    const[d,s,e,mt]=await Promise.all([
+      fetch('data/dashboard.json?t='+Date.now()).then(r=>r.json()),
+      fetch('data/sales.json?t='+Date.now()).then(r=>r.json()),
+      fetch('data/expenses.json?t='+Date.now()).then(r=>r.json()),
+      fetch('data/meta.json?t='+Date.now()).then(r=>r.json()),
+    ]);
+    DATA=d; SALES=s; EXPS=e;
+    const ago=Math.round((Date.now()-new Date(mt.last_sync))/60000);
+    document.getElementById('sync-time').textContent=ago<1?'Just synced':`Synced ${ago}m ago`;
+    document.getElementById('topbar-date').textContent=new Date(DATA.today+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+    renderDash(); renderSales(); renderExp(); renderTrend();
+  }catch(e){document.getElementById('sync-time').textContent='Sync error';}
 }
 
-function fmt_time(s) {
-  if (!s) return '';
-  return s.split('T').join(' ').slice(0,16);
+function setView(v,btn){
+  curView=v;
+  document.querySelectorAll('.preset-bar .pbtn').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
+  renderDash();
 }
 
-function payment_badge(mode) {
-  const m = (mode||'').toUpperCase();
-  if (m === 'CASH') return '<span class="badge badge-green">Cash</span>';
-  if (m === 'CREDIT') return '<span class="badge badge-yellow">Credit</span>';
-  if (m.includes('UPI') || m.includes('CARD')) return '<span class="badge badge-blue">UPI</span>';
-  if (m.includes('BANK') || m.includes('CHEQUE') || m.includes('NEFT')) return '<span class="badge badge-blue">Bank</span>';
-  return '<span class="badge badge-yellow">' + mode + '</span>';
-}
-
-function bar_rows(obj, total, color) {
-  const entries = Object.entries(obj).sort((a,b) => b[1] - a[1]);
-  if (!entries.length) return '<div class="empty">No data</div>';
-  const max = entries[0][1];
-  return entries.map(([k,v]) => `
+function renderDash(){
+  const s=curView==='today'?DATA.summary_today:DATA.summary_mtd;
+  const mats=curView==='today'?DATA.materials_today:DATA.materials_mtd;
+  const cats=curView==='today'?DATA.expense_categories_today:DATA.expense_categories_mtd;
+  const label=curView==='today'?'Today':DATA.month;
+  if(!s)return;
+  const net=s.net||0;
+  document.getElementById('dash-profit-bar').innerHTML=`
+    <div class="profit-bar ${net>=0?'pos':'neg'}">
+      <div><div class="pl">Net P&L — ${label}</div><div class="pv">${inr(net)}</div></div>
+      <div style="text-align:right;font-size:12px;opacity:.85">${s.tickets} tickets</div>
+    </div>`;
+  document.getElementById('dash-kpis').innerHTML=`
+    <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value">${inr(s.revenue)}</div><div class="kpi-sub">${label}</div></div>
+    <div class="kpi green"><div class="kpi-label">Cash Collected</div><div class="kpi-value">${inr((s.payment_modes&&s.payment_modes['Cash'])||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${inr(s.expenses)}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Wages</div><div class="kpi-value">${inr(s.wages)}</div></div>
+  `;
+  // Control panel
+  const matEntries=Object.entries(mats||{}).sort((a,b)=>b[1].amount-a[1].amount).slice(0,4);
+  document.getElementById('dash-control').innerHTML=`
+    <div class="control-eyebrow">Operations Summary</div>
+    <div class="control-title">${label}</div>
+    <div class="control-grid">
+      ${matEntries.map(([k,v])=>`<div class="control-metric glass-green"><span>${k}</span><strong>${inr(v.amount)}</strong><small style="font-size:10px;opacity:.7">${v.qty.toFixed(1)} MT</small></div>`).join('')}
+    </div>`;
+  // Materials bar
+  const matTotal=Object.values(mats||{}).reduce((a,m)=>a+m.amount,0);
+  document.getElementById('dash-materials').innerHTML=Object.entries(mats||{}).sort((a,b)=>b[1].amount-a[1].amount).map(([k,v])=>`
     <div class="bar-row">
-      <div class="bar-label">${k}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%;background:${color}"></div></div>
-      <div class="bar-val amt">${fmt_inr(v)}</div>
-    </div>`).join('');
+      <div>${k}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%"></div></div>
+      <div style="text-align:right">${inr(v.amount)}</div>
+    </div>`).join('')||'<div class="empty">No sales</div>';
+  // Categories bar
+  const catMax=Math.max(...Object.values(cats||{}).map(v=>v),1);
+  document.getElementById('dash-categories').innerHTML=Object.entries(cats||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+    <div class="bar-row">
+      <div>${k}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v/catMax*100).toFixed(1)}%;background:linear-gradient(90deg,#c62828,#e53935)"></div></div>
+      <div style="text-align:right">${inr(v)}</div>
+    </div>`).join('')||'<div class="empty">No expenses</div>';
+  // Today tickets
+  const todaySales=SALES.filter(s=>s.date===DATA.today);
+  let totQty=0,totAmt=0;
+  document.getElementById('dash-tickets').innerHTML=todaySales.length?todaySales.map(s=>{
+    totQty+=s.qty;totAmt+=s.amount;
+    return`<tr><td style="color:#1a237e;font-weight:600">${s.ticket_no||'—'}</td><td>${s.customer}</td><td>${s.material}</td><td>${s.qty.toFixed(2)}</td><td>${inr(s.rate)}</td><td style="font-weight:700;color:#147a4b">${inr(s.amount)}</td><td>${pbadge(s.payment)}</td><td style="color:#777">${s.vehicle||'—'}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">No tickets today</td></tr>';
+  document.getElementById('tf-qty').textContent=totQty.toFixed(2);
+  document.getElementById('tf-amt').textContent=inr(totAmt);
 }
 
-function renderAll() {
-  renderToday();
-  renderMTD();
-  renderSales();
-  renderExpenses();
-  renderTrend();
-}
-
-function renderToday() {
-  const s = DATA.summary_today || {};
-  const netColor = s.net >= 0 ? 'green' : 'red';
-  document.getElementById('today-kpi').innerHTML = `
-    <div class="kpi"><div class="label">Revenue</div><div class="value green amt">${fmt_inr(s.revenue)}</div><div class="sub">${s.tickets} tickets</div></div>
-    <div class="kpi"><div class="label">Expenses</div><div class="value red amt">${fmt_inr(s.expenses)}</div><div class="sub">direct costs</div></div>
-    <div class="kpi"><div class="label">Wages</div><div class="value yellow amt">${fmt_inr(s.wages)}</div><div class="sub">labour</div></div>
-    <div class="kpi"><div class="label">Net P&L</div><div class="value ${netColor} amt">${fmt_inr(s.net)}</div><div class="sub">today</div></div>
-  `;
-
-  // Materials
-  const mats = DATA.materials_today || {};
-  const matTotal = Object.values(mats).reduce((a,m) => a + m.amount, 0);
-  const matEntries = Object.entries(mats).sort((a,b) => b[1].amount - a[1].amount);
-  document.getElementById('today-materials').innerHTML = matEntries.length
-    ? matEntries.map(([k,v]) => `
-        <div class="bar-row">
-          <div class="bar-label">${k}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%;background:var(--green)"></div></div>
-          <div class="bar-val amt">${fmt_inr(v.amount)}</div>
-        </div>
-        <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px 98px;">${v.qty.toFixed(1)} MT · ${v.count} tickets</div>
-      `).join('')
-    : '<div class="empty">No sales today</div>';
-
-  // Categories
-  document.getElementById('today-categories').innerHTML = bar_rows(DATA.expense_categories_today || {}, 1, 'var(--red)') || '<div class="empty">No expenses today</div>';
-
-  // Payment modes
-  document.getElementById('today-payment').innerHTML = bar_rows(DATA.payment_modes_today || {}, 1, 'var(--blue)') || '<div class="empty">No payments today</div>';
-
-  // Tickets table — filter from salesData
-  const todayStr = DATA.today;
-  const tickets = salesData.filter(s => s.date === todayStr);
-  document.getElementById('today-tickets').innerHTML = tickets.length
-    ? tickets.map(s => `<tr>
-        <td><span style="color:var(--accent)">${s.ticket_no||'—'}</span></td>
-        <td>${s.customer}</td>
-        <td>${s.material}</td>
-        <td class="amt">${s.qty.toFixed(2)}</td>
-        <td class="amt" style="color:var(--green)">${fmt_inr(s.amount)}</td>
-        <td>${payment_badge(s.payment)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="6" class="empty">No tickets today</td></tr>';
-
-  // IOT
-  const iot = DATA.iot_today || [];
-  document.getElementById('today-iot').innerHTML = iot.length
-    ? iot.map(m => `<tr>
-        <td style="color:var(--muted)">${fmt_time(m.time)}</td>
-        <td style="color:var(--accent)">${m.vehicle}</td>
-        <td>${m.customer}</td>
-        <td>${m.material}</td>
-        <td class="amt">${m.qty.toFixed(2)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="5" class="empty">No IOT movements today</td></tr>';
-}
-
-function renderMTD() {
-  const s = DATA.summary_mtd || {};
-  const netColor = s.net >= 0 ? 'green' : 'red';
-  document.getElementById('mtd-kpi').innerHTML = `
-    <div class="kpi"><div class="label">Revenue MTD</div><div class="value green amt">${fmt_inr(s.revenue)}</div><div class="sub">${s.tickets} tickets</div></div>
-    <div class="kpi"><div class="label">Expenses MTD</div><div class="value red amt">${fmt_inr(s.expenses)}</div></div>
-    <div class="kpi"><div class="label">Wages MTD</div><div class="value yellow amt">${fmt_inr(s.wages)}</div></div>
-    <div class="kpi"><div class="label">Net MTD</div><div class="value ${netColor} amt">${fmt_inr(s.net)}</div></div>
-  `;
-
-  const mats = DATA.materials_mtd || {};
-  const matEntries = Object.entries(mats).sort((a,b) => b[1].amount - a[1].amount);
-  const matTotal = matEntries.reduce((a,[,v]) => a + v.amount, 0);
-  document.getElementById('mtd-materials').innerHTML = matEntries.length
-    ? matEntries.map(([k,v]) => `
-        <div class="bar-row">
-          <div class="bar-label">${k}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%;background:var(--green)"></div></div>
-          <div class="bar-val amt">${fmt_inr(v.amount)}</div>
-        </div>
-        <div style="font-size:10px;color:var(--muted);margin:-4px 0 6px 98px;">${v.qty.toFixed(1)} MT · ${v.count} tickets</div>
-      `).join('')
-    : '<div class="empty">No sales this month</div>';
-
-  document.getElementById('mtd-categories').innerHTML = bar_rows(DATA.expense_categories_mtd || {}, 1, 'var(--red)') || '<div class="empty">No expenses this month</div>';
-}
-
-function renderSales() {
-  // Build material filter buttons
-  const materials = [...new Set(salesData.map(s => s.material).filter(Boolean))].sort();
-  document.getElementById('sales-filters').innerHTML = `
-    <button class="filter-btn ${salesFilter===null?'active':''}" onclick="setSalesFilter(null)">All</button>
-    ${materials.map(m => `<button class="filter-btn ${salesFilter===m?'active':''}" onclick="setSalesFilter('${m}')">${m}</button>`).join('')}
-  `;
-
-  const filtered = salesFilter ? salesData.filter(s => s.material === salesFilter) : salesData;
-  const total = filtered.reduce((a,s) => a + s.amount, 0);
-  document.getElementById('sales-count').textContent = `(${filtered.length})`;
-  document.getElementById('sales-total').textContent = fmt_inr(total);
-
-  document.getElementById('sales-list').innerHTML = filtered.length
-    ? filtered.map(s => `<tr>
-        <td style="color:var(--muted)">${fmt_date(s.date)}</td>
-        <td style="color:var(--accent)">${s.ticket_no||'—'}</td>
-        <td>${s.customer}</td>
-        <td>${s.material}</td>
-        <td class="amt">${s.qty.toFixed(2)}</td>
-        <td class="amt">${fmt_inr(s.rate)}</td>
-        <td class="amt" style="color:var(--green)">${fmt_inr(s.amount)}</td>
-        <td>${payment_badge(s.payment)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="8" class="empty">No sales found</td></tr>';
-}
-
-function setSalesFilter(mat) {
-  salesFilter = mat;
+function filterSales(mat,btn){
+  salesFilter=mat;
+  document.querySelectorAll('#section-sales .pbtn').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
   renderSales();
 }
 
-function renderExpenses() {
-  const total = expData.reduce((a,e) => a + e.amount, 0);
-  document.getElementById('exp-total').textContent = fmt_inr(total);
-  document.getElementById('exp-list').innerHTML = expData.length
-    ? expData.map(e => `<tr>
-        <td style="color:var(--muted)">${fmt_date(e.date)}</td>
-        <td>${e.category}</td>
-        <td style="color:var(--muted)">${e.description}</td>
-        <td class="amt" style="color:var(--red)">${fmt_inr(e.amount)}</td>
-        <td>${payment_badge(e.payment)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="5" class="empty">No expenses found</td></tr>';
+function renderSales(){
+  const filtered=salesFilter?SALES.filter(s=>s.material===salesFilter):SALES;
+  let qty=0,amt=0;
+  document.getElementById('sales-count').textContent=`(${filtered.length} records)`;
+  document.getElementById('sales-body').innerHTML=filtered.length?filtered.map(s=>{
+    qty+=s.qty;amt+=s.amount;
+    return`<tr><td style="color:#777">${fdate(s.date)}</td><td style="color:#1a237e;font-weight:600">${s.ticket_no||'—'}</td><td>${s.customer}</td><td>${s.material}</td><td>${s.qty.toFixed(2)}</td><td>${inr(s.rate)}</td><td style="font-weight:700;color:#147a4b">${inr(s.amount)}</td><td>${pbadge(s.payment)}</td><td style="color:#777">${s.vehicle||'—'}</td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">No records</td></tr>';
+  document.getElementById('stf-qty').textContent=qty.toFixed(2);
+  document.getElementById('stf-amt').textContent=inr(amt);
 }
 
-function renderTrend() {
-  const trend = DATA.daily_trend || [];
-  const maxRev = Math.max(...trend.map(d => d.revenue), 1);
+function renderExp(){
+  let tot=0;
+  document.getElementById('exp-body').innerHTML=EXPS.length?EXPS.map(e=>{
+    tot+=e.amount;
+    return`<tr><td style="color:#777">${fdate(e.date)}</td><td><span class="badge" style="background:#fff3e0;color:#e65100">${e.category}</span></td><td style="color:#555">${e.description}</td><td style="font-weight:700;color:#b42318">${inr(e.amount)}</td><td>${pbadge(e.payment)}</td></tr>`;
+  }).join(''):'<tr><td colspan="5" class="empty">No records</td></tr>';
+  document.getElementById('etf-amt').textContent=inr(tot);
+}
 
-  document.getElementById('trend-chart').innerHTML = trend.map(d => {
-    const h = Math.max((d.revenue / maxRev) * 100, 2);
-    const dd = d.date.slice(8,10);
-    const color = d.revenue > 0 ? 'var(--green)' : 'var(--border)';
-    return `<div class="chart-bar-wrap">
-      <div class="chart-bar" style="height:${h}%;background:${color}" title="${d.date}: ${fmt_inr(d.revenue)}"></div>
-      <div class="chart-label">${dd}</div>
+function renderTrend(){
+  const trend=DATA.daily_trend||[];
+  const maxR=Math.max(...trend.map(d=>d.revenue),1);
+  document.getElementById('trend-chart').innerHTML=trend.map(d=>{
+    const h=Math.max((d.revenue/maxR*100),2);
+    return`<div class="trend-day">
+      <div class="trend-profit${d.revenue===0?' neg':''}" style="height:${h}%" title="${d.date}: ${inr(d.revenue)}"></div>
+      <span>${d.date.slice(8)}</span>
     </div>`;
   }).join('');
-
-  const rows = [...trend].reverse().map(d => {
-    const net = d.revenue - d.expenses;
-    const nc = net >= 0 ? 'var(--green)' : 'var(--red)';
-    return `<tr>
-      <td style="color:var(--muted)">${fmt_date(d.date)}</td>
-      <td>${d.tickets}</td>
-      <td class="amt">${d.qty.toFixed(1)}</td>
-      <td class="amt" style="color:var(--green)">${fmt_inr(d.revenue)}</td>
-      <td class="amt" style="color:var(--red)">${fmt_inr(d.expenses)}</td>
-      <td class="amt" style="color:${nc}">${fmt_inr(net)}</td>
-    </tr>`;
+  document.getElementById('trend-body').innerHTML=[...trend].reverse().map(d=>{
+    const net=d.revenue-d.expenses;
+    return`<tr><td style="color:#777">${fdate(d.date)}</td><td>${d.tickets}</td><td>${d.qty.toFixed(1)}</td><td style="color:#147a4b;font-weight:600">${inr(d.revenue)}</td><td style="color:#b42318">${inr(d.expenses)}</td><td style="font-weight:700;color:${net>=0?'#147a4b':'#b42318'}">${inr(net)}</td></tr>`;
   }).join('');
-  document.getElementById('trend-table').innerHTML = rows || '<tr><td colspan="6" class="empty">No data</td></tr>';
 }
 
-function switchTab(name) {
-  currentTab = name;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  const tabEl = document.querySelector(`.tab[onclick="switchTab('${name}')"]`);
-  if (tabEl) tabEl.classList.add('active');
-  const panel = document.getElementById('tab-' + name);
-  if (panel) panel.classList.add('active');
+function nav(page){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('section-'+page).classList.add('active');
+  document.querySelector(`.nav-item[onclick="nav('${page}')"]`).classList.add('active');
+  const titles={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses',trend:'30-Day Trend'};
+  document.getElementById('page-title').textContent=titles[page]||page;
+  toggleMobileNav(false);
 }
 
-// ── AUTH ──────────────────────────────────────────────────────────
-const CREDS = [['crusher','Otomy@2026'],['admin','Crusher@2026']];
-
-function doLogin() {
-  const user = document.getElementById('login-user').value.trim();
-  const pass = document.getElementById('login-pass').value;
-  const ok = CREDS.some(([u,p]) => u === user && p === pass);
-  if (ok) {
-    sessionStorage.setItem('auth', '1');
-    document.getElementById('login-screen').style.display = 'none';
-    load();
-    setInterval(load, 5 * 60 * 1000);
-  } else {
-    document.getElementById('login-error').style.display = 'block';
-  }
+function toggleMobileNav(open){
+  document.body.classList.toggle('mobile-nav-open',open);
 }
 
-// Load data on start and refresh every 5 minutes
-if (sessionStorage.getItem('auth') === '1') {
-  document.getElementById('login-screen').style.display = 'none';
-  load();
-  setInterval(load, 5 * 60 * 1000);
+if(sessionStorage.getItem('auth')==='1'){
+  document.getElementById('login-screen').style.display='none';
+  loadAll(); setInterval(loadAll,5*60*1000);
 }
 </script>
 </body>
