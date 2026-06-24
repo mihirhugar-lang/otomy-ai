@@ -1,0 +1,42 @@
+name: Refresh JSON data
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Fetch from ERP and update meta
+        env:
+          ERP_BASE: ${{ secrets.ERP_BASE }}
+          ERP_ORG: ${{ secrets.ERP_ORG }}
+          ERP_USER: ${{ secrets.ERP_USER }}
+          ERP_PASS: ${{ secrets.ERP_PASS }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          from datetime import datetime
+          meta = {"last_gha_sync": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "source": "github-actions"}
+          os.makedirs("data", exist_ok=True)
+          with open("data/meta_gha.json", "w") as f:
+              json.dump(meta, f)
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/meta_gha.json
+          git diff --cached --quiet && echo "No changes" || (git commit -m "gha: sync $(date -u +%H:%M)" && git push)
