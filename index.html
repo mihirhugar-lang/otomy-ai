@@ -4,23 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#38aeea">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="CrusherOps">
+<meta name="apple-mobile-web-app-title" content="VMIPL">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-96.png">
 <title>CrusherOps ERP</title>
 <style>
-/* ── LOGIN ── */
-#login-screen{position:fixed;inset:0;background:linear-gradient(135deg,#fff7ed 0%,#f6f8fb 48%,#eef4ff 100%);display:flex;align-items:center;justify-content:center;z-index:9999}
-.login-box{background:#fff;border:1px solid rgba(228,231,236,.9);border-radius:24px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 18px 45px rgba(17,24,39,.12)}
-.login-logo{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:900;color:#17202a;margin-bottom:4px}.login-logo span{color:#f59e0b}
-.login-sub{font-size:13px;color:#667085;margin-bottom:28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.login-label{display:block;font-size:11px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.login-input{width:100%;border:1.5px solid #e0e0e0;border-radius:8px;padding:10px 12px;font-size:14px;background:#fafafa;margin-bottom:16px;outline:none;transition:border-color .15s;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.login-input:focus{border-color:#1a237e;background:#fff}
-.login-btn{width:100%;padding:12px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;transition:background .15s;margin-top:4px}
-.login-btn:hover{background:#0d1457}
-.login-err{color:#c62828;font-size:12px;margin-top:10px;text-align:center;display:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.sync-badge{display:inline-block;margin-top:18px;font-size:11px;color:#667085;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --ink:#111827;--muted:#667085;--line:#e4e7ec;--panel:#fffaf0;--paper:#fff;
@@ -32,6 +24,8 @@ body{font-family:Georgia,'Times New Roman',serif;background:
   radial-gradient(circle at 15% 10%,rgba(245,158,11,.20),transparent 28%),
   linear-gradient(135deg,#fff7ed 0%,#f6f8fb 48%,#eef4ff 100%);
   color:var(--ink);display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
 .sidebar{width:238px;background:linear-gradient(180deg,var(--nav),var(--nav2));color:#fff;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:200;overflow-y:auto;transition:width .2s;box-shadow:12px 0 35px rgba(17,24,39,.22)}
 .sidebar-logo{padding:20px 18px;border-bottom:1px solid rgba(255,255,255,.1);font-size:18px;font-weight:900;letter-spacing:.5px}
 .sidebar-logo span{color:#fbbf24}
@@ -42,118 +36,354 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .nav-item .icon{font-size:15px;width:18px;text-align:center}
 .mobile-menu-btn{display:none;border:1px solid rgba(146,64,14,.25);background:#fff7ed;color:#7c2d12;border-radius:12px;width:40px;height:38px;align-items:center;justify-content:center;font-size:20px;font-weight:900;box-shadow:0 8px 20px rgba(17,24,39,.08);cursor:pointer}
 .mobile-nav-backdrop{display:none}
+
+/* ── Main ── */
 .main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:12px 26px;border-bottom:1px solid rgba(228,231,236,.75);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 10px 30px rgba(17,24,39,.05)}
 .topbar-title{font-size:17px;font-weight:900;color:#1f2937}
 .topbar-date{font-size:12px;color:#777}
+.install-btn{display:none;border:0;border-radius:999px;background:linear-gradient(135deg,#38aeea,#8ee7ff);color:#073f63;font-size:12px;font-weight:900;padding:8px 13px;box-shadow:0 8px 20px rgba(56,174,234,.28);cursor:pointer;white-space:nowrap}
+.install-btn.show{display:inline-flex;align-items:center;gap:6px}
 .content{padding:24px 28px;flex:1}
+
+/* ── Section ── */
 .section{display:none}.section.active{display:block}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .page-header h2{font-size:18px;font-weight:700;color:#1a237e}
+
+/* ── KPI Cards ── */
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .kpi{background:linear-gradient(180deg,#fff,#fffaf5);border-radius:18px;padding:16px 18px;box-shadow:var(--shadow);border:1px solid rgba(245,158,11,.18);border-top:4px solid var(--amber)}
-.kpi.green{border-top-color:#2e7d32}.kpi.blue{border-top-color:#1565c0}.kpi.red{border-top-color:#c62828}.kpi.navy{border-top-color:#1a237e}
+.kpi.green{border-color:#2e7d32}.kpi.blue{border-color:#1565c0}.kpi.red{border-color:#c62828}.kpi.navy{border-color:#1a237e}.kpi.purple{border-color:#6a1b9a}
 .kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .kpi-value{font-size:24px;font-weight:900;letter-spacing:-.5px}
 .kpi-sub{font-size:11px;color:#aaa;margin-top:3px}
+
+/* ── Cards ── */
 .card{background:rgba(255,255,255,.92);border:1px solid rgba(228,231,236,.9);border-radius:20px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:18px}
 .card h3{font-size:13px;font-weight:900;color:#92400e;margin-bottom:14px;border-bottom:1px solid #fde68a;padding-bottom:9px;text-transform:uppercase;letter-spacing:.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .card-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* ── Forms ── */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:11px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.fg input,.fg select,.fg textarea{border:1.5px solid #e0e0e0;border-radius:5px;padding:8px 10px;font-size:13px;background:#fafafa;width:100%;transition:border-color .15s}
+.fg input:focus,.fg select:focus{outline:none;border-color:#1a237e;background:#fff}
+.fg.full{grid-column:1/-1}
+.form-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── Buttons ── */
 .btn{padding:9px 20px;border-radius:5px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn-primary{background:#e65100;color:#fff}.btn-primary:hover{background:#bf360c}
+.btn-navy{background:#1a237e;color:#fff}.btn-navy:hover{background:#0d1457}
+.btn-green{background:#2e7d32;color:#fff}.btn-green:hover{background:#1b5e20}
 .btn-sm{padding:5px 11px;font-size:11px;border-radius:4px}
+.btn-ok{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}.btn-ok:hover{background:#2e7d32;color:#fff}
 .btn-outline{background:#fff;border:1.5px solid #1a237e;color:#1a237e}.btn-outline:hover{background:#1a237e;color:#fff}
+
+/* ── Tables ── */
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{background:#3b3b3b}
+thead th.sortable span{opacity:.75;font-size:10px;margin-left:4px}
 tbody tr:nth-child(even){background:#fafafa}
 tbody tr:hover{background:#fff3e0}
 tbody td{padding:8px 12px;border-bottom:1px solid #f0f0f0}
 tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px solid #1a237e;font-size:13px}
+
+/* ── Badges ── */
 .badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600}
-.b-cash{background:#e8f5e9;color:#2e7d32}.b-credit{background:#fff3e0;color:#e65100}.b-upi{background:#e3f2fd;color:#1565c0}
+.b-cash{background:#e8f5e9;color:#2e7d32}.b-credit{background:#fff3e0;color:#e65100}
+.b-upi{background:#e3f2fd;color:#1565c0}.b-paid{background:#e8f5e9;color:#2e7d32}
+.b-unpaid{background:#ffebee;color:#c62828}.b-pending{background:#fff8e1;color:#f57f17}
+.b-overdue{background:#ffebee;color:#c62828}.b-credit2{background:#e8f5e9;color:#2e7d32}
+
+/* ── Alert banners ── */
+.alert-banner{border-radius:7px;padding:11px 16px;margin-bottom:12px;border-left:4px solid}
+.alert-red{background:#ffebee;border-color:#c62828;color:#b71c1c}
+.alert-orange{background:#fff3e0;border-color:#e65100;color:#bf360c}
+.alert-green{background:#e8f5e9;border-color:#2e7d32;color:#1b5e20}
+.alert-banner strong{display:block;font-size:13px;margin-bottom:2px}
+.alert-banner span{font-size:12px}
+
+/* ── Date nav ── */
+.date-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.date-nav label{font-size:12px;font-weight:600;color:#555}
+.date-nav input{border:1.5px solid #e0e0e0;border-radius:5px;padding:7px 10px;font-size:13px}
+
+/* ── Preset Bar ── */
 .preset-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:rgba(255,255,255,.92);border-radius:16px;box-shadow:var(--shadow);border:1px solid rgba(228,231,236,.9);border-left:5px solid var(--amber)}
 .preset-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-right:2px;white-space:nowrap}
 .pbtn{padding:5px 13px;border-radius:16px;border:1.5px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#555;transition:all .15s;white-space:nowrap}
 .pbtn:hover,.pbtn.act{border-color:var(--amber);color:#92400e;background:#fff7ed}
 .pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}
+.preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
+.preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
+.preset-dates label{font-size:11px;font-weight:600;color:#888}
+.print-btn{margin-left:auto;padding:6px 14px;border-radius:5px;border:1.5px solid #1a237e;background:#fff;color:#1a237e;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
+.print-btn:hover{background:#1a237e;color:#fff}
+
+/* ── Sub-tabs ── */
+.subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
+.subtab{padding:9px 16px;cursor:pointer;font-size:12px;font-weight:600;color:#777;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px}
+.subtab:hover{color:#e65100}
+.subtab.active{color:#e65100;border-bottom-color:#e65100}
+.subtab-content{display:none}.subtab-content.active{display:block}
+
+/* ── Misc ── */
+.empty{text-align:center;padding:32px;color:#bbb;font-size:13px}
+body.readonly .write-only{display:none!important}
+body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
+.pager{display:flex;align-items:center;gap:10px;padding:10px 4px;font-size:13px;color:#555}
+.pager button{padding:5px 14px;border:1.5px solid #1a237e;border-radius:4px;background:#fff;color:#1a237e;cursor:pointer;font-size:13px;font-weight:600}
+.pager button:hover:not(:disabled){background:#e8eaf6}
+.pager button:disabled{opacity:.35;cursor:default}
+.pager .pager-info{flex:1;text-align:center;font-weight:500}
 .profit-bar{border-radius:8px;padding:14px 20px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
 .profit-bar.pos{background:linear-gradient(135deg,#064e3b,#16a34a);color:#fff;box-shadow:var(--shadow)}
 .profit-bar.neg{background:linear-gradient(135deg,#7f1d1d,#dc2626);color:#fff;box-shadow:var(--shadow)}
 .profit-bar .pl{font-size:11px;opacity:.85}.profit-bar .pv{font-size:26px;font-weight:800}
-.control-panel{background:linear-gradient(135deg,#111827,#3f2507 62%,#b45309);color:#fff;border-radius:24px;padding:18px 20px;box-shadow:var(--shadow);margin-bottom:18px}
+.control-hero{display:grid;grid-template-columns:1.35fr .9fr;gap:16px;margin-bottom:18px}
+.control-panel{background:linear-gradient(135deg,#111827,#3f2507 62%,#b45309);color:#fff;border-radius:24px;padding:18px 20px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.control-panel:after{content:'';position:absolute;right:-80px;top:-70px;width:240px;height:240px;border-radius:50%;background:rgba(251,191,36,.18)}
 .control-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:#fde68a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .control-title{font-size:27px;font-weight:900;line-height:1.05;margin:7px 0 12px}
-.control-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}
+.control-grid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px;position:relative;z-index:2}
 .control-metric{background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:10px}
 .control-metric span{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .control-metric strong{display:block;font-size:18px;margin-top:4px}
-.control-metric.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18));border-color:rgba(187,247,208,.55)}
-.control-metric.glass-green span{color:#dcfce7;opacity:.95}.control-metric.glass-green strong{color:#f0fdf4}
+.control-metric.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18));border-color:rgba(187,247,208,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 14px 30px rgba(5,150,105,.16)}
+.control-metric.glass-green span{color:#dcfce7;opacity:.95}
+.control-metric.glass-green strong{color:#f0fdf4}
+.alert-stack{display:flex;flex-direction:column;gap:10px}
+.control-alert{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:14px 16px}
+.control-alert.good{border-left:5px solid var(--green)}.control-alert.warning{border-left:5px solid var(--amber)}.control-alert.danger{border-left:5px solid var(--red)}
+.control-alert strong{display:block;font-size:14px}.control-alert span{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .bar-row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}
 .bar-track{height:10px;border-radius:20px;background:#f2f4f7;overflow:hidden}.bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f59e0b,#b45309)}
-.trend-bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr));gap:4px;align-items:end;height:120px;padding-top:10px}
-.trend-day{display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:flex-end;font-size:9px;color:var(--muted)}
-.trend-profit{width:100%;border-radius:6px 6px 2px 2px;min-height:4px;background:linear-gradient(180deg,#22c55e,#15803d)}.trend-profit.neg{background:linear-gradient(180deg,#ef4444,#b91c1c)}
-.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.trend-bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;align-items:end;height:170px;padding-top:10px}
+.trend-day{display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:flex-end;font-size:10px;color:var(--muted)}
+.trend-profit{width:100%;border-radius:10px 10px 4px 4px;min-height:4px;background:linear-gradient(180deg,#22c55e,#15803d)}.trend-profit.neg{background:linear-gradient(180deg,#ef4444,#b91c1c)}
+.money-list{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .mini-list{list-style:none;display:flex;flex-direction:column;gap:9px}
 .mini-list li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed #e5e7eb;padding-bottom:8px;font-size:13px}
-.mini-list span{font-weight:800;color:#92400e;white-space:nowrap}
-.empty{text-align:center;padding:32px;color:#bbb;font-size:13px}
-.sync-info{font-size:11px;color:#667085;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:4px;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-@media(max-width:1000px){.control-grid{grid-template-columns:repeat(2,1fr)}.insight-grid{grid-template-columns:1fr}}
+.mini-list strong{font-size:13px}.mini-list span{font-weight:800;color:#92400e;white-space:nowrap}
+.report-table-wrap{overflow:visible}
+.report-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;border:1px solid #e7dcc7;border-radius:14px;overflow:hidden;background:#fffdf8}
+.report-table thead th{background:linear-gradient(135deg,#2b2118,#7c4a03);color:#fff;padding:10px 12px;font-size:11px;letter-spacing:.4px;text-transform:uppercase}
+.report-table tbody td{padding:10px 12px;border-bottom:1px solid #f1e7d3;vertical-align:top;line-height:1.45}
+.report-table tbody tr:nth-child(even){background:#fff8ee}
+.report-table tbody tr:hover{background:#ffefcf}
+.report-table tfoot td{background:#f6ead7;font-weight:800;padding:10px 12px;border-top:2px solid #b45309}
+.ticket-list{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#7c3d00;line-height:1.6;word-break:break-word}
+.metric-note{font-size:11px;color:#8a6b46;margin-top:6px}
+.cash-card{border-top:4px solid #175cd3}
+.cash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cash-grid .kpi{margin-bottom:0;min-height:112px;display:flex;flex-direction:column;justify-content:center}
+#flash{position:fixed;top:70px;right:20px;z-index:9999;min-width:220px}
+.flash-msg{padding:11px 16px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:6px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.flash-ok{background:#2e7d32;color:#fff}.flash-err{background:#c62828;color:#fff}
+@media(max-width:1000px){.control-hero,.insight-grid,.money-list{grid-template-columns:1fr}.control-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){
-  body{display:block}
+  body{display:block;min-width:0;overflow-x:hidden}
   body.mobile-nav-open{overflow:hidden}
   .mobile-menu-btn{display:inline-flex;flex:0 0 auto}
-  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(17,24,39,.52);z-index:190}
+  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(17,24,39,.52);z-index:190;backdrop-filter:blur(2px)}
   body.mobile-nav-open .mobile-nav-backdrop{display:block}
-  .sidebar{width:min(86vw,320px);transform:translateX(-105%);transition:transform .22s ease;z-index:220}
+  .sidebar{width:min(86vw,320px);transform:translateX(-105%);transition:transform .22s ease;z-index:220;border-radius:0 22px 22px 0}
   body.mobile-nav-open .sidebar{transform:translateX(0)}
-  .main{margin-left:0;width:100%}
-  .topbar{padding:10px 12px;gap:10px}
-  .topbar-title{font-size:16px;flex:1}
+  .sidebar-logo{padding:18px;font-size:20px}
+  .sidebar-logo span{display:inline;color:#fbbf24}
+  .nav-section{padding-left:18px}
+  .nav-item{padding:13px 18px;font-size:15px}
+  .nav-item span:last-child{display:inline}
+  .nav-item .icon{font-size:17px;width:22px}
+  .main{margin-left:0;width:100%;min-width:0}
+  .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
+  .topbar-title{font-size:16px;line-height:1.2;flex:1;min-width:0}
+  .topbar-date{font-size:11px;text-align:right;max-width:112px}
+  .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
-  .kpi-row{grid-template-columns:repeat(2,1fr);gap:9px}
-  .kpi{padding:12px 10px;border-radius:15px}
-  .kpi-value{font-size:20px}
-  .card{padding:14px 12px;border-radius:16px}
-  .card-row,.insight-grid{grid-template-columns:1fr;gap:12px}
-  .control-grid{grid-template-columns:repeat(2,1fr);gap:8px}
-  .bar-row{grid-template-columns:86px 1fr 74px}
-  .tbl-wrap{overflow-x:auto}
-  table{min-width:700px;font-size:12px}
-  thead th{padding:8px 9px;font-size:10px}
-  tbody td,tfoot td{padding:8px 9px}
-  .preset-bar{flex-wrap:nowrap;overflow-x:auto;padding:10px}
+  .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
+  .alert-banner{padding:10px 12px}
+  .preset-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px;border-radius:14px;margin-bottom:12px}
+  .preset-label{flex:0 0 auto}
   .pbtn{flex:0 0 auto;padding:7px 12px}
+  .preset-dates{display:flex;flex:0 0 100%;flex-wrap:wrap;margin:8px 0 0;gap:6px}
+  .preset-dates input{min-width:128px;flex:1}
+  .print-btn{margin-left:0;flex:0 0 auto;padding:7px 12px}
+  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+  .kpi{padding:12px 10px;border-radius:15px;min-width:0}
+  .kpi-label{font-size:9px;letter-spacing:.45px;line-height:1.25}
+  .kpi-value{font-size:20px;line-height:1.15;word-break:break-word}
+  .kpi-sub{font-size:10px}
+  .card{padding:14px 12px;border-radius:16px;margin-bottom:12px}
+  .card h3{font-size:12px;margin-bottom:10px}
+  .card-row,.control-hero,.insight-grid,.money-list{grid-template-columns:1fr;gap:12px}
+  .control-panel{padding:16px;border-radius:18px}
+  .control-title{font-size:23px}
+  .control-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .control-metric{padding:10px;border-radius:13px;min-width:0}
+  .control-metric span{font-size:9px;line-height:1.25}
+  .control-metric strong{font-size:17px;line-height:1.2;word-break:break-word}
+  .cash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .cash-grid .kpi{min-height:92px}
+  .form-grid{grid-template-columns:1fr}
+  .form-actions{gap:8px}.form-actions .btn{flex:1;min-width:130px}
+  .date-nav{gap:7px}.date-nav input{flex:1;min-width:135px}
+  .subtabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .subtab{padding:10px 13px}
+  .tbl-wrap,.report-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table,.report-table{min-width:760px;font-size:12px}
+  thead th,.report-table thead th{padding:8px 9px;font-size:10px}
+  tbody td,tfoot td,.report-table tbody td,.report-table tfoot td{padding:8px 9px}
+  .bar-row{grid-template-columns:86px 1fr 74px;gap:8px}
+  .mini-list li{font-size:12px}
+  #flash{left:10px;right:10px;top:60px;min-width:0}
 }
 @media(max-width:420px){
   .content{padding:12px 8px 22px}
+  .topbar-date{display:none}
+  .kpi-row{gap:8px}
+  .cash-grid,.control-grid{grid-template-columns:1fr}
   .kpi-value{font-size:19px}
-  .control-grid{grid-template-columns:1fr}
+  .preset-dates input{min-width:120px}
+  table,.report-table{min-width:700px}
+}
+
+/* ── PRINT ── */
+#print-area{display:none}
+@media print{
+  @page{size:A4 portrait;margin:5mm}
+  html,body{background:#fff!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;display:block!important;overflow:visible!important}
+  body > :not(#print-area){display:none!important}
+  #print-area,#print-area *{visibility:visible}
+  #print-area{display:block!important;position:static!important;left:auto;top:auto;width:auto!important;max-width:100%!important;margin:0!important;padding:0!important;color:#111827;overflow:visible!important}
+  .no-print{display:none!important}
+  #print-area table{width:100%;border-collapse:collapse;font-size:10px}
+  #print-area thead{display:table-header-group}
+  #print-area thead th{background:#1a237e!important;color:#fff!important;padding:7px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print-area tfoot td{background:#e8eaf6!important;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print-area tbody td{padding:4px 6px;border-bottom:1px solid #eee}
+  #print-area tbody tr:nth-child(even){background:#f9f9f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print-area .tbl-wrap,#print-area .report-table-wrap{overflow:visible!important;max-height:none!important}
+  #print-area tr{break-inside:auto!important;page-break-inside:auto!important}
+  #print-area .report-table{font-size:9.5px}
+  #print-area .print-section{break-inside:auto!important;page-break-inside:auto!important;margin:0 0 5px 0!important;padding:7px 8px!important}
+  #print-area .print-break-before{break-before:page;page-break-before:always}
+  #print-area .card{break-inside:auto!important;page-break-inside:auto!important;margin-bottom:5px!important}
+  #print-area .card h3{break-after:avoid-page;page-break-after:avoid;margin-bottom:4px!important;padding-bottom:3px!important}
+  #print-area .metric-note{margin:2px 0 4px!important;font-size:8px!important;line-height:1.2!important}
+  #print-area.dashboard-print{padding:0!important;background:#fffdf8!important;font-family:Georgia,'Times New Roman',serif}
+  #print-area.dashboard-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #print-area.dashboard-print h3{font-size:11px!important;margin-bottom:4px!important}
+  #print-area.dashboard-print .print-break-before{break-before:auto!important;page-break-before:auto!important}
+  #print-area.dashboard-print .print-section{break-inside:auto!important;page-break-inside:auto!important;margin:0 0 5px 0!important;padding:6px 7px!important}
+  #print-area.dashboard-print tr{break-inside:auto!important;page-break-inside:auto!important}
+  #print-area.dashboard-print .profit-bar{margin-bottom:5px!important;padding:7px 10px!important}
+  #print-area.dashboard-print .kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:5px!important;margin-bottom:5px!important}
+  #print-area.dashboard-print .kpi{padding:6px 7px!important;border-radius:6px!important;min-height:auto!important}
+  #print-area.dashboard-print .control-hero{display:grid!important;grid-template-columns:1.35fr .65fr!important;gap:6px!important;align-items:start!important;margin-bottom:5px!important}
+  #print-area.dashboard-print .insight-grid,#print-area.dashboard-print .money-list{gap:6px!important;margin-bottom:5px!important}
+  #print-area.dashboard-print .card{padding:6px 7px!important;border-radius:6px!important;box-shadow:none!important;border:1px solid #d8dee8!important}
+  #print-area.dashboard-print .control-panel{padding:8px!important;border-radius:8px!important;box-shadow:none!important;overflow:visible!important}
+  #print-area.dashboard-print .control-title{display:none!important}
+  #print-area.dashboard-print .control-grid{grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
+  #print-area.dashboard-print .control-metric{padding:6px 7px!important;border-radius:6px!important;min-height:40px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;overflow:visible!important}
+  #print-area.dashboard-print .control-metric span{font-size:7.5px!important;line-height:1.1!important;margin:0 0 2px!important;white-space:normal!important}
+  #print-area.dashboard-print .control-metric strong{font-size:11px!important;line-height:1.15!important;margin:0!important;white-space:normal!important}
+  #print-area.dashboard-print .cash-grid{gap:5px!important}
+  #print-area.dashboard-print .cash-grid .kpi{min-height:48px!important}
+  #print-area.dashboard-print .kpi-value{font-size:13px!important}
+  #print-area.dashboard-print .kpi-label{font-size:8px!important}
+  #print-area.dashboard-print .money-list{grid-template-columns:1fr 1fr!important;break-inside:auto!important;page-break-inside:auto!important}
+  #print-area.dashboard-print .mini-list{gap:5px!important}
+  #print-area.dashboard-print .mini-list li{font-size:10px!important;padding-bottom:4px!important}
+  #print-area.dashboard-print .mini-list strong,#print-area.dashboard-print .mini-list span{font-size:10px!important}
+  #print-area.dashboard-print table,#print-area.dashboard-print .report-table{table-layout:fixed!important;font-size:7px!important;line-height:1.15!important}
+  #print-area.dashboard-print th,#print-area.dashboard-print td,#print-area.dashboard-print .report-table th,#print-area.dashboard-print .report-table td{padding:2.5px 3px!important;overflow-wrap:anywhere!important;word-break:normal!important;vertical-align:top!important}
+  #print-area.dashboard-print .payment-table{font-size:6.2px!important}
+  #print-area.dashboard-print .payment-table th:nth-child(3),#print-area.dashboard-print .payment-table td:nth-child(3){display:none!important}
+  #print-area.dashboard-print .payment-table th{font-size:0!important;line-height:1!important;white-space:normal!important}
+  #print-area.dashboard-print .payment-table th::after{font-size:5.8px!important;line-height:1!important;display:block!important}
+  #print-area.dashboard-print .payment-table th:nth-child(1)::after{content:"Date"}
+  #print-area.dashboard-print .payment-table th:nth-child(2)::after{content:"Customer"}
+  #print-area.dashboard-print .payment-table th:nth-child(4)::after{content:"Bank"}
+  #print-area.dashboard-print .payment-table th:nth-child(5)::after{content:"Cash"}
+  #print-area.dashboard-print .payment-table th:nth-child(6)::after{content:"Received"}
+  #print-area.dashboard-print .payment-table th:nth-child(7)::after{content:"Sale Adj."}
+  #print-area.dashboard-print .payment-table th:nth-child(8)::after{content:"Credit"}
+  #print-area.dashboard-print .payment-table th:nth-child(9)::after{content:"Balance"}
+  #print-area.dashboard-print .payment-table th:nth-child(1),#print-area.dashboard-print .payment-table td:nth-child(1){width:9%!important}
+  #print-area.dashboard-print .payment-table th:nth-child(2),#print-area.dashboard-print .payment-table td:nth-child(2){width:22%!important}
+  #print-area.dashboard-print .payment-table th:nth-child(n+4),#print-area.dashboard-print .payment-table td:nth-child(n+4){width:11.5%!important;text-align:right!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(8),#print-area.dashboard-print .customer-sales-table td:nth-child(8){display:none!important}
+  #print-area.dashboard-print .customer-sales-table th{font-size:0!important;line-height:1!important;white-space:normal!important}
+  #print-area.dashboard-print .customer-sales-table th::after{font-size:5.5px!important;line-height:1!important;display:block!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(1)::after{content:"Customer"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(2)::after{content:"Mat."}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(3)::after{content:"Ticket"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(4)::after{content:"Qty"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(5)::after{content:"Sale"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(6)::after{content:"Bank"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(7)::after{content:"Cash"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(9)::after{content:"Credit"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(1),#print-area.dashboard-print .customer-sales-table td:nth-child(1){width:20%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(2),#print-area.dashboard-print .customer-sales-table td:nth-child(2){width:9%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(3),#print-area.dashboard-print .customer-sales-table td:nth-child(3){width:14%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(n+4),#print-area.dashboard-print .customer-sales-table td:nth-child(n+4){width:9.5%!important;text-align:right!important}
+  #print-area.dashboard-print .expense-table th:nth-child(1),#print-area.dashboard-print .expense-table td:nth-child(1){width:9%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(2),#print-area.dashboard-print .expense-table td:nth-child(2){width:8%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(3),#print-area.dashboard-print .expense-table td:nth-child(3){width:16%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(4),#print-area.dashboard-print .expense-table td:nth-child(4){width:29%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(5),#print-area.dashboard-print .expense-table td:nth-child(5){width:16%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(6),#print-area.dashboard-print .expense-table td:nth-child(6){width:10%!important}
+  #print-area.dashboard-print .expense-table th:nth-child(7),#print-area.dashboard-print .expense-table td:nth-child(7){width:12%!important;text-align:right!important}
+  #print-area.dashboard-print .ticket-list{line-height:1.4!important}
+  .print-ph{border-bottom:1px solid #7c4a03;margin-bottom:5px;padding:0 0 4px 0}
+  .print-ph h1{font-size:14px;font-weight:800;color:#2b2118;margin:0}
+  .print-ph p{font-size:8px;color:#555;margin:1px 0 0}
 }
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">⛏ Crusher<span>Ops</span></div>
-    <div class="login-sub">Operations Dashboard — Sign in to continue</div>
-    <label class="login-label">Username</label>
-    <input class="login-input" type="text" id="lu" placeholder="Enter username" autocomplete="username">
-    <label class="login-label">Password</label>
-    <input class="login-input" type="password" id="lp" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-    <button class="login-btn" onclick="doLogin()">Sign In</button>
-    <div class="login-err" id="lerr">Incorrect username or password</div>
-    <div style="text-align:center"><span class="sync-badge"><span class="sync-dot" style="background:#22c55e"></span>Live data · updates every 10 min</span></div>
+<!-- ── OTOMY.AI LOGIN OVERLAY ── -->
+<style>
+#_login{position:fixed;inset:0;z-index:99999;background:radial-gradient(circle at 15% 10%,rgba(245,158,11,.20),transparent 28%),linear-gradient(135deg,#fff7ed 0%,#f6f8fb 48%,#eef4ff 100%);display:flex;align-items:center;justify-content:center}
+._lbox{background:#fff;border:1px solid rgba(228,231,236,.9);border-radius:24px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 18px 45px rgba(17,24,39,.12)}
+._lbox h2{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:900;color:#17202a;margin-bottom:4px}._lbox h2 span{color:#f59e0b}
+._lbox p{font-size:13px;color:#667085;margin-bottom:28px;font-family:-apple-system,sans-serif}
+._lbox label{display:block;font-size:11px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;font-family:-apple-system,sans-serif}
+._lbox input{width:100%;border:1.5px solid #e0e0e0;border-radius:8px;padding:10px 12px;font-size:14px;background:#fafafa;margin-bottom:16px;outline:none;transition:border-color .15s;font-family:-apple-system,sans-serif}
+._lbox input:focus{border-color:#1a237e;background:#fff}
+._lbox button{width:100%;padding:12px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:-apple-system,sans-serif;transition:background .15s;margin-top:4px}
+._lbox button:hover{background:#0d1457}
+#_lerr{color:#c62828;font-size:12px;margin-top:10px;text-align:center;display:none;font-family:-apple-system,sans-serif}
+._lbadge{text-align:center;margin-top:18px;font-size:11px;color:#94a3b8;font-family:-apple-system,sans-serif}
+._ldot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:4px;animation:_lpulse 2s infinite}
+@keyframes _lpulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+<div id="_login">
+  <div class="_lbox">
+    <h2>⛏ Crusher<span>Ops</span></h2>
+    <p>Live Operations Dashboard — Sign in to continue</p>
+    <label>Username</label>
+    <input type="text" id="_lu" placeholder="Enter username" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="_lp" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')_doLogin()">
+    <button onclick="_doLogin()">Sign In</button>
+    <div id="_lerr">Incorrect username or password</div>
+    <div class="_lbadge"><span class="_ldot"></span>Live ERP data · updates every 10 min</div>
   </div>
 </div>
+<!-- ── END LOGIN ── -->
 
-<div class="mobile-nav-backdrop" onclick="toggleMobileNav(false)"></div>
+<div class="mobile-nav-backdrop no-print" onclick="toggleMobileNav(false)"></div>
 
 <!-- SIDEBAR -->
 <nav class="sidebar">
@@ -163,278 +393,1991 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
   <div class="nav-section">Financials</div>
   <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
   <div class="nav-item" onclick="nav('expenses')"><span class="icon">📋</span><span>Expenses</span></div>
-  <div class="nav-item" onclick="nav('trend')"><span class="icon">📈</span><span>30-Day Trend</span></div>
-  <div style="position:absolute;bottom:16px;left:0;right:0;padding:0 18px">
-    <div style="font-size:10px;color:rgba(255,255,255,.35);font-family:-apple-system,sans-serif">
-      <span class="sync-dot"></span><span id="sync-time">Loading…</span>
-    </div>
-  </div>
+  <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
+  <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
+  <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
+  <div class="nav-section">Operations</div>
+  <div class="nav-item" onclick="nav('operations')"><span class="icon">⚙️</span><span>Operations</span></div>
+  <div class="nav-section">Reports</div>
+  <div class="nav-item" id="nav-reports" onclick="nav('reports')"><span class="icon">📄</span><span>Reports & Exports</span></div>
 </nav>
 
 <!-- MAIN -->
 <div class="main">
 <div class="topbar">
-  <button class="mobile-menu-btn" onclick="toggleMobileNav(true)">☰</button>
+  <button class="mobile-menu-btn no-print" type="button" onclick="toggleMobileNav(true)" aria-label="Open menu">☰</button>
   <div class="topbar-title" id="page-title">Dashboard</div>
+  <button class="install-btn no-print" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
   <div class="topbar-date" id="topbar-date"></div>
 </div>
+<div id="flash"></div>
 <div class="content">
 
 <!-- DASHBOARD -->
 <div class="section active" id="section-dashboard">
+  <!-- Preset Bar -->
   <div class="preset-bar">
     <span class="preset-label">View:</span>
-    <button class="pbtn act" id="pb-today" onclick="setView('today',this)">Today</button>
-    <button class="pbtn" id="pb-mtd" onclick="setView('mtd',this)">Month Till Date</button>
+    <button class="pbtn act" onclick="preset('dashboard','today',this)">Today</button>
+    <button class="pbtn" onclick="preset('dashboard','yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="preset('dashboard','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('dashboard','mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="preset('dashboard','lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="dash-from" onchange="clearPresetBtns('dashboard');loadDash()">
+      <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');loadDash()">
+      <label>Day:</label><input type="date" id="dash-date" onchange="loadDash()">
+    </div>
+    <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
   </div>
   <div id="dash-profit-bar"></div>
-  <div class="kpi-row" id="dash-kpis"></div>
-  <div class="control-panel" id="dash-control"></div>
-  <div class="insight-grid">
-    <div class="card">
-      <h3>Sales by Material</h3>
-      <div id="dash-materials"></div>
-    </div>
-    <div class="card">
-      <h3>Expenses by Category</h3>
-      <div id="dash-categories"></div>
-    </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
+    <div class="kpi green"><div class="kpi-label">Cash Collected</div><div class="kpi-value" id="d-cash">—</div></div>
+    <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
+    <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
   </div>
-  <div class="card">
-    <h3>Today's Tickets</h3>
-    <div class="tbl-wrap">
-      <table><thead><tr>
-        <th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate</th><th>Amount</th><th>Mode</th><th>Vehicle</th>
-      </tr></thead><tbody id="dash-tickets"></tbody>
-      <tfoot><tr><td colspan="3"><b>TOTAL</b></td><td id="tf-qty"></td><td></td><td id="tf-amt"></td><td colspan="2"></td></tr></tfoot>
-      </table>
-    </div>
+  <div id="dash-print-area">
+    <div id="control-room"></div>
   </div>
 </div>
 
 <!-- SALES -->
 <div class="section" id="section-sales">
   <div class="page-header"><h2>Sales Ledger</h2></div>
-  <div class="preset-bar">
-    <span class="preset-label">Filter:</span>
-    <button class="pbtn act" onclick="filterSales(null,this)">All</button>
-    <button class="pbtn" onclick="filterSales('40mm',this)">40mm</button>
-    <button class="pbtn" onclick="filterSales('20mm',this)">20mm</button>
-    <button class="pbtn" onclick="filterSales('12mm',this)">12mm</button>
-    <button class="pbtn" onclick="filterSales('M-Sand',this)">M-Sand</button>
-    <button class="pbtn" onclick="filterSales('P-Sand',this)">P-Sand</button>
-    <button class="pbtn" onclick="filterSales('Dust',this)">Dust</button>
+  <div class="card no-print">
+    <h3>Add Sale</h3>
+    <div class="form-grid">
+      <div class="fg"><label>Date</label><input type="date" id="s-date"></div>
+      <div class="fg"><label>Customer</label><select id="s-customer"><option value="">-- Cash/Walk-in --</option></select></div>
+      <div class="fg"><label>Customer Name (manual)</label><input type="text" id="s-cname" placeholder="Or type name"></div>
+      <div class="fg"><label>Material</label>
+        <select id="s-mat"><option>40mm</option><option>20mm</option><option>12mm</option><option>60/80mm</option><option>6mm</option><option>M-Sand</option><option>P-Sand</option><option>Dust</option><option>Mixed</option></select>
+      </div>
+      <div class="fg"><label>Qty (MT)</label><input type="number" id="s-qty" step="0.01" oninput="calcSale()"></div>
+      <div class="fg"><label>Rate/MT (₹)</label><input type="number" id="s-rate" step="0.01" oninput="calcSale()"></div>
+      <div class="fg"><label>Amount (auto)</label><input type="number" id="s-amt" readonly style="background:#f5f5f5"></div>
+      <div class="fg"><label>Payment</label><select id="s-pay"><option>Credit</option><option>Cash</option><option>UPI</option><option>Cheque</option></select></div>
+      <div class="fg"><label>Vehicle No</label><input type="text" id="s-vehicle" placeholder="KA XX XXXX"></div>
+      <div class="fg"><label>Ticket No</label><input type="text" id="s-ticket" placeholder="ERP ticket #"></div>
+      <div class="fg"><label>HSN Code</label><input type="text" id="s-hsn" value="2517"></div>
+      <div class="fg"><label>GST %</label><input type="number" id="s-gst" value="5" step="0.1"></div>
+      <div class="fg"><label>Notes</label><input type="text" id="s-notes"></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addSale()">Add Sale</button></div>
   </div>
   <div class="card">
-    <h3>Sales Records — Last 30 Days <span id="sales-count" style="font-weight:400;color:#999"></span></h3>
-    <div class="tbl-wrap">
-      <table><thead><tr>
-        <th>Date</th><th>Ticket</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Rate ₹/MT</th><th>Amount ₹</th><th>Mode</th><th>Vehicle</th>
-      </tr></thead><tbody id="sales-body"></tbody>
-      <tfoot><tr><td colspan="4"><b>TOTAL</b></td><td id="stf-qty"></td><td></td><td id="stf-amt"></td><td colspan="2"></td></tr></tfoot>
-      </table>
+    <h3>Sales Records</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('sales','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('sales','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('sales','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('sales','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('sales','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="s-from" onchange="clearPresetBtns('sales')">
+        <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')">
+        <button class="pbtn" onclick="loadSales()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Print / PDF</button>
     </div>
+    <div class="tbl-wrap" id="sales-tbl"></div>
+    <div id="sales-pager" class="no-print"></div>
   </div>
 </div>
 
 <!-- EXPENSES -->
 <div class="section" id="section-expenses">
-  <div class="page-header"><h2>Expenses</h2></div>
+  <div class="page-header"><h2>Expenses Ledger</h2></div>
+  <div class="card no-print">
+    <h3>Add Expense</h3>
+    <div class="form-grid">
+      <div class="fg"><label>Date</label><input type="date" id="e-date"></div>
+      <div class="fg"><label>Category</label>
+        <select id="e-cat"><option>Fuel</option><option>EMI</option><option>Crusher Repair</option><option>Vehicle Repair</option><option>Blasting</option><option>Wages</option><option>Transport</option><option>Electricity</option><option>Weighbridge</option><option>Food/Batta</option><option>Other</option></select>
+      </div>
+      <div class="fg"><label>Vendor</label><select id="e-vendor"><option value="">-- None --</option></select></div>
+      <div class="fg full"><label>Description</label><input type="text" id="e-desc"></div>
+      <div class="fg"><label>Amount (₹)</label><input type="number" id="e-amt"></div>
+      <div class="fg"><label>Payment Mode</label><select id="e-pay"><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option></select></div>
+      <div class="fg"><label>Notes</label><input type="text" id="e-notes"></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addExpense()">Add Expense</button></div>
+  </div>
   <div class="card">
-    <h3>Expenses — Last 30 Days</h3>
-    <div class="tbl-wrap">
-      <table><thead><tr>
-        <th>Date</th><th>Category</th><th>Description</th><th>Amount ₹</th><th>Mode</th>
-      </tr></thead><tbody id="exp-body"></tbody>
-      <tfoot><tr><td colspan="3"><b>TOTAL</b></td><td id="etf-amt"></td><td></td></tr></tfoot>
-      </table>
+    <h3>Expenses</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('expenses','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('expenses','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('expenses','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('expenses','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('expenses','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="e-from" onchange="clearPresetBtns('expenses')">
+        <label>To:</label><input type="date" id="e-to" onchange="clearPresetBtns('expenses')">
+        <button class="pbtn" onclick="loadExpenses()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Print / PDF</button>
+    </div>
+    <div class="tbl-wrap" id="exp-tbl"></div>
+    <div id="exp-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- CUSTOMERS -->
+<div class="section" id="section-customers">
+  <div class="page-header"><h2>Customers & Debtors</h2></div>
+  <div class="preset-bar no-print">
+    <span class="preset-label">Period:</span>
+    <button class="pbtn act" onclick="preset('customers','today',this)">Today</button>
+    <button class="pbtn" onclick="preset('customers','yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="preset('customers','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('customers','mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="preset('customers','lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
+      <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')">
+    </div>
+    <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
+    <div class="kpi"><div class="kpi-label">Total Customers</div><div class="kpi-value" id="c-total">—</div></div>
+    <div class="kpi navy"><div class="kpi-label">With Balance</div><div class="kpi-value" id="c-with-bal">—</div></div>
+  </div>
+  <div class="card-row no-print">
+    <div class="card">
+      <h3>Add Customer</h3>
+      <div class="form-grid">
+        <div class="fg full"><label>Name</label><input type="text" id="c-name"></div>
+        <div class="fg"><label>GSTIN</label><input type="text" id="c-gstin" placeholder="29XXXXX..."></div>
+        <div class="fg"><label>Phone</label><input type="text" id="c-phone"></div>
+        <div class="fg"><label>Opening Balance (₹)</label><input type="number" id="c-opbal" value="0"></div>
+        <div class="fg full"><label>Address</label><input type="text" id="c-addr"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addCustomer()">Add Customer</button></div>
+    </div>
+    <div class="card">
+      <h3>Add Receipt from Customer</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="cr-date"></div>
+        <div class="fg"><label>Customer</label><select id="cr-cust"></select></div>
+        <div class="fg"><label>Amount (₹)</label><input type="number" id="cr-amt"></div>
+        <div class="fg"><label>Mode</label><select id="cr-mode"><option>Cash</option><option>UPI</option><option>Cheque</option><option>Bank Transfer</option></select></div>
+        <div class="fg"><label>Reference</label><input type="text" id="cr-ref"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="cr-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-green" onclick="addReceipt()">Record Receipt</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Customer List — Outstanding Balances</h3>
+    <div class="tbl-wrap" id="cust-tbl"></div>
+  </div>
+  <div class="card" id="cust-ledger-card" style="display:none">
+    <h3>Customer Ledger: <span id="cust-ledger-name"></span>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Customer Sales - '+document.getElementById('cust-ledger-name').textContent,'cust-sales-print')">Print Sales</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Customer Ledger - '+document.getElementById('cust-ledger-name').textContent,'cust-ledger-summary-print')">Print Ledger</button>
+    </h3>
+    <div class="tbl-wrap" id="cust-ledger-tbl"></div>
+  </div>
+</div>
+
+<!-- VENDORS -->
+<div class="section" id="section-vendors">
+  <div class="page-header"><h2>Vendors & Creditors</h2></div>
+  <div class="preset-bar no-print">
+    <span class="preset-label">Period:</span>
+    <button class="pbtn act" onclick="preset('vendors','today',this)">Today</button>
+    <button class="pbtn" onclick="preset('vendors','yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="preset('vendors','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('vendors','mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="preset('vendors','lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
+      <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')">
+    </div>
+    <button class="print-btn" onclick="printSection('Vendors — Payable Balances','vend-tbl')">Print / PDF</button>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi red"><div class="kpi-label">Total Payable</div><div class="kpi-value" id="v-total-pay">—</div></div>
+    <div class="kpi"><div class="kpi-label">Total Vendors</div><div class="kpi-value" id="v-total">—</div></div>
+    <div class="kpi navy"><div class="kpi-label">With Payable</div><div class="kpi-value" id="v-with-pay">—</div></div>
+  </div>
+  <div class="card-row no-print">
+    <div class="card">
+      <h3>Add Vendor</h3>
+      <div class="form-grid">
+        <div class="fg full"><label>Name</label><input type="text" id="v-name"></div>
+        <div class="fg"><label>GSTIN</label><input type="text" id="v-gstin"></div>
+        <div class="fg"><label>Phone</label><input type="text" id="v-phone"></div>
+        <div class="fg"><label>Opening Balance (₹ owed)</label><input type="number" id="v-opbal" value="0"></div>
+        <div class="fg full"><label>Address / Notes</label><input type="text" id="v-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addVendor()">Add Vendor</button></div>
+    </div>
+    <div class="card">
+      <h3>Record Payment to Vendor</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="vp-date"></div>
+        <div class="fg"><label>Vendor</label><select id="vp-vend"></select></div>
+        <div class="fg"><label>Amount (₹)</label><input type="number" id="vp-amt"></div>
+        <div class="fg"><label>Mode</label><select id="vp-mode"><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option></select></div>
+        <div class="fg"><label>Reference</label><input type="text" id="vp-ref"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="vp-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-green" onclick="addVendorPayment()">Record Payment</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Vendor List — Payable Balances</h3>
+    <div class="tbl-wrap" id="vend-tbl"></div>
+  </div>
+  <div class="card" id="vend-ledger-card" style="display:none">
+    <h3>Vendor Ledger: <span id="vend-ledger-name"></span>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Vendor Bills - '+document.getElementById('vend-ledger-name').textContent,'vend-bills-print')">Print Bills</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Payments - '+document.getElementById('vend-ledger-name').textContent,'vend-payments-print')">Print Payments</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Ledger - '+document.getElementById('vend-ledger-name').textContent,'vend-ledger-summary-print')">Print Ledger</button>
+    </h3>
+    <div class="tbl-wrap" id="vend-ledger-tbl"></div>
+  </div>
+</div>
+
+<!-- BANK -->
+<div class="section" id="section-bank">
+  <div class="page-header"><h2>Cash & Bank</h2></div>
+  <div id="bank-summary-cards" class="kpi-row"></div>
+  <div class="card-row no-print">
+    <div class="card">
+      <h3>Add Bank Account</h3>
+      <div class="form-grid">
+        <div class="fg full"><label>Account Name</label><input type="text" id="ba-name" placeholder="e.g. HDFC Current Account"></div>
+        <div class="fg"><label>Account No</label><input type="text" id="ba-accno"></div>
+        <div class="fg"><label>Bank Name</label><input type="text" id="ba-bank"></div>
+        <div class="fg"><label>Branch</label><input type="text" id="ba-branch"></div>
+        <div class="fg"><label>IFSC</label><input type="text" id="ba-ifsc"></div>
+        <div class="fg"><label>Initial Balance (₹)</label><input type="number" id="ba-initbal" value="0"></div>
+        <div class="fg"><label>Balance as on Date</label><input type="date" id="ba-initdate"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addBankAccount()">Add Account</button></div>
+    </div>
+    <div class="card">
+      <h3>Add Transaction</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="bt-date"></div>
+        <div class="fg"><label>Account</label><select id="bt-acct"></select></div>
+        <div class="fg"><label>Type</label><select id="bt-type"><option>Credit</option><option>Debit</option></select></div>
+        <div class="fg full"><label>Description</label><input type="text" id="bt-desc"></div>
+        <div class="fg"><label>Amount (₹)</label><input type="number" id="bt-amt"></div>
+        <div class="fg"><label>Reference</label><input type="text" id="bt-ref"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addBankTxn()">Add Transaction</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Bank Statement</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('bank','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('bank','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('bank','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('bank','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('bank','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>Account:</label><select id="stmt-acct" onchange="loadStatement()"></select>
+      </div>
+      <button class="print-btn" onclick="printSection('Bank Statement','bank-stmt')">Print / PDF</button>
+    </div>
+    <div class="tbl-wrap" id="bank-stmt"></div>
+  </div>
+
+  <!-- ERP Bank Ledger -->
+  <div class="card" style="border-top:3px solid #1565c0">
+    <h3 style="color:#1565c0">🏦 ERP Bank Transactions</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('erpbank','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('erpbank','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('erpbank','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpbank','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('erpbank','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="eb-from" onchange="clearPresetBtns('erpbank')">
+        <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')">
+        <button class="pbtn" onclick="loadErpBank()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Print / PDF</button>
+    </div>
+    <div class="tbl-wrap" id="erp-bank-tbl"></div>
+    <div id="erp-bank-pager" class="no-print"></div>
+  </div>
+
+  <!-- ERP Cash Ledger -->
+  <div class="card" style="border-top:3px solid #2e7d32">
+    <h3 style="color:#2e7d32">💵 ERP Cash Ledger</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('erpcash','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('erpcash','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('erpcash','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpcash','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('erpcash','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="ec-from" onchange="clearPresetBtns('erpcash')">
+        <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')">
+        <button class="pbtn" onclick="loadErpCash()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Print / PDF</button>
+    </div>
+    <div class="tbl-wrap" id="erp-cash-tbl"></div>
+    <div id="erp-cash-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- OPERATIONS -->
+<div class="section" id="section-operations">
+  <div class="page-header"><h2>Operations</h2></div>
+  <div class="preset-bar no-print" id="ops-preset-bar">
+    <span class="preset-label">Period:</span>
+    <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
+    <button class="pbtn" onclick="opsPreset('yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="opsPreset('week',this)">This Week</button>
+    <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
+      <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
+    </div>
+    <button class="print-btn" onclick="printCurrentOpsTab()">Print / PDF</button>
+  </div>
+  <div class="subtabs">
+    <div class="subtab active" onclick="subTab('op-boulders',this)">Boulder Input</div>
+    <div class="subtab" onclick="subTab('op-machines',this)">Machines</div>
+    <div class="subtab" onclick="subTab('op-labour',this)">Labour</div>
+    <div class="subtab" onclick="subTab('op-muster',this)">Muster Sheet</div>
+    <div class="subtab" onclick="subTab('op-parts',this)">Parts</div>
+    <div class="subtab" onclick="subTab('op-iot',this)">🚛 IOT Movements</div>
+    <div class="subtab" onclick="subTab('op-emi',this)">EMI</div>
+    <div class="subtab" onclick="subTab('op-workers',this)">Workers</div>
+  </div>
+
+  <!-- Boulders -->
+  <div class="subtab-content active" id="op-boulders">
+    <div class="card no-print"><h3>Add Boulder Input</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="b-date"></div>
+        <div class="fg"><label>Trips</label><input type="number" id="b-trips" oninput="calcBoulder()"></div>
+        <div class="fg"><label>MT/Trip</label><input type="number" id="b-tpt" step="0.1" oninput="calcBoulder()"></div>
+        <div class="fg"><label>Total MT (auto)</label><input type="number" id="b-total" readonly style="background:#f5f5f5"></div>
+        <div class="fg"><label>Source</label><input type="text" id="b-source" value="Quarry Face"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="b-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addBoulder()">Add</button></div>
+    </div>
+    <div class="card"><h3>Boulder Inputs</h3><div class="tbl-wrap" id="boulders-tbl"></div><div id="boulders-pager" class="no-print"></div></div>
+  </div>
+
+  <!-- Machines -->
+  <div class="subtab-content" id="op-machines">
+    <div class="card no-print"><h3>Machine Hour Reading</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="m-date"></div>
+        <div class="fg"><label>Machine</label><select id="m-mach"><option>Jaw Crusher</option><option>Cone Crusher</option><option>VSI</option><option>Wheel Loader</option><option>Hitachi Excavator</option></select></div>
+        <div class="fg"><label>Start Hours</label><input type="number" id="m-start" step="0.1" oninput="calcRunHrs()"></div>
+        <div class="fg"><label>End Hours</label><input type="number" id="m-end" step="0.1" oninput="calcRunHrs()"></div>
+        <div class="fg"><label>Run Hours (auto)</label><input type="number" id="m-run" readonly style="background:#f5f5f5"></div>
+        <div class="fg"><label>Production MT</label><input type="number" id="m-prod" step="0.1"></div>
+        <div class="fg"><label>Fuel Litres</label><input type="number" id="m-fuel" step="0.1"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="m-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addMachine()">Save Reading</button></div>
+    </div>
+    <div class="card"><h3>Machine Readings</h3><div class="tbl-wrap" id="machines-tbl"></div><div id="machines-pager" class="no-print"></div></div>
+  </div>
+
+  <!-- Labour -->
+  <div class="subtab-content" id="op-labour">
+    <div class="card no-print"><h3>Labour Entry</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="l-date"></div>
+        <div class="fg"><label>Worker Name</label><input type="text" id="l-name"></div>
+        <div class="fg"><label>Type</label><select id="l-type"><option>Operator</option><option>Helper</option><option>Driver</option><option>Blasting</option><option>Watchman</option><option>Supervisor</option><option>Other</option></select></div>
+        <div class="fg"><label>Days</label><input type="number" id="l-days" value="1" step="0.5" oninput="calcLabour()"></div>
+        <div class="fg"><label>Daily Wage (₹)</label><input type="number" id="l-wage" oninput="calcLabour()"></div>
+        <div class="fg"><label>Amount (auto)</label><input type="number" id="l-amt" readonly style="background:#f5f5f5"></div>
+        <div class="fg"><label>Paid?</label><select id="l-paid"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="fg"><label>Notes</label><input type="text" id="l-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addLabour()">Add Entry</button></div>
+    </div>
+    <div class="card"><h3>Labour Records</h3><div class="tbl-wrap" id="labour-tbl"></div><div id="labour-pager" class="no-print"></div></div>
+  </div>
+
+  <!-- Muster -->
+  <div class="subtab-content" id="op-muster">
+    <div class="card"><h3>Daily Muster Sheet</h3>
+      <p style="font-size:13px;color:#555;margin-bottom:12px">Tick present workers, set days (0.5=half), save all at once.</p>
+      <div class="date-nav no-print"><label>Muster Date:</label><input type="date" id="mu-date"><button class="btn btn-navy btn-sm" onclick="loadMuster()">Load Workers</button></div>
+      <div id="muster-sheet"></div>
+      <div class="form-actions no-print"><button class="btn btn-primary" id="muster-save-btn" onclick="saveMuster()" style="display:none">Save Muster</button></div>
+    </div>
+  </div>
+
+  <!-- Parts -->
+  <div class="subtab-content" id="op-parts">
+    <div class="card no-print"><h3>Parts & Repairs</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Date</label><input type="date" id="p-date"></div>
+        <div class="fg"><label>Machine</label><select id="p-mach"><option>Jaw Crusher</option><option>Cone Crusher</option><option>VSI</option><option>Wheel Loader</option><option>Hitachi Excavator</option><option>General</option></select></div>
+        <div class="fg full"><label>Part Name</label><input type="text" id="p-part" placeholder="e.g. Jaw Plate, Toggle Plate"></div>
+        <div class="fg"><label>Qty</label><input type="number" id="p-qty" value="1" step="0.1" oninput="calcParts()"></div>
+        <div class="fg"><label>Unit Price (₹)</label><input type="number" id="p-price" oninput="calcParts()"></div>
+        <div class="fg"><label>Total (auto)</label><input type="number" id="p-total" readonly style="background:#f5f5f5"></div>
+        <div class="fg"><label>Supplier</label><input type="text" id="p-supplier"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="p-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addPart()">Add Part</button></div>
+    </div>
+    <div class="card"><h3>Parts Records</h3><div class="tbl-wrap" id="parts-tbl"></div><div id="parts-pager" class="no-print"></div></div>
+  </div>
+
+  <!-- IOT Movements -->
+  <div class="subtab-content" id="op-iot">
+    <div class="card">
+      <h3 style="color:#1565c0">🚛 IOT Vehicle Movements <small style="font-size:13px;font-weight:400;color:#888">(synced from ERP weighbridge cameras)</small></h3>
+      <div class="tbl-wrap" id="iot-tbl"></div>
+      <div id="iot-pager" class="no-print"></div>
+    </div>
+  </div>
+
+  <!-- EMI -->
+  <div class="subtab-content" id="op-emi">
+    <div class="card no-print"><h3>Add EMI Record</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Machine</label><select id="emi-mach"><option>Hitachi Excavator</option><option>Wheel Loader</option></select></div>
+        <div class="fg"><label>Month (YYYY-MM)</label><input type="month" id="emi-month"></div>
+        <div class="fg"><label>EMI Amount (₹)</label><input type="number" id="emi-amt"></div>
+        <div class="fg"><label>Due Date</label><input type="date" id="emi-due"></div>
+        <div class="fg"><label>Notes</label><input type="text" id="emi-notes"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addEMI()">Add EMI</button></div>
+    </div>
+    <div class="card">
+      <h3>EMI Schedule <button class="print-btn" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('EMI Schedule','emi-tbl')">Print / PDF</button></h3>
+      <div class="tbl-wrap" id="emi-tbl"></div>
+    </div>
+  </div>
+
+  <!-- Workers -->
+  <div class="subtab-content" id="op-workers">
+    <div class="card no-print"><h3>Add to Registry</h3>
+      <div class="form-grid">
+        <div class="fg"><label>Name</label><input type="text" id="w-name"></div>
+        <div class="fg"><label>Type</label><select id="w-type"><option>Operator</option><option>Helper</option><option>Driver</option><option>Blasting</option><option>Watchman</option><option>Supervisor</option><option>Other</option></select></div>
+        <div class="fg"><label>Daily Wage (₹)</label><input type="number" id="w-wage"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="addWorker()">Add Worker</button></div>
+    </div>
+    <div class="card">
+      <h3>Worker Registry <button class="print-btn" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Worker Registry','workers-tbl')">Print / PDF</button></h3>
+      <div class="tbl-wrap" id="workers-tbl"></div>
     </div>
   </div>
 </div>
 
-<!-- TREND -->
-<div class="section" id="section-trend">
-  <div class="page-header"><h2>30-Day Revenue Trend</h2></div>
-  <div class="card">
-    <h3>Daily Revenue</h3>
-    <div class="trend-bars" id="trend-chart"></div>
-  </div>
-  <div class="card">
-    <h3>Daily Breakdown</h3>
-    <div class="tbl-wrap">
-      <table><thead><tr>
-        <th>Date</th><th>Tickets</th><th>Qty MT</th><th>Revenue ₹</th><th>Expenses ₹</th><th>Net ₹</th>
-      </tr></thead><tbody id="trend-body"></tbody></table>
+<!-- REPORTS -->
+<div class="section" id="section-reports">
+  <div class="page-header"><h2>Reports & Exports</h2></div>
+  <div class="card"><h3>Company Configuration (for GST & Tally)</h3>
+    <div class="form-grid">
+      <div class="fg"><label>Company Name</label><input type="text" id="cfg-name"></div>
+      <div class="fg"><label>GSTIN</label><input type="text" id="cfg-gstin" placeholder="29AAAAA0000A1Z5"></div>
+      <div class="fg"><label>State Code</label><input type="text" id="cfg-state" value="29"></div>
     </div>
+    <div class="form-actions"><button class="btn btn-navy" onclick="saveConfig()">Save Config</button></div>
+  </div>
+  <div class="card"><h3>🔍 Audit Report</h3>
+    <p style="font-size:13px;color:#555;margin-bottom:10px">Comprehensive internal audit with auto-detected flags — overdue EMI, unpaid labour, missing data, high-value cash expenses, outstanding debtors.</p>
+    <div class="preset-bar" style="margin-bottom:12px">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn" onclick="setAuditDates(today(),today())">Today</button>
+      <button class="pbtn" onclick="setAuditDates(yesterday(),yesterday())">Yesterday</button>
+      <button class="pbtn" onclick="setAuditDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setAuditDates(mtdStart(),today())">Month Till Date</button>
+      <button class="pbtn" onclick="setAuditDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="audit-from">
+        <label>To:</label><input type="date" id="audit-to">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="downloadAudit()">Generate Audit Report PDF</button>
+  </div>
+  <div class="card"><h3>🏢 Tally Export (One-Click XML)</h3>
+    <div class="preset-bar" style="margin-bottom:12px">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn" onclick="setTallyDates(today(),today())">Today</button>
+      <button class="pbtn" onclick="setTallyDates(yesterday(),yesterday())">Yesterday</button>
+      <button class="pbtn" onclick="setTallyDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setTallyDates(mtdStart(),today())">Month Till Date</button>
+      <button class="pbtn" onclick="setTallyDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="tally-from">
+        <label>To:</label><input type="date" id="tally-to">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="downloadTallySales()">Sales Vouchers XML</button>
+      <button class="btn btn-outline" onclick="downloadTallyExp()">Expense Vouchers XML</button>
+    </div>
+  </div>
+  <div class="card"><h3>🧾 GST GSTR-1 Export</h3>
+    <div class="preset-bar" style="margin-bottom:12px">
+      <span class="preset-label">Month:</span>
+      <button class="pbtn" onclick="document.getElementById('gst-month').value=monthNow()">This Month</button>
+      <button class="pbtn" onclick="document.getElementById('gst-month').value=lastMonthYM()">Last Month</button>
+      <div class="preset-dates"><input type="month" id="gst-month"></div>
+    </div>
+    <button class="btn btn-primary" onclick="downloadGSTR1()">Download GSTR-1 JSON</button>
+    <div id="gst-preview" style="margin-top:12px;font-size:12px;color:#555;background:#f5f5f5;padding:10px;border-radius:5px;display:none;white-space:pre-wrap;font-family:monospace;max-height:200px;overflow-y:auto"></div>
+  </div>
+
+  <!-- ERP SYNC -->
+  <div class="card" style="border-top:3px solid #1565c0">
+    <h3 style="color:#1565c0">🔄 ERP Auto-Sync — erp.loctell.com</h3>
+    <p style="font-size:13px;color:#555;margin-bottom:14px">Full sync from Loctell ERP — sales tickets (with MDP ton), individual expenses, customer debtors outstanding, and vendor/supplier creditor balances. Duplicates are auto-skipped.</p>
+    <div class="card" style="background:#f0f4ff;border:1px solid #c5cae9;margin-bottom:14px">
+      <h3 style="color:#1565c0">ERP Credentials</h3>
+      <div class="form-grid">
+        <div class="fg"><label>ERP Base URL</label><input type="text" id="erp-base" value="https://erp.loctell.com"></div>
+        <div class="fg"><label>Organisation</label><input type="text" id="erp-org" placeholder="e.g. VMIPL"></div>
+        <div class="fg"><label>Username</label><input type="text" id="erp-user" placeholder="admin"></div>
+        <div class="fg"><label>Password</label><input type="password" id="erp-pass"></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-navy" onclick="saveErpConfig()">Save ERP Credentials</button></div>
+    </div>
+    <div class="preset-bar" style="border-left-color:#1565c0;margin-bottom:14px">
+      <span class="preset-label">Sync Period:</span>
+      <button class="pbtn act" onclick="setErpDates(today(),today())">Today</button>
+      <button class="pbtn" onclick="setErpDates(yesterday(),yesterday())">Yesterday</button>
+      <button class="pbtn" onclick="setErpDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setErpDates(mtdStart(),today())">Month Till Date</button>
+      <button class="pbtn" onclick="setErpDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="erp-from">
+        <label>To:</label><input type="date" id="erp-to">
+      </div>
+    </div>
+    <div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-weight:600;font-size:13px;color:#1565c0;margin-bottom:8px">What to sync:</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
+        <label><input type="checkbox" id="sync-sales" checked> <strong>Sales</strong> — tickets &amp; MDP ton</label>
+        <label><input type="checkbox" id="sync-expenses" checked> <strong>Expenses</strong></label>
+        <label><input type="checkbox" id="sync-bank" checked> <strong>Bank Transactions</strong></label>
+        <label><input type="checkbox" id="sync-cash" checked> <strong>Cash Ledger</strong></label>
+        <label><input type="checkbox" id="sync-iot" checked> <strong>IOT Movements</strong></label>
+        <label><input type="checkbox" id="sync-debtors" checked> <strong>Debtors</strong> — outstanding balances</label>
+        <label><input type="checkbox" id="sync-creditors" checked> <strong>Creditors</strong> — payable balances</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="runErpSync()" id="sync-btn" style="background:#1565c0;min-width:200px">🔄 Sync from ERP Now</button>
+    <div id="sync-result" style="margin-top:12px;font-size:13px;display:none;padding:12px;border-radius:6px"></div>
   </div>
 </div>
 
 </div><!-- /content -->
 </div><!-- /main -->
 
-<script>
-const CREDS = [['crusher','Otomy@2026'],['admin','Crusher@2026']];
-let DATA={}, SALES=[], EXPS=[], curView='today', salesFilter=null;
+<!-- PRINT AREA (hidden, only visible on print) -->
+<div id="print-area"></div>
 
-function doLogin(){
-  const u=document.getElementById('lu').value.trim();
-  const p=document.getElementById('lp').value;
-  if(CREDS.some(([a,b])=>a===u&&b===p)){
-    sessionStorage.setItem('auth','1');
-    document.getElementById('login-screen').style.display='none';
-    loadAll();setInterval(loadAll,5*60*1000);
+<script>
+// ── OTOMY.AI REMOTE MODE ─────────────────────────────────────────────
+const _REMOTE = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+const _CREDS  = [['crusher','Otomy@2026'],['admin','Crusher@2026']];
+
+function _doLogin(){
+  const u=document.getElementById('_lu').value.trim();
+  const p=document.getElementById('_lp').value;
+  if(_CREDS.some(([a,b])=>a===u&&b===p)){
+    sessionStorage.setItem('_auth','1');
+    document.getElementById('_login').style.display='none';
+    if(_REMOTE){document.body.classList.add('readonly');}
   } else {
-    document.getElementById('lerr').style.display='block';
+    document.getElementById('_lerr').style.display='block';
   }
 }
 
-function inr(v){return '₹'+(parseFloat(v)||0).toLocaleString('en-IN',{maximumFractionDigits:0});}
-function fdate(d){if(!d)return'';return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'});}
-
-function pbadge(m){
-  m=(m||'').toUpperCase();
-  if(m==='CASH')return'<span class="badge b-cash">Cash</span>';
-  if(m==='CREDIT')return'<span class="badge b-credit">Credit</span>';
-  return'<span class="badge b-upi">'+(m||'—')+'</span>';
+if(_REMOTE){
+  // Check session
+  if(sessionStorage.getItem('_auth')==='1'){
+    document.getElementById('_login').style.display='none';
+    document.body.classList.add('readonly');
+  }
+  // Intercept fetch: serve GET /api/* from static JSON, block writes
+  const _rf=window.fetch.bind(window);
+  window.fetch=async function(url,opts={}){
+    const u=typeof url==='string'?url:(url.url||'');
+    const m=(opts.method||'GET').toUpperCase();
+    if(!u.startsWith('/api/')) return _rf(url,opts);
+    if(m!=='GET'){
+      // Write blocked — show flash and return fake success to avoid JS errors
+      setTimeout(()=>flash('Data entry is only available on the local app (localhost:8765)','err'),50);
+      return new Response('{"id":0,"detail":"readonly"}',{status:200,headers:{'Content-Type':'application/json'}});
+    }
+    // Route GET calls to static JSON
+    return _routeAPI(u);
+  };
 }
 
-async function loadAll(){
+async function _routeAPI(url){
+  // /api/me
+  if(url==='/api/me'||url.startsWith('/api/me?'))
+    return _jresp({username:'viewer',role:'viewer'});
+
+  // /api/customers/outstanding
+  if(url.includes('/customers/outstanding'))
+    return _jfile('data/customers_outstanding.json');
+
+  // /api/customers/ledger/*
+  if(url.includes('/customers/ledger/'))
+    return _jresp([]);
+
+  // /api/customers/
+  if(url.includes('/api/customers'))
+    return _jfile('data/customers.json');
+
+  // /api/vendors/payables
+  if(url.includes('/vendors/payables'))
+    return _jfile('data/vendors_payables.json');
+
+  // /api/vendors/ledger/*
+  if(url.includes('/vendors/ledger/'))
+    return _jresp([]);
+
+  // /api/vendors/
+  if(url.includes('/api/vendors'))
+    return _jfile('data/vendors.json');
+
+  // /api/bank/accounts/*/statement
+  if(url.includes('/statement'))
+    return _jresp([]);
+
+  // /api/bank/accounts
+  if(url.includes('/api/bank'))
+    return _jfile('data/bank.json');
+
+  // /api/workers/
+  if(url.includes('/api/workers'))
+    return _jresp([]);
+
+  // /api/dashboard/control
+  if(url.includes('/dashboard/control')){
+    const p=new URLSearchParams(url.includes('?')?url.split('?')[1]:'');
+    const f=p.get('from_date'), t=p.get('to_date');
+    return _pickControl(f,t);
+  }
+
+  // /api/sales/ with date filter
+  if(url.includes('/api/sales')){
+    const p=new URLSearchParams(url.includes('?')?url.split('?')[1]:'');
+    return _filterList('data/sales_all.json',p.get('from_date'),p.get('to_date'));
+  }
+
+  // /api/expenses/
+  if(url.includes('/api/expenses')){
+    const p=new URLSearchParams(url.includes('?')?url.split('?')[1]:'');
+    return _filterList('data/expenses_all.json',p.get('from_date'),p.get('to_date'));
+  }
+
+  // /api/boulders/
+  if(url.includes('/api/boulders'))
+    return _jfile('data/boulders.json');
+
+  // /api/machines/
+  if(url.includes('/api/machines'))
+    return _jfile('data/machines.json');
+
+  // /api/labour/
+  if(url.includes('/api/labour'))
+    return _jresp([]);
+
+  // /api/parts/
+  if(url.includes('/api/parts'))
+    return _jresp([]);
+
+  // ERP sync data
+  if(url.includes('/api/erp') || url.includes('/api/iot'))
+    return _jresp({sales:[],bank:[],cash:[],iot:[],debtors:[],creditors:[]});
+
+  // Reports — not available without backend
+  if(url.includes('/api/report'))
+    return new Response(JSON.stringify({detail:'PDF reports available on local app only'}),{status:503,headers:{'Content-Type':'application/json'}});
+
+  return _jresp([]);
+}
+
+async function _jfile(path){
   try{
-    const[d,s,e,mt]=await Promise.all([
-      fetch('data/dashboard.json?t='+Date.now()).then(r=>r.json()),
-      fetch('data/sales.json?t='+Date.now()).then(r=>r.json()),
-      fetch('data/expenses.json?t='+Date.now()).then(r=>r.json()),
-      fetch('data/meta.json?t='+Date.now()).then(r=>r.json()),
-    ]);
-    DATA=d; SALES=s; EXPS=e;
-    const ago=Math.round((Date.now()-new Date(mt.last_sync))/60000);
-    document.getElementById('sync-time').textContent=ago<1?'Just synced':`Synced ${ago}m ago`;
-    document.getElementById('topbar-date').textContent=new Date(DATA.today+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
-    renderDash(); renderSales(); renderExp(); renderTrend();
-  }catch(e){document.getElementById('sync-time').textContent='Sync error';}
+    const r=await fetch(path+'?t='+Date.now(),{method:'GET'});
+    if(!r.ok)return _jresp([]);
+    const d=await r.json();
+    return _jresp(d);
+  }catch{return _jresp([]);}
 }
 
-function setView(v,btn){
-  curView=v;
-  document.querySelectorAll('.preset-bar .pbtn').forEach(b=>b.classList.remove('act'));
-  btn.classList.add('act');
-  renderDash();
+function _jresp(data){
+  return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 }
 
-function renderDash(){
-  const s=curView==='today'?DATA.summary_today:DATA.summary_mtd;
-  const mats=curView==='today'?DATA.materials_today:DATA.materials_mtd;
-  const cats=curView==='today'?DATA.expense_categories_today:DATA.expense_categories_mtd;
-  const label=curView==='today'?'Today':DATA.month;
-  if(!s)return;
-  const net=s.net||0;
-  document.getElementById('dash-profit-bar').innerHTML=`
-    <div class="profit-bar ${net>=0?'pos':'neg'}">
-      <div><div class="pl">Net P&L — ${label}</div><div class="pv">${inr(net)}</div></div>
-      <div style="text-align:right;font-size:12px;opacity:.85">${s.tickets} tickets</div>
-    </div>`;
-  document.getElementById('dash-kpis').innerHTML=`
-    <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value">${inr(s.revenue)}</div><div class="kpi-sub">${label}</div></div>
-    <div class="kpi green"><div class="kpi-label">Cash Collected</div><div class="kpi-value">${inr((s.payment_modes&&s.payment_modes['Cash'])||0)}</div></div>
-    <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${inr(s.expenses)}</div></div>
-    <div class="kpi blue"><div class="kpi-label">Wages</div><div class="kpi-value">${inr(s.wages)}</div></div>
-  `;
-  // Control panel
-  const matEntries=Object.entries(mats||{}).sort((a,b)=>b[1].amount-a[1].amount).slice(0,4);
-  document.getElementById('dash-control').innerHTML=`
-    <div class="control-eyebrow">Operations Summary</div>
-    <div class="control-title">${label}</div>
-    <div class="control-grid">
-      ${matEntries.map(([k,v])=>`<div class="control-metric glass-green"><span>${k}</span><strong>${inr(v.amount)}</strong><small style="font-size:10px;opacity:.7">${v.qty.toFixed(1)} MT</small></div>`).join('')}
-    </div>`;
-  // Materials bar
-  const matTotal=Object.values(mats||{}).reduce((a,m)=>a+m.amount,0);
-  document.getElementById('dash-materials').innerHTML=Object.entries(mats||{}).sort((a,b)=>b[1].amount-a[1].amount).map(([k,v])=>`
-    <div class="bar-row">
-      <div>${k}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(v.amount/Math.max(matTotal,1)*100).toFixed(1)}%"></div></div>
-      <div style="text-align:right">${inr(v.amount)}</div>
-    </div>`).join('')||'<div class="empty">No sales</div>';
-  // Categories bar
-  const catMax=Math.max(...Object.values(cats||{}).map(v=>v),1);
-  document.getElementById('dash-categories').innerHTML=Object.entries(cats||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
-    <div class="bar-row">
-      <div>${k}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(v/catMax*100).toFixed(1)}%;background:linear-gradient(90deg,#c62828,#e53935)"></div></div>
-      <div style="text-align:right">${inr(v)}</div>
-    </div>`).join('')||'<div class="empty">No expenses</div>';
-  // Today tickets
-  const todaySales=SALES.filter(s=>s.date===DATA.today);
-  let totQty=0,totAmt=0;
-  document.getElementById('dash-tickets').innerHTML=todaySales.length?todaySales.map(s=>{
-    totQty+=s.qty;totAmt+=s.amount;
-    return`<tr><td style="color:#1a237e;font-weight:600">${s.ticket_no||'—'}</td><td>${s.customer}</td><td>${s.material}</td><td>${s.qty.toFixed(2)}</td><td>${inr(s.rate)}</td><td style="font-weight:700;color:#147a4b">${inr(s.amount)}</td><td>${pbadge(s.payment)}</td><td style="color:#777">${s.vehicle||'—'}</td></tr>`;
-  }).join(''):'<tr><td colspan="8" class="empty">No tickets today</td></tr>';
-  document.getElementById('tf-qty').textContent=totQty.toFixed(2);
-  document.getElementById('tf-amt').textContent=inr(totAmt);
+async function _pickControl(f,t){
+  const today=new Date().toISOString().slice(0,10);
+  const mtd=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10);
+  const yest=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  if(f===today&&t===today) return _jfile('data/ctrl_today.json');
+  if(f===yest&&t===yest)  return _jfile('data/ctrl_yesterday.json');
+  if(f===mtd&&t===today)  return _jfile('data/ctrl_mtd.json');
+  // Fallback: MTD data
+  return _jfile('data/ctrl_mtd.json');
 }
 
-function filterSales(mat,btn){
-  salesFilter=mat;
-  document.querySelectorAll('#section-sales .pbtn').forEach(b=>b.classList.remove('act'));
-  btn.classList.add('act');
-  renderSales();
+async function _filterList(file,from,to){
+  try{
+    const r=await fetch(file+'?t='+Date.now());
+    if(!r.ok)return _jresp([]);
+    let rows=await r.json();
+    if(from) rows=rows.filter(r=>r.date>=from);
+    if(to)   rows=rows.filter(r=>r.date<=to);
+    return _jresp(rows);
+  }catch{return _jresp([]);}
+}
+// ── END REMOTE MODE ──────────────────────────────────────────────────
+const API='';
+let _customers=[], _vendors=[], _bankAccounts=[], _musterWorkers=[];
+// Pagination state — keyed by section
+const _page={sales:1,expenses:1,boulders:1,machines:1,labour:1,parts:1,erpbank:1,erpcash:1,iot:1};
+const _sort={
+  sales:{key:'amount',dir:'desc'},
+  expenses:{key:'amount',dir:'desc'},
+  customers:{key:'outstanding',dir:'desc'},
+  vendors:{key:'payable',dir:'desc'},
+  erpbank:{key:'max_amount',dir:'desc'},
+  erpcash:{key:'max_amount',dir:'desc'},
+  bankstmt:{key:'max_amount',dir:'desc'},
+  iot:{key:'dt',dir:'desc'},
+  custSales:{key:'amount',dir:'desc'},
+  custLedger:{key:'date',dir:'desc'},
+  vendBills:{key:'amount',dir:'desc'},
+  vendPayments:{key:'amount',dir:'desc'},
+  vendLedger:{key:'date',dir:'desc'},
+};
+const PAGE_SIZE=100;
+const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],iot:[],bankstmt:[]};
+let _currentCustLedger=null,_currentVendLedger=null;
+
+function pagerHTML(key,total){
+  const pages=Math.ceil(total/PAGE_SIZE);
+  if(pages<=1)return'';
+  const cur=_page[key],start=(cur-1)*PAGE_SIZE+1,end=Math.min(cur*PAGE_SIZE,total);
+  return`<div class="pager"><button ${cur<=1?'disabled':''} onclick="goPage('${key}',${cur-1})">◀ Prev</button><span class="pager-info">Showing ${start}–${end} of ${total} records &nbsp;|&nbsp; Page ${cur} of ${pages}</span><button ${cur>=pages?'disabled':''} onclick="goPage('${key}',${cur+1})">Next ▶</button></div>`;
+}
+const _renderCache={};
+function goPage(key,p){_page[key]=p;_renderCache[key]&&_renderCache[key]();}
+const _dashCache={day:new Map(),control:new Map()};
+const DASH_CACHE_MS=10*60*1000;
+let _dashLoadSeq=0;
+let _installPromptEvent=null;
+let _dashPrefetched=false;
+let _canWrite=true;
+
+function enforceLaunchLogin(){
+  try{
+    if(sessionStorage.getItem('crusherops_unlocked')==='1')return;
+    fetch('/api/logout',{method:'POST',keepalive:true}).catch(()=>{});
+  }catch(e){}
+  window.location.replace('/login');
+}
+enforceLaunchLogin();
+
+function isStandaloneApp(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function refreshInstallButton(){
+  const btn=document.getElementById('install-app-btn');
+  if(!btn)return;
+  const canInstall=Boolean(_installPromptEvent) && !isStandaloneApp();
+  btn.classList.toggle('show', canInstall);
+}
+async function installAndroidApp(){
+  if(!_installPromptEvent){
+    flash('In Chrome menu, tap Add to Home screen / Install app.', false);
+    return;
+  }
+  _installPromptEvent.prompt();
+  try{await _installPromptEvent.userChoice;}catch(e){}
+  _installPromptEvent=null;
+  refreshInstallButton();
+}
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault();
+  _installPromptEvent=e;
+  refreshInstallButton();
+});
+window.addEventListener('appinstalled', ()=>{
+  _installPromptEvent=null;
+  refreshInstallButton();
+  flash('VMIPL app installed.');
+});
+
+async function applyAccessMode(){
+  try{
+    const me=await api('/api/me');
+    _canWrite=Boolean(me.can_write);
+  }catch(e){
+    _canWrite=false;
+  }
+  document.body.classList.toggle('readonly', !_canWrite);
+  document.querySelectorAll('button').forEach(btn=>{
+    const action=btn.getAttribute('onclick')||'';
+    if(/^(add|save|del|deactivate|remove|markPaid|syncNow|runErpSync|saveConfig|saveErpConfig|saveMuster)/.test(action)){
+      btn.classList.add('write-only');
+    }
+  });
+  document.querySelectorAll('.card').forEach(card=>{
+    const title=(card.querySelector('h3')?.textContent||'').trim().toLowerCase();
+    if(title.startsWith('add ')||title.includes('erp credentials')||title.includes('company')){
+      card.classList.add('write-only');
+    }
+  });
 }
 
-function renderSales(){
-  const filtered=salesFilter?SALES.filter(s=>s.material===salesFilter):SALES;
-  let qty=0,amt=0;
-  document.getElementById('sales-count').textContent=`(${filtered.length} records)`;
-  document.getElementById('sales-body').innerHTML=filtered.length?filtered.map(s=>{
-    qty+=s.qty;amt+=s.amount;
-    return`<tr><td style="color:#777">${fdate(s.date)}</td><td style="color:#1a237e;font-weight:600">${s.ticket_no||'—'}</td><td>${s.customer}</td><td>${s.material}</td><td>${s.qty.toFixed(2)}</td><td>${inr(s.rate)}</td><td style="font-weight:700;color:#147a4b">${inr(s.amount)}</td><td>${pbadge(s.payment)}</td><td style="color:#777">${s.vehicle||'—'}</td></tr>`;
-  }).join(''):'<tr><td colspan="9" class="empty">No records</td></tr>';
-  document.getElementById('stf-qty').textContent=qty.toFixed(2);
-  document.getElementById('stf-amt').textContent=inr(amt);
+async function cachedJson(cache,key,url){
+  const now=Date.now();
+  const hit=cache.get(key);
+  if(hit && now-hit.ts<DASH_CACHE_MS)return hit.data;
+  if(hit && hit.promise)return hit.promise;
+  const promise=api(url).then(data=>{
+    cache.set(key,{ts:Date.now(),data});
+    return data;
+  }).catch(err=>{
+    cache.delete(key);
+    throw err;
+  });
+  cache.set(key,{ts:now,promise});
+  const data=await promise;
+  return data;
 }
 
-function renderExp(){
-  let tot=0;
-  document.getElementById('exp-body').innerHTML=EXPS.length?EXPS.map(e=>{
-    tot+=e.amount;
-    return`<tr><td style="color:#777">${fdate(e.date)}</td><td><span class="badge" style="background:#fff3e0;color:#e65100">${e.category}</span></td><td style="color:#555">${e.description}</td><td style="font-weight:700;color:#b42318">${inr(e.amount)}</td><td>${pbadge(e.payment)}</td></tr>`;
-  }).join(''):'<tr><td colspan="5" class="empty">No records</td></tr>';
-  document.getElementById('etf-amt').textContent=inr(tot);
+function prefetchDashRange(f,t){
+  cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`).catch(()=>{});
 }
 
-function renderTrend(){
-  const trend=DATA.daily_trend||[];
-  const maxR=Math.max(...trend.map(d=>d.revenue),1);
-  document.getElementById('trend-chart').innerHTML=trend.map(d=>{
-    const h=Math.max((d.revenue/maxR*100),2);
-    return`<div class="trend-day">
-      <div class="trend-profit${d.revenue===0?' neg':''}" style="height:${h}%" title="${d.date}: ${inr(d.revenue)}"></div>
-      <span>${d.date.slice(8)}</span>
-    </div>`;
-  }).join('');
-  document.getElementById('trend-body').innerHTML=[...trend].reverse().map(d=>{
-    const net=d.revenue-d.expenses;
-    return`<tr><td style="color:#777">${fdate(d.date)}</td><td>${d.tickets}</td><td>${d.qty.toFixed(1)}</td><td style="color:#147a4b;font-weight:600">${inr(d.revenue)}</td><td style="color:#b42318">${inr(d.expenses)}</td><td style="font-weight:700;color:${net>=0?'#147a4b':'#b42318'}">${inr(net)}</td></tr>`;
-  }).join('');
+function prefetchDashDate(d){
+  prefetchDashRange(d,d);
+  prefetchDashRange(d.substring(0,8)+'01',d);
 }
 
-function nav(page){
-  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  document.getElementById('section-'+page).classList.add('active');
-  document.querySelector(`.nav-item[onclick="nav('${page}')"]`).classList.add('active');
-  const titles={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses',trend:'30-Day Trend'};
-  document.getElementById('page-title').textContent=titles[page]||page;
-  toggleMobileNav(false);
+function prefetchDashboardPresets(){
+  if(_dashPrefetched)return;
+  _dashPrefetched=true;
+  ['today','yesterday','week','mtd','lastmonth'].forEach(p=>{
+    const [f,t]=calcPreset(p);
+    setTimeout(()=>prefetchDashRange(f,t), 250);
+  });
 }
 
+// ── Date helpers ──────────────────────────────────────────────────────────
+function localISO(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function today(){return localISO()}
+function yesterday(){const d=new Date();d.setDate(d.getDate()-1);return localISO(d)}
+function weekStart(){const d=new Date();const day=d.getDay();const diff=d.getDate()-day+(day===0?-6:1);d.setDate(diff);return localISO(d)}
+function mtdStart(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`}
+function lastMonthStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return localISO(d)}
+function lastMonthEnd(){const d=new Date();d.setDate(0);return localISO(d)}
+function monthNow(){return today().substring(0,7)}
+function lastMonthYM(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
+
+function fmtINR(n){if(n==null||isNaN(n))return'—';const abs=Math.abs(Number(n));const s=abs.toLocaleString('en-IN',{maximumFractionDigits:0});return (n<0?'-':'')+'₹'+s;}
+function fmtNum(n,d=1){if(n==null||isNaN(n))return'—';return Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function flash(msg,ok=true){const d=document.getElementById('flash');const el=document.createElement('div');el.className='flash-msg '+(ok?'flash-ok':'flash-err');el.textContent=msg;d.appendChild(el);setTimeout(()=>el.remove(),3500);}
+async function api(url,opts={}){const r=await fetch(API+url,opts);if(!r.ok){let e;try{e=(await r.json()).detail||'Error';}catch{e='Error '+r.status;}throw new Error(e);}const ct=r.headers.get('content-type')||'';if(ct.includes('json'))return r.json();return r;}
+function valByPath(row,key){return key.split('.').reduce((v,k)=>v==null?undefined:v[k],row);}
+function normSortVal(v){
+  if(v==null)return'';
+  if(typeof v==='number')return v;
+  const s=String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return new Date(s).getTime();
+  const n=Number(s.replace(/[₹,\s]/g,''));
+  return !isNaN(n)&&s!==''?n:s.toLowerCase();
+}
+function sortedRows(rows,section,derived={}){
+  const cfg=_sort[section]||{};
+  const key=cfg.key,dir=cfg.dir==='asc'?1:-1;
+  if(!key)return rows.slice();
+  return rows.slice().sort((a,b)=>{
+    const av=normSortVal(derived[key]?derived[key](a):valByPath(a,key));
+    const bv=normSortVal(derived[key]?derived[key](b):valByPath(b,key));
+    if(av<bv)return -1*dir;
+    if(av>bv)return 1*dir;
+    return 0;
+  });
+}
+function sortIcon(section,key){const c=_sort[section]||{};return c.key===key?(c.dir==='asc'?'▲':'▼'):'⇅';}
+function thSort(section,key,label,renderFn){
+  return `<th class="sortable" onclick="setSort('${section}','${key}',${renderFn?`'${renderFn}'`:'null'})">${label}<span>${sortIcon(section,key)}</span></th>`;
+}
+function setSort(section,key,renderFnName){
+  const cur=_sort[section]||{};
+  _sort[section]={key,dir:cur.key===key&&cur.dir==='desc'?'asc':'desc'};
+  if(_page[section]!==undefined)_page[section]=1;
+  if(renderFnName&&window[renderFnName])window[renderFnName]();
+  else if(_renderCache[section])_renderCache[section]();
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',operations:'Operations',reports:'Reports & Exports'};
 function toggleMobileNav(open){
-  document.body.classList.toggle('mobile-nav-open',open);
+  document.body.classList.toggle('mobile-nav-open', Boolean(open));
+}
+function _initDates(fromId,toId,presetKey){
+  // Set MTD as default if dates are empty, highlight the MTD button
+  if(!document.getElementById(fromId).value){
+    const[f,t]=calcPreset('mtd');
+    document.getElementById(fromId).value=f;
+    document.getElementById(toId).value=t;
+    // highlight MTD button in this section's preset bar
+    const el=document.getElementById(fromId);
+    if(el){const bar=el.closest('.preset-bar');if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btns=[...bar.querySelectorAll('.pbtn')];const mtdBtn=btns.find(b=>b.textContent.includes('Month Till'));if(mtdBtn)mtdBtn.classList.add('act');}}
+  }
+}
+function nav(name){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelector(`.nav-item[onclick="nav('${name}')"]`).classList.add('active');
+  document.getElementById('section-'+name).classList.add('active');
+  document.getElementById('page-title').textContent=TITLES[name]||name;
+  toggleMobileNav(false);
+  if(name==='dashboard')loadDash();
+  if(name==='sales'){_initDates('s-from','s-to');fillCustSelect('s-customer');loadSales();}
+  if(name==='expenses'){_initDates('e-from','e-to');fillVendSelect('e-vendor');loadExpenses();}
+  if(name==='customers'){loadCustomers();fillCustSelect('cr-cust');}
+  if(name==='vendors'){loadVendors();fillVendSelect('vp-vend');}
+  if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankAccounts();loadStatement();loadErpBank();loadErpCash();}
+  if(name==='operations'){_initDates('op-from','op-to');loadOpsDefaults();}
+  if(name==='reports'){loadConfig();loadErpConfig();setErpDates(mtdStart(),today());}
+}
+function subTab(id,el){
+  document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.subtab-content').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(id).classList.add('active');
 }
 
-if(sessionStorage.getItem('auth')==='1'){
-  document.getElementById('login-screen').style.display='none';
-  loadAll(); setInterval(loadAll,5*60*1000);
+// ── Preset logic ───────────────────────────────────────────────────────────
+const PRESET_CFG={
+  dashboard:{from:'dash-from',to:'dash-to',reload:()=>loadDash()},
+  sales:{from:'s-from',to:'s-to',reload:()=>loadSales()},
+  expenses:{from:'e-from',to:'e-to',reload:()=>loadExpenses()},
+  customers:{from:'c-from',to:'c-to',reload:()=>loadCustomers()},
+  vendors:{from:'v-from',to:'v-to',reload:()=>loadVendors()},
+  bank:{from:null,to:null,reload:()=>loadStatement()},
+  erpbank:{from:'eb-from',to:'eb-to',reload:()=>loadErpBank()},
+  erpcash:{from:'ec-from',to:'ec-to',reload:()=>loadErpCash()},
+};
+
+function calcPreset(p){
+  switch(p){
+    case'today':return[today(),today()];
+    case'yesterday':return[yesterday(),yesterday()];
+    case'week':return[weekStart(),today()];
+    case'mtd':return[mtdStart(),today()];
+    case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
+    default:return[today(),today()];
+  }
+}
+
+function preset(section,p,btn){
+  const cfg=PRESET_CFG[section];
+  if(!cfg)return;
+  const[f,t]=calcPreset(p);
+  const bar=btn.closest('.preset-bar');
+  bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
+  btn.classList.add('act');
+  if(cfg.single){document.getElementById(cfg.single).value=f;}
+  else{if(cfg.from)document.getElementById(cfg.from).value=f;if(cfg.to)document.getElementById(cfg.to).value=t;}
+  if(section==='dashboard')document.getElementById('dash-date').value=t;
+  // Reset to page 1 on new date range
+  if(_page[section]!==undefined)_page[section]=1;
+  cfg.reload();
+}
+
+function clearPresetBtns(section){
+  const cfg=PRESET_CFG[section];
+  if(!cfg)return;
+  const fromId=cfg.from||cfg.single;
+  const el=fromId?document.getElementById(fromId):null;
+  if(el){const bar=el.closest('.preset-bar');if(bar)bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
+}
+
+// Ops preset (controls all ops sub-tabs)
+function opsPreset(p,btn){
+  const[f,t]=calcPreset(p);
+  document.getElementById('op-from').value=f;
+  document.getElementById('op-to').value=t;
+  document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
+  // Reset pages for all ops sections
+  ['boulders','machines','labour','parts'].forEach(k=>{_page[k]=1;});
+  btn.classList.add('act');
+  opsReload();
+}
+function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
+function opsReload(){loadBoulders();loadMachines();loadLabour();loadParts();loadIot();}
+
+// Report preset helpers
+function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
+function setTallyDates(f,t){document.getElementById('tally-from').value=f;document.getElementById('tally-to').value=t;}
+
+// ── Print ──────────────────────────────────────────────────────────────────
+function isMobilePrint(){
+  return window.matchMedia('(max-width: 760px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+function printStyles(){
+  return document.querySelector('style')?.textContent || '';
+}
+function openMobilePrintPage(title, content, className=''){
+  const safeTitle=esc(title);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
+  const win=window.open('', '_blank');
+  if(!win){
+    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
+    return false;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  return true;
+}
+function openPdfUrl(url){
+  const win=window.open(url,'_blank');
+  if(!win){
+    window.location.href=url;
+  }
+}
+async function openTablePdf(title, el, subtitle){
+  if(!el){flash('Nothing to print',false);return false;}
+  const popup=window.open('', '_blank');
+  if(popup){
+    popup.document.write('<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px"><h3>Preparing PDF...</h3><p>Please wait.</p></body></html>');
+  }
+  const tables=[...el.querySelectorAll('table')].map((table, idx)=>{
+    const rows=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(td=>td.innerText.trim().replace(/\s+/g,' '))).filter(r=>r.some(Boolean));
+    const heading=table.closest('.card')?.querySelector('h3')?.innerText || (idx===0?title:`Table ${idx+1}`);
+    return {title:heading, rows};
+  }).filter(t=>t.rows.length);
+  if(!tables.length){
+    if(popup)popup.close();
+    flash('No table found for PDF',false);
+    return false;
+  }
+  try{
+    const res=await fetch('/api/report/table-pdf',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,subtitle,tables})
+    });
+    if(!res.ok)throw new Error((await res.json()).detail||'PDF failed');
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    if(popup)popup.location.href=url;
+    else window.location.href=url;
+    return true;
+  }catch(e){
+    if(popup)popup.close();
+    flash('PDF error: '+e.message,false);
+    return false;
+  }
+}
+function runPrint(title, content, className=''){
+  const pa=document.getElementById('print-area');
+  pa.className=className;
+  pa.innerHTML=content;
+  if(isMobilePrint()){
+    openMobilePrintPage(title, content, className);
+    return;
+  }
+  setTimeout(()=>window.print(), 50);
+}
+function printSection(title,tableContainerId){
+  const el=document.getElementById(tableContainerId);
+  if(!el){flash('Nothing to print',false);return;}
+  const section=document.querySelector('.section.active');
+  let dateRange='';
+  if(section){
+    const f=section.querySelector('input[id$="-from"]');
+    const t=section.querySelector('input[id$="-to"]');
+    const s=section.querySelector('input[id$="-date"]');
+    if(f&&t&&f.value)dateRange=`Period: ${f.value} to ${t.value}`;
+    else if(s&&s.value)dateRange=`Date: ${s.value}`;
+  }
+  if(isMobilePrint()){
+    openTablePdf(title, el, `${dateRange} | Generated: ${new Date().toLocaleString('en-IN')}`);
+    return;
+  }
+  const content=`<div class="print-ph"><h1>CrusherOps — ${title}</h1><p>${dateRange} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${el.outerHTML}`;
+  runPrint(title, content);
+}
+function printDashboard(doPrint=true){
+  const d=document.getElementById('dash-date').value;
+  const f=document.getElementById('dash-from').value||d;
+  const t=document.getElementById('dash-to').value||d;
+  const profit=document.getElementById('dash-profit-bar');
+  const kpis=document.querySelector('#section-dashboard .kpi-row');
+  const body=document.getElementById('dash-print-area');
+  if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
+  const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
+  if(doPrint)runPrint('Dashboard Daily Report', content, 'dashboard-print');
+  else{const pa=document.getElementById('print-area');pa.className='dashboard-print';pa.innerHTML=content;}
+}
+function printCurrentOpsTab(){
+  const act=document.querySelector('.subtab-content.active');
+  if(!act)return;
+  const tbl=act.querySelector('.tbl-wrap');
+  const h3=act.querySelector('h3')?.textContent||'Operations';
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(isMobilePrint()){
+    openTablePdf(h3, tbl, `Period: ${f} to ${t} | Generated: ${new Date().toLocaleString('en-IN')}`);
+    return;
+  }
+  const content=`<div class="print-ph"><h1>CrusherOps — ${h3}</h1><p>Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${tbl?tbl.outerHTML:''}`;
+  runPrint(h3, content);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.onload=async function(){
+  const t=today(),ym=monthNow();
+  await applyAccessMode();
+  refreshInstallButton();
+  document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  // Set all date defaults
+  ['s-date','e-date','b-date','m-date','l-date','p-date','ba-initdate','bt-date','cr-date','vp-date','emi-due','rpt-daily-date','mu-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','tally-from','tally-to','audit-from','dash-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  document.getElementById('dash-from').value=t;
+  document.getElementById('dash-date').value=t;
+  ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['rpt-month','gst-month','emi-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
+  await loadDash();
+  if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
+    printDashboard(false);
+  }
+  api('/api/customers/').then(d=>{_customers=d;fillCustSelect('s-customer');fillCustSelect('cr-cust');}).catch(()=>{});
+  api('/api/vendors/').then(d=>{_vendors=d;fillVendSelect('e-vendor');fillVendSelect('vp-vend');}).catch(()=>{});
+  api('/api/bank/accounts').then(d=>{_bankAccounts=d;fillAcctSelect('bt-acct');fillAcctSelect('stmt-acct');}).catch(()=>{});
+};
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/service-worker.js').then(()=>refreshInstallButton()).catch(()=>{});
+  });
+}
+
+function fillCustSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_customers.filter(c=>c.active).forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`);sel.value=cur;}
+function fillVendSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_vendors.filter(v=>v.active).forEach(v=>sel.innerHTML+=`<option value="${v.id}">${v.name}</option>`);sel.value=cur;}
+function fillAcctSelect(id){const sel=document.getElementById(id);if(!sel)return;sel.innerHTML='<option value="">-- Select Account --</option>';_bankAccounts.filter(a=>a.active).forEach(a=>sel.innerHTML+=`<option value="${a.id}">${a.name}</option>`);}
+function displayBankAccountName(a){
+  const text=`${a.name||''} ${a.bank_name||''}`.toUpperCase();
+  if(text.includes('HDFC'))return 'CASH BALANCE IN OFFICE';
+  return a.name||'Account';
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function loadDash(){
+  const seq=++_dashLoadSeq;
+  const d=document.getElementById('dash-date').value;
+  const f=document.getElementById('dash-from').value||mtdStart();
+  const t=document.getElementById('dash-to').value||today();
+  const controlKey=`${f}|${t}`;
+  try{
+    const controlData=await cachedJson(_dashCache.control,controlKey,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
+    if(seq!==_dashLoadSeq)return;
+    renderDashSummary(controlData,d);
+    renderControlRoom(controlData);
+    prefetchDashboardPresets();
+  }catch(e){flash('Dashboard error: '+e.message,false);}
+}
+
+async function loadControlRoom(){
+  const f=document.getElementById('dash-from').value||mtdStart();
+  const t=document.getElementById('dash-to').value||today();
+  try{
+    const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
+    renderControlRoom(data);
+  }catch(e){
+    const el=document.getElementById('control-room');
+    if(el)el.innerHTML=`<div class="control-alert danger"><strong>Control room error</strong><span>${esc(e.message)}</span></div>`;
+  }
+}
+
+function renderDashSummary(data,d){
+  const s=data.summary||{};
+  const period=data.period||{};
+  const profit=Number(s.profit)||0;
+  const sales=Number(s.sales)||0;
+  const salesQty=Number(s.sales_qty_mt)||0;
+  const from=period.from||d;
+  const to=period.to||d;
+  const label=from===to
+    ? new Date(to+'T00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short'})
+    : `${from} to ${to}`;
+  const bar=document.getElementById('dash-profit-bar');
+  bar.className='profit-bar '+(profit>=0?'pos':'neg');
+  bar.innerHTML=`<div><div class="pl">Gross Profit — ${esc(label)}</div><div class="pv">${fmtINR(profit)}</div></div><div style="text-align:right"><div class="pl">Margin</div><div style="font-size:22px;font-weight:800">${fmtNum(s.margin_pct||0,1)}%</div></div>`;
+  document.getElementById('d-sales').textContent=fmtINR(s.sales);
+  document.getElementById('d-cash').textContent=fmtINR(s.cash_collected);
+  document.getElementById('d-exp').textContent=fmtINR(s.expenses);
+  document.getElementById('d-profit-mt').textContent=fmtINR(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
+}
+
+function renderControlRoom(data){
+  const s=data.summary||{};
+  const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
+  const repaymentTotal=Number(data.customer_repayments_total||0);
+  const repaymentPaymentTotal=Number(data.customer_repayments_payment_total||0);
+  const repaymentBankTotal=Number(data.customer_repayments_bank_total||0);
+  const repaymentCashTotal=Number(data.customer_repayments_cash_total||0);
+  const repaymentRows=(data.customer_repayments||[]).map(r=>`
+    <tr>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.customer_name||'—')}</td>
+      <td>${esc(r.mode||'—')}</td>
+      <td>${fmtINR(r.bank_received||0)}</td>
+      <td>${fmtINR(r.cash_received||0)}</td>
+      <td>${fmtINR(r.payment_received||r.amount||0)}</td>
+      <td>${fmtINR(r.sale_adjusted||0)}</td>
+      <td>${fmtINR(r.amount)}</td>
+      <td>${r.balance==null?'—':fmtINR(r.balance)}</td>
+    </tr>
+  `).join('')||'<tr><td colspan="9" class="empty">No credit sale repayments received in this period</td></tr>';
+  const customerSalesRows=(data.customer_sales||[]).map(r=>{
+    const ticketLines=(r.ticket_nos||[]).map(t=>esc(t)).join(', ')||'—';
+    return `<tr>
+      <td>${esc(r.customer_name)}</td>
+      <td>${esc(r.material||'—')}</td>
+      <td><div class="ticket-list">${ticketLines}</div></td>
+      <td>${fmtNum(r.qty_mt,2)}</td>
+      <td>${fmtINR(r.amount)}</td>
+      <td>${fmtINR(r.bank_received||0)}</td>
+      <td>${fmtINR(r.cash_received||0)}</td>
+      <td>${fmtINR(r.paid_against_sale||0)}</td>
+      <td>${fmtINR(r.credit_sale_amount||0)}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="9" class="empty">No sales in this period</td></tr>';
+  const salesTotals=data.customer_sales_totals||{};
+  const machineRows=(data.machine_summary||[]).map(r=>`<tr>
+      <td>${esc(r.machine)}</td>
+      <td>${fmtNum(r.running_hours,2)}</td>
+      <td>${fmtNum(r.production_mt,2)}</td>
+      <td>${fmtNum(r.fuel_liters,2)}</td>
+    </tr>`).join('')||'<tr><td colspan="4" class="empty">No machine readings in this period</td></tr>';
+  const expenseList=(data.expense_rows||[]).map(r=>`
+    <tr>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.type)}</td>
+      <td>${esc(r.category)}</td>
+      <td>${esc(r.description)}</td>
+      <td>${esc(r.party||'—')}</td>
+      <td>${esc(r.payment_mode||'—')}</td>
+      <td>${fmtINR(r.amount)}</td>
+    </tr>
+  `).join('')||'<tr><td colspan="7" class="empty">No expenses in this period</td></tr>';
+  const rec=(data.top_receivables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No receivables</strong><span>₹0</span></li>';
+  const pay=(data.top_payables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No payables</strong><span>₹0</span></li>';
+  document.getElementById('control-room').innerHTML=`
+    <div class="control-hero">
+      <div class="control-panel">
+        <div class="control-eyebrow">Owner Control Room · ${esc(data.period.from)} to ${esc(data.period.to)}</div>
+        <div class="control-title">Profit, production, cash and risk in one screen.</div>
+        <div class="control-grid">
+          <div class="control-metric"><span>Period Profit</span><strong>${fmtINR(s.profit)}</strong></div>
+          <div class="control-metric"><span>Margin</span><strong>${fmtNum(s.margin_pct,1)}%</strong></div>
+          <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,1)}</strong></div>
+          <div class="control-metric"><span>Avg Rate/MT</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
+          <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,1)} MT</strong></div>
+          <div class="control-metric"><span>Input Trips</span><strong>${fmtNum(s.boulder_trips,0)}</strong></div>
+          <div class="control-metric"><span>Total Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
+          <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
+          <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
+          <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
+          <div class="control-metric"><span>Kumar Balance</span><strong>${fmtINR(s.kumar_balance||0)}</strong></div>
+          <div class="control-metric glass-green"><span>Selected Period Profit / MT</span><strong>${fmtINR(s.selected_period_profit_per_tonne||0)}</strong></div>
+        </div>
+      </div>
+      <div class="card cash-card"><h3>Cash Position</h3>
+        <div class="cash-grid">
+          <div class="kpi green"><div class="kpi-label">Cash Collected</div><div class="kpi-value">${fmtINR(s.cash_collected)}</div></div>
+          <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(s.credit_sales)}</div></div>
+          <div class="kpi red"><div class="kpi-label">Receivables</div><div class="kpi-value">${fmtINR(s.receivables)}</div></div>
+          <div class="kpi navy"><div class="kpi-label">Payables</div><div class="kpi-value">${fmtINR(s.payables)}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card print-section">
+      <h3>Payment Received From Customer</h3>
+      <div class="metric-note">Only customers whose credit balance reduced are shown. Same-day sale value is adjusted before showing actual credit repayment.</div>
+      <div class="report-table-wrap">
+        <table class="report-table payment-table">
+          <thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Bank / UPI Received</th><th>Cash Received</th><th>Total Received</th><th>Sale Adjusted</th><th>Credit Repayment</th><th>Balance To Pay</th></tr></thead>
+          <tbody>${repaymentRows}</tbody>
+          <tfoot><tr><td colspan="3"><strong>Total</strong></td><td><strong>${fmtINR(repaymentBankTotal)}</strong></td><td><strong>${fmtINR(repaymentCashTotal)}</strong></td><td><strong>${fmtINR(repaymentPaymentTotal)}</strong></td><td></td><td><strong>${fmtINR(repaymentTotal)}</strong></td><td></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="card print-section">
+      <h3>Customer Wise Sales</h3>
+      <div class="report-table-wrap">
+        <table class="report-table customer-sales-table">
+          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI Paid Against Sale</th><th>Cash Paid Against Sale</th><th>Total Paid Against Sale</th><th>Credit Sale</th></tr></thead>
+          <tbody>${customerSalesRows}</tbody>
+          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
+        </table>
+      </div>
+      <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
+    </div>
+    <div class="card print-section"><h3>Full Expense List</h3><div class="tbl-wrap" style="max-height:460px;overflow:auto"><table class="expense-table"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Party</th><th>Mode</th><th>Amount</th></tr></thead><tbody>${expenseList}</tbody><tfoot><tr><td colspan="6"><strong>Total Expenses</strong></td><td><strong>${fmtINR(expenseTotal)}</strong></td></tr></tfoot></table></div></div>
+    <div class="card print-section">
+      <h3>Machine Hours Summary</h3>
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead><tr><th>Machine</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead>
+          <tbody>${machineRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="money-list">
+      <div class="card"><h3>Top Money To Collect</h3><ul class="mini-list">${rec}</ul></div>
+      <div class="card"><h3>Top Money To Pay</h3><ul class="mini-list">${pay}</ul></div>
+    </div>
+  `;
+}
+// ── Sales ──────────────────────────────────────────────────────────────────
+function calcSale(){document.getElementById('s-amt').value=((parseFloat(document.getElementById('s-qty').value)||0)*(parseFloat(document.getElementById('s-rate').value)||0)).toFixed(2);}
+async function addSale(){
+  const custId=document.getElementById('s-customer').value;
+  const custName=custId?(_customers.find(c=>c.id==custId)||{}).name||'':document.getElementById('s-cname').value;
+  const body={date:document.getElementById('s-date').value,customer_name:custName||'Cash Sale',customer_id:custId?parseInt(custId):null,material:document.getElementById('s-mat').value,qty_mt:parseFloat(document.getElementById('s-qty').value)||0,rate_per_mt:parseFloat(document.getElementById('s-rate').value)||0,payment_mode:document.getElementById('s-pay').value,vehicle_no:document.getElementById('s-vehicle').value,ticket_no:document.getElementById('s-ticket').value,hsn_code:document.getElementById('s-hsn').value||'2517',gst_rate:parseFloat(document.getElementById('s-gst').value)||5,notes:document.getElementById('s-notes').value};
+  if(!body.qty_mt||!body.rate_per_mt){flash('Enter quantity and rate',false);return;}
+  try{await api('/api/sales/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Sale added!');loadSales();['s-qty','s-rate','s-amt','s-vehicle','s-ticket','s-notes','s-cname'].forEach(id=>document.getElementById(id).value='');document.getElementById('s-customer').value='';}
+  catch(e){flash(e.message,false);}
+}
+async function loadSales(){
+  const from=document.getElementById('s-from').value,to=document.getElementById('s-to').value;
+  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('s-from').value=f;document.getElementById('s-to').value=t;return loadSales();}
+  try{
+    const rows=await api(`/api/sales/?from_date=${from}&to_date=${to}`);
+    _allData.sales=rows;_page.sales=_page.sales||1;
+    _renderCache.sales=()=>renderSales();
+    renderSales();
+  }catch(e){flash(e.message,false);}
+}
+function renderSales(){
+  const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  // totals always over ALL rows
+  let tot=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=r.amount;totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
+  let html='<table><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+thSort('sales','amount','Amount')+'<th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
+  slice.forEach(r=>{
+    const tax=r.gst_rate>0?Math.round(r.amount/(1+r.gst_rate/100)*r.gst_rate/100):0;
+    const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
+    html+=`<tr><td>${r.date}</td><td>${r.customer_name||'—'}${erp}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>₹${tax}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
+  });
+  if(!slice.length)html+='<tr><td colspan="12" class="empty">No sales for this period</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td>${fmtINR(tot)}</td><td></td><td></td><td></td><td></td></tr></tfoot></table>`;
+  document.getElementById('sales-tbl').innerHTML=html;
+  document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
+}
+async function delSale(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
+
+// ── Expenses ───────────────────────────────────────────────────────────────
+async function addExpense(){
+  const vId=document.getElementById('e-vendor').value;
+  const body={date:document.getElementById('e-date').value,category:document.getElementById('e-cat').value,vendor_id:vId?parseInt(vId):null,description:document.getElementById('e-desc').value,amount:parseFloat(document.getElementById('e-amt').value)||0,payment_mode:document.getElementById('e-pay').value,notes:document.getElementById('e-notes').value};
+  if(!body.description||!body.amount){flash('Fill description and amount',false);return;}
+  try{await api('/api/expenses/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Expense added!');loadExpenses();['e-desc','e-amt','e-notes'].forEach(id=>document.getElementById(id).value='');}
+  catch(e){flash(e.message,false);}
+}
+async function loadExpenses(){
+  const from=document.getElementById('e-from').value,to=document.getElementById('e-to').value;
+  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('e-from').value=f;document.getElementById('e-to').value=t;return loadExpenses();}
+  try{
+    const rows=await api(`/api/expenses/?from_date=${from}&to_date=${to}`);
+    _allData.expenses=rows;_page.expenses=_page.expenses||1;
+    _renderCache.expenses=()=>renderExpenses();
+    renderExpenses();
+  }catch(e){flash(e.message,false);}
+}
+function renderExpenses(){
+  const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'—'}).name:'—'};
+  const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
+  let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="7" class="empty">No expenses</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="4"><strong>TOTAL (all ${_allData.expenses.length})</strong></td><td>${fmtINR(tot)}</td><td></td></tr></tfoot></table>`;
+  document.getElementById('exp-tbl').innerHTML=html;
+  document.getElementById('exp-pager').innerHTML=pagerHTML('expenses',_allData.expenses.length);
+}
+async function delExp(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
+
+// ── Customers ──────────────────────────────────────────────────────────────
+async function addCustomer(){
+  const body={name:document.getElementById('c-name').value.trim(),gstin:document.getElementById('c-gstin').value,phone:document.getElementById('c-phone').value,address:document.getElementById('c-addr').value,opening_balance:parseFloat(document.getElementById('c-opbal').value)||0};
+  if(!body.name){flash('Enter customer name',false);return;}
+  try{await api('/api/customers/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Customer added!');['c-name','c-gstin','c-phone','c-addr'].forEach(id=>document.getElementById(id).value='');document.getElementById('c-opbal').value=0;loadCustomers();api('/api/customers/').then(d=>{_customers=d;fillCustSelect('s-customer');fillCustSelect('cr-cust');});}
+  catch(e){flash(e.message,false);}
+}
+async function loadCustomers(){
+  try{
+    const rows=await api('/api/customers/?active_only=false');
+    _customers=rows;
+    const out=await api('/api/customers/outstanding');
+    let totOut=out.reduce((s,r)=>s+r.outstanding,0);
+    document.getElementById('c-total').textContent=rows.length;
+    document.getElementById('c-total-out').textContent=fmtINR(totOut);
+    document.getElementById('c-with-bal').textContent=out.length;
+    const derived={
+      outstanding:r=>r.outstanding??r.balance??(out.find(o=>o.id===r.id)||{}).outstanding??0,
+      total_sales:r=>r.total_sales??(out.find(o=>o.id===r.id)||{}).total_sales??0,
+      total_receipts:r=>r.total_receipts??(out.find(o=>o.id===r.id)||{}).total_receipts??0,
+      manual_receipts:r=>r.manual_receipts??(out.find(o=>o.id===r.id)||{}).manual_receipts??0,
+      received:r=>r.received??r.erp_received??(out.find(o=>o.id===r.id)||{}).received??0,
+      age_0_15:r=>r.age_0_15??(out.find(o=>o.id===r.id)||{}).age_0_15??0,
+      age_16_30:r=>r.age_16_30??(out.find(o=>o.id===r.id)||{}).age_16_30??0,
+      age_31_45:r=>r.age_31_45??(out.find(o=>o.id===r.id)||{}).age_31_45??0,
+      age_45_plus:r=>r.age_45_plus??(out.find(o=>o.id===r.id)||{}).age_45_plus??0,
+    };
+    const activeRows=sortedRows(rows.filter(r=>r.active),'customers',derived);
+    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','gstin','GSTIN','loadCustomers')+thSort('customers','phone','Phone','loadCustomers')+thSort('customers','opening_balance','Opening/Adj','loadCustomers')+thSort('customers','total_sales','Total Sales','loadCustomers')+thSort('customers','received','ERP Received','loadCustomers')+thSort('customers','age_0_15','0-15','loadCustomers')+thSort('customers','age_16_30','16-30','loadCustomers')+thSort('customers','age_31_45','31-45','loadCustomers')+thSort('customers','age_45_plus','45+','loadCustomers')+thSort('customers','outstanding','Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    activeRows.forEach(r=>{
+      const ob=out.find(o=>o.id===r.id)||{};
+      const outstanding=derived.outstanding(r);
+      const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
+      html+=`<tr><td><a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+    });
+    if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No customers</td></tr>';
+    html+='</tbody></table>';
+    document.getElementById('cust-tbl').innerHTML=html;
+    fillCustSelect('cr-cust');
+  }catch(e){flash(e.message,false);}
+}
+async function showCustLedger(id,name){
+  try{
+    document.getElementById('cust-ledger-name').textContent=name;
+    document.getElementById('cust-ledger-card').style.display='block';
+    const data=await api(`/api/customers/ledger/${id}`);
+    _currentCustLedger={name,data};
+    renderCustLedger();
+    document.getElementById('cust-ledger-card').scrollIntoView({behavior:'smooth'});
+  }catch(e){flash(e.message,false);}
+}
+function renderCustLedger(){
+  if(!_currentCustLedger)return;
+  const data=_currentCustLedger.data;
+  const rows=data.entries||[];
+  const sales=sortedRows(rows.filter(r=>r.type==='sale'),'custSales',{amount:r=>r.debit||r.amount||0});
+  const ledger=sortedRows(rows,'custLedger');
+  const receipts=rows.filter(r=>r.type==='receipt');
+  const totalSales=sales.reduce((s,r)=>s+(r.debit||r.amount||0),0);
+  const totalReceipts=data.received??data.erp_received??receipts.reduce((s,r)=>s+(r.credit||r.amount||0),0);
+  let html=`<div class="kpi-row" style="margin-bottom:12px">
+    <div class="kpi blue"><div class="kpi-label">Sales Tickets</div><div class="kpi-value">${sales.length}</div></div>
+    <div class="kpi green"><div class="kpi-label">Total Sales</div><div class="kpi-value">${fmtINR(totalSales)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">ERP Received</div><div class="kpi-value">${fmtINR(totalReceipts)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Closing Balance</div><div class="kpi-value">${fmtINR(data.closing_balance||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">0-15 Days</div><div class="kpi-value">${fmtINR(data.age_0_15||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">16-30 Days</div><div class="kpi-value">${fmtINR(data.age_16_30||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">31-45 Days</div><div class="kpi-value">${fmtINR(data.age_31_45||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">45+ Days</div><div class="kpi-value">${fmtINR(data.age_45_plus||0)}</div></div>
+  </div>`;
+  html+='<div id="cust-sales-print"><h3 style="font-size:16px;margin:8px 0;color:#1565c0">Sales Data</h3>';
+  html+='<table><thead><tr>'+thSort('custSales','date','Date','renderCustLedger')+thSort('custSales','ticket_no','Ticket','renderCustLedger')+thSort('custSales','vehicle_no','Vehicle','renderCustLedger')+thSort('custSales','material','Material','renderCustLedger')+thSort('custSales','mdp_ton','MDP Ton','renderCustLedger')+thSort('custSales','qty_mt','Qty MT','renderCustLedger')+thSort('custSales','rate_per_mt','Rate','renderCustLedger')+thSort('custSales','amount','Amount','renderCustLedger')+thSort('custSales','payment_mode','Mode','renderCustLedger')+'</tr></thead><tbody>';
+  sales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
+  if(!sales.length)html+='<tr><td colspan="9" class="empty">No sales data for this customer</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${sales.length})</strong></td><td>${fmtINR(totalSales)}</td><td></td></tr></tfoot></table></div>`;
+  html+='<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Summary</h3>';
+  html+='<table><thead><tr>'+thSort('custLedger','date','Date','renderCustLedger')+thSort('custLedger','type','Type','renderCustLedger')+thSort('custLedger','description','Description','renderCustLedger')+thSort('custLedger','debit','Debit (Sale)','renderCustLedger')+thSort('custLedger','credit','Credit (Receipt)','renderCustLedger')+thSort('custLedger','balance','Balance','renderCustLedger')+'</tr></thead><tbody>';
+  ledger.forEach(r=>{
+    const isSale=r.type==='sale', isReceipt=r.type==='receipt';
+    const label=isSale?'Sale':isReceipt?'Receipt':'Opening';
+    html+=`<tr><td>${r.date||'—'}</td><td><span class="badge ${isSale?'b-credit':isReceipt?'b-paid':'b-pending'}">${label}</span></td><td>${esc(r.description||'')}</td><td>${isSale?fmtINR(r.debit||r.amount||0):'—'}</td><td>${isReceipt?fmtINR(r.credit||r.amount||0):'—'}</td><td style="font-weight:600">${fmtINR(r.balance||0)}</td></tr>`;
+  });
+  if(!ledger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
+  html+='</tbody></table></div>';
+  document.getElementById('cust-ledger-tbl').innerHTML=html;
+}
+async function addReceipt(){
+  const body={date:document.getElementById('cr-date').value,customer_id:parseInt(document.getElementById('cr-cust').value),amount:parseFloat(document.getElementById('cr-amt').value)||0,mode:document.getElementById('cr-mode').value,reference:document.getElementById('cr-ref').value,notes:document.getElementById('cr-notes').value};
+  if(!body.customer_id||!body.amount){flash('Select customer and enter amount',false);return;}
+  try{await api('/api/customers/receipts/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Receipt recorded!');['cr-amt','cr-ref','cr-notes'].forEach(id=>document.getElementById(id).value='');loadCustomers();}
+  catch(e){flash(e.message,false);}
+}
+async function deactivateCust(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
+
+// ── Vendors ────────────────────────────────────────────────────────────────
+async function addVendor(){
+  const body={name:document.getElementById('v-name').value.trim(),gstin:document.getElementById('v-gstin').value,phone:document.getElementById('v-phone').value,notes:document.getElementById('v-notes').value,opening_balance:parseFloat(document.getElementById('v-opbal').value)||0};
+  if(!body.name){flash('Enter vendor name',false);return;}
+  try{await api('/api/vendors/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Vendor added!');['v-name','v-gstin','v-phone','v-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('v-opbal').value=0;loadVendors();api('/api/vendors/').then(d=>{_vendors=d;fillVendSelect('e-vendor');fillVendSelect('vp-vend');});}
+  catch(e){flash(e.message,false);}
+}
+async function loadVendors(){
+  try{
+    const rows=await api('/api/vendors/?active_only=false');
+    _vendors=rows;
+    const pay=await api('/api/vendors/payables');
+    let totPay=pay.reduce((s,r)=>s+r.payable,0);
+    document.getElementById('v-total').textContent=rows.length;
+    document.getElementById('v-total-pay').textContent=fmtINR(totPay);
+    document.getElementById('v-with-pay').textContent=pay.length;
+    const derived={
+      payable:r=>r.payable??(pay.find(p=>p.id===r.id)||{}).payable??0,
+      total_purchases:r=>r.total_purchases??(pay.find(p=>p.id===r.id)||{}).total_purchases??0,
+      total_payments:r=>r.total_payments??(pay.find(p=>p.id===r.id)||{}).total_payments??0,
+      age_0_15:r=>r.age_0_15??(pay.find(p=>p.id===r.id)||{}).age_0_15??0,
+      age_16_30:r=>r.age_16_30??(pay.find(p=>p.id===r.id)||{}).age_16_30??0,
+      age_31_45:r=>r.age_31_45??(pay.find(p=>p.id===r.id)||{}).age_31_45??0,
+      age_45_plus:r=>r.age_45_plus??(pay.find(p=>p.id===r.id)||{}).age_45_plus??0,
+    };
+    const activeRows=sortedRows(rows.filter(r=>r.active),'vendors',derived);
+    let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','gstin','GSTIN','loadVendors')+thSort('vendors','phone','Phone','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','0-15','loadVendors')+thSort('vendors','age_16_30','16-30','loadVendors')+thSort('vendors','age_31_45','31-45','loadVendors')+thSort('vendors','age_45_plus','45+','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
+    activeRows.forEach(r=>{
+      const pb=pay.find(p=>p.id===r.id)||{};
+      const payable=derived.payable(r);
+      const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
+      html+=`<tr><td><a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
+    });
+    if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No vendors</td></tr>';
+    html+='</tbody></table>';
+    document.getElementById('vend-tbl').innerHTML=html;
+    fillVendSelect('vp-vend');
+  }catch(e){flash(e.message,false);}
+}
+async function showVendLedger(id,name){
+  try{
+    document.getElementById('vend-ledger-name').textContent=name;
+    document.getElementById('vend-ledger-card').style.display='block';
+    const data=await api(`/api/vendors/ledger/${id}`);
+    _currentVendLedger={name,data};
+    renderVendLedger();
+    document.getElementById('vend-ledger-card').scrollIntoView({behavior:'smooth'});
+  }catch(e){flash(e.message,false);}
+}
+function renderVendLedger(){
+  if(!_currentVendLedger)return;
+  const data=_currentVendLedger.data;
+  const rows=data.entries||[];
+  const bills=sortedRows(rows.filter(r=>r.type==='purchase'),'vendBills',{amount:r=>r.debit||r.amount||0});
+  const payments=sortedRows(rows.filter(r=>r.type==='payment'),'vendPayments',{amount:r=>r.credit||r.amount||0});
+  const ledger=sortedRows(rows,'vendLedger');
+  const totalBills=bills.reduce((s,r)=>s+(r.debit||r.amount||0),0);
+  const totalPayments=payments.reduce((s,r)=>s+(r.credit||r.amount||0),0);
+  const closing=rows.length?rows[rows.length-1].running_balance||0:data.opening_balance||0;
+  let html=`<div class="kpi-row" style="margin-bottom:12px">
+    <div class="kpi blue"><div class="kpi-label">Bills</div><div class="kpi-value">${bills.length}</div></div>
+    <div class="kpi red"><div class="kpi-label">Bill Amount</div><div class="kpi-value">${fmtINR(totalBills)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Payments</div><div class="kpi-value">${fmtINR(totalPayments)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Payable</div><div class="kpi-value">${fmtINR(closing)}</div></div>
+    <div class="kpi"><div class="kpi-label">0-15 Days</div><div class="kpi-value">${fmtINR(data.age_0_15||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">16-30 Days</div><div class="kpi-value">${fmtINR(data.age_16_30||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">31-45 Days</div><div class="kpi-value">${fmtINR(data.age_31_45||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">45+ Days</div><div class="kpi-value">${fmtINR(data.age_45_plus||0)}</div></div>
+  </div>`;
+  html+='<div id="vend-bills-print"><h3 style="font-size:16px;margin:8px 0;color:#c62828">Bills / Purchases</h3>';
+  html+='<table><thead><tr>'+thSort('vendBills','date','Date','renderVendLedger')+thSort('vendBills','category','Category','renderVendLedger')+thSort('vendBills','description','Description','renderVendLedger')+thSort('vendBills','amount','Amount','renderVendLedger')+thSort('vendBills','payment_mode','Mode','renderVendLedger')+'</tr></thead><tbody>';
+  bills.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.category||'—')}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${esc(r.payment_mode||'—')}</td></tr>`;});
+  if(!bills.length)html+='<tr><td colspan="5" class="empty">No bills linked to this vendor yet</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (${bills.length})</strong></td><td>${fmtINR(totalBills)}</td><td></td></tr></tfoot></table></div>`;
+  html+='<div id="vend-payments-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Payments to Vendor</h3>';
+  html+='<table><thead><tr>'+thSort('vendPayments','date','Date','renderVendLedger')+thSort('vendPayments','description','Description','renderVendLedger')+thSort('vendPayments','amount','Amount','renderVendLedger')+'</tr></thead><tbody>';
+  payments.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.credit||r.amount||0)}</strong></td></tr>`;});
+  if(!payments.length)html+='<tr><td colspan="3" class="empty">No payments recorded for this vendor</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL (${payments.length})</strong></td><td>${fmtINR(totalPayments)}</td></tr></tfoot></table></div>`;
+  html+='<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Summary</h3>';
+  html+='<table><thead><tr>'+thSort('vendLedger','date','Date','renderVendLedger')+thSort('vendLedger','type','Type','renderVendLedger')+thSort('vendLedger','description','Description','renderVendLedger')+thSort('vendLedger','debit','Purchase','renderVendLedger')+thSort('vendLedger','credit','Payment','renderVendLedger')+thSort('vendLedger','running_balance','Balance','renderVendLedger')+'</tr></thead><tbody>';
+  ledger.forEach(r=>{
+    const isBill=r.type==='purchase', isPayment=r.type==='payment';
+    html+=`<tr><td>${r.date||'—'}</td><td><span class="badge ${isBill?'b-credit':'b-paid'}">${isBill?'Bill':isPayment?'Payment':'Entry'}</span></td><td>${esc(r.description||'')}</td><td>${isBill?fmtINR(r.debit||r.amount||0):'—'}</td><td>${isPayment?fmtINR(r.credit||r.amount||0):'—'}</td><td style="font-weight:600">${fmtINR(r.running_balance||0)}</td></tr>`;
+  });
+  if(!ledger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
+  html+='</tbody></table></div>';
+  document.getElementById('vend-ledger-tbl').innerHTML=html;
+}
+async function addVendorPayment(){
+  const body={date:document.getElementById('vp-date').value,vendor_id:parseInt(document.getElementById('vp-vend').value),amount:parseFloat(document.getElementById('vp-amt').value)||0,mode:document.getElementById('vp-mode').value,reference:document.getElementById('vp-ref').value,notes:document.getElementById('vp-notes').value};
+  if(!body.vendor_id||!body.amount){flash('Select vendor and enter amount',false);return;}
+  try{await api('/api/vendors/payments/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Payment recorded!');['vp-amt','vp-ref','vp-notes'].forEach(id=>document.getElementById(id).value='');loadVendors();}
+  catch(e){flash(e.message,false);}
+}
+async function deactivateVend(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
+
+// ── Bank ───────────────────────────────────────────────────────────────────
+async function addBankAccount(){
+  const body={name:document.getElementById('ba-name').value.trim(),account_no:document.getElementById('ba-accno').value,bank_name:document.getElementById('ba-bank').value,branch:document.getElementById('ba-branch').value,ifsc:document.getElementById('ba-ifsc').value,initial_balance:parseFloat(document.getElementById('ba-initbal').value)||0,initial_balance_date:document.getElementById('ba-initdate').value};
+  if(!body.name){flash('Enter account name',false);return;}
+  try{await api('/api/bank/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Bank account added!');['ba-name','ba-accno','ba-bank','ba-branch','ba-ifsc'].forEach(id=>document.getElementById(id).value='');document.getElementById('ba-initbal').value=0;loadBankAccounts();}
+  catch(e){flash(e.message,false);}
+}
+async function loadBankAccounts(){
+  try{
+    const accts=await api('/api/bank/accounts');
+    _bankAccounts=accts;
+    fillAcctSelect('bt-acct');fillAcctSelect('stmt-acct');
+    const sumDiv=document.getElementById('bank-summary-cards');
+    let totBal=accts.reduce((s,a)=>s+(a.current_balance||0),0);
+    let html=`<div class="kpi navy"><div class="kpi-label">Total Bank Balance</div><div class="kpi-value">${fmtINR(totBal)}</div></div>`;
+    accts.filter(a=>a.active).forEach(a=>{const color=(a.current_balance||0)<0?'red':'green';const name=displayBankAccountName(a);html+=`<div class="kpi ${color}"><div class="kpi-label">${esc(name)}</div><div class="kpi-value">${fmtINR(a.current_balance||0)}</div><div class="kpi-sub">${name==='CASH BALANCE IN OFFICE'?'':esc(a.bank_name||'')} ${a.account_no?'...'+esc(a.account_no.slice(-4)):''}</div></div>`;});
+    sumDiv.innerHTML=html;
+  }catch(e){}
+}
+async function addBankTxn(){
+  const body={date:document.getElementById('bt-date').value,bank_account_id:parseInt(document.getElementById('bt-acct').value),txn_type:document.getElementById('bt-type').value,description:document.getElementById('bt-desc').value,amount:parseFloat(document.getElementById('bt-amt').value)||0,reference:document.getElementById('bt-ref').value};
+  if(!body.bank_account_id||!body.amount||!body.description){flash('Fill account, description and amount',false);return;}
+  try{await api('/api/bank/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Transaction added!');['bt-desc','bt-amt','bt-ref'].forEach(id=>document.getElementById(id).value='');loadBankAccounts();loadStatement();}
+  catch(e){flash(e.message,false);}
+}
+async function loadStatement(){
+  const aId=document.getElementById('stmt-acct').value;
+  if(!aId)return;
+  try{
+    const rows=await api(`/api/bank/accounts/${aId}/statement`);
+    _allData.bankstmt=rows;
+    renderStatement();
+  }catch(e){}
+}
+function renderStatement(){
+  const rows=sortedRows(_allData.bankstmt,'bankstmt',{max_amount:r=>Math.max(r.credit||0,r.debit||0)});
+  let html='<table><thead><tr>'+thSort('bankstmt','date','Date','renderStatement')+thSort('bankstmt','description','Description','renderStatement')+thSort('bankstmt','credit','Credit','renderStatement')+thSort('bankstmt','debit','Debit','renderStatement')+thSort('bankstmt','balance','Balance','renderStatement')+thSort('bankstmt','reference','Ref','renderStatement')+'</tr></thead><tbody>';
+  rows.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.description}</td><td style="color:#2e7d32">${r.credit?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit?fmtINR(r.debit):'—'}</td><td style="font-weight:700">${fmtINR(r.balance)}</td><td>${r.reference||'—'}</td></tr>`;});
+    if(!rows.length)html+='<tr><td colspan="7" class="empty">No transactions</td></tr>';
+    html+='</tbody></table>';
+    document.getElementById('bank-stmt').innerHTML=html;
+}
+async function delBankTxn(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+// ── Operations ─────────────────────────────────────────────────────────────
+function loadOpsDefaults(){loadBoulders();loadMachines();loadLabour();loadParts();loadEMI();loadWorkers();}
+function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
+function calcRunHrs(){document.getElementById('m-run').value=(Math.max(0,(parseFloat(document.getElementById('m-end').value)||0)-(parseFloat(document.getElementById('m-start').value)||0))).toFixed(1);}
+function calcLabour(){document.getElementById('l-amt').value=((parseFloat(document.getElementById('l-days').value)||0)*(parseFloat(document.getElementById('l-wage').value)||0)).toFixed(0);}
+function calcParts(){document.getElementById('p-total').value=((parseFloat(document.getElementById('p-qty').value)||0)*(parseFloat(document.getElementById('p-price').value)||0)).toFixed(0);}
+
+async function addBoulder(){
+  const body={date:document.getElementById('b-date').value,trips:parseInt(document.getElementById('b-trips').value)||0,tonnes_per_trip:parseFloat(document.getElementById('b-tpt').value)||0,source:document.getElementById('b-source').value||'Quarry Face',notes:document.getElementById('b-notes').value};
+  if(!body.trips||!body.tonnes_per_trip){flash('Enter trips and MT/trip',false);return;}
+  try{await api('/api/boulders/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Boulder input saved!');['b-trips','b-tpt','b-total','b-notes'].forEach(id=>document.getElementById(id).value='');loadBoulders();}
+  catch(e){flash(e.message,false);}
+}
+async function loadBoulders(){
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(!f||!t){const[a,b]=calcPreset('mtd');document.getElementById('op-from').value=a;document.getElementById('op-to').value=b;return loadBoulders();}
+  try{
+    const rows=await api(`/api/boulders/?from_date=${f}&to_date=${t}`);
+    _allData.boulders=rows;_page.boulders=_page.boulders||1;
+    _renderCache.boulders=()=>renderBoulders();
+    renderBoulders();
+  }catch(e){}
+}
+function renderBoulders(){
+  const rows=_allData.boulders,cur=_page.boulders,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let tot=0;rows.forEach(r=>{tot+=r.total_tonnes;});
+  let html='<table><thead><tr><th>Date</th><th>Source</th><th>Trips</th><th>MT/Trip</th><th>Total MT</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.source}</td><td>${r.trips}</td><td>${r.tonnes_per_trip}</td><td><strong>${r.total_tonnes} MT</strong></td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="6" class="empty">No entries</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="4"><strong>TOTAL (all ${rows.length})</strong></td><td>${tot.toFixed(1)} MT</td></tr></tfoot></table>`;
+  document.getElementById('boulders-tbl').innerHTML=html;
+  document.getElementById('boulders-pager').innerHTML=pagerHTML('boulders',rows.length);
+}
+async function delBoulder(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
+
+async function addMachine(){
+  const body={date:document.getElementById('m-date').value,machine_name:document.getElementById('m-mach').value,start_hours:parseFloat(document.getElementById('m-start').value)||0,end_hours:parseFloat(document.getElementById('m-end').value)||0,production_mt:parseFloat(document.getElementById('m-prod').value)||0,fuel_liters:parseFloat(document.getElementById('m-fuel').value)||0,notes:document.getElementById('m-notes').value};
+  try{await api('/api/machines/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Reading saved!');['m-start','m-end','m-run','m-prod','m-fuel','m-notes'].forEach(id=>document.getElementById(id).value='');loadMachines();}
+  catch(e){flash(e.message,false);}
+}
+async function loadMachines(){
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(!f||!t)return;
+  try{
+    const rows=await api(`/api/machines/?from_date=${f}&to_date=${t}`);
+    _allData.machines=rows;_page.machines=_page.machines||1;
+    _renderCache.machines=()=>renderMachines();
+    renderMachines();
+  }catch(e){}
+}
+function renderMachines(){
+  const rows=_allData.machines,cur=_page.machines,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Start Hrs</th><th>End Hrs</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.start_hours}</td><td>${r.end_hours}</td><td><strong>${r.running_hours}</strong></td><td>${r.production_mt}</td><td>${r.fuel_liters}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No readings</td></tr>';
+  html+=`</tbody></table>`;
+  document.getElementById('machines-tbl').innerHTML=html;
+  document.getElementById('machines-pager').innerHTML=pagerHTML('machines',rows.length);
+}
+async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+async function addLabour(){
+  const body={date:document.getElementById('l-date').value,worker_name:document.getElementById('l-name').value,worker_type:document.getElementById('l-type').value,days:parseFloat(document.getElementById('l-days').value)||1,daily_wage:parseFloat(document.getElementById('l-wage').value)||0,paid:document.getElementById('l-paid').value==='true',notes:document.getElementById('l-notes').value};
+  if(!body.worker_name||!body.daily_wage){flash('Enter worker name and wage',false);return;}
+  try{await api('/api/labour/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Labour entry added!');['l-name','l-wage','l-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('l-days').value=1;loadLabour();}
+  catch(e){flash(e.message,false);}
+}
+async function loadLabour(){
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(!f||!t)return;
+  try{
+    const rows=await api(`/api/labour/?from_date=${f}&to_date=${t}`);
+    _allData.labour=rows;_page.labour=_page.labour||1;
+    _renderCache.labour=()=>renderLabour();
+    renderLabour();
+  }catch(e){}
+}
+function renderLabour(){
+  const rows=_allData.labour,cur=_page.labour,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let tot=0;rows.forEach(r=>{tot+=r.amount;});
+  let html='<table><thead><tr><th>Date</th><th>Worker</th><th>Type</th><th>Days</th><th>Rate</th><th>Amount</th><th>Status</th><th class="no-print">Action</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.worker_name}</td><td>${r.worker_type}</td><td>${r.days}</td><td>₹${r.daily_wage}</td><td>${fmtINR(r.amount)}</td><td><span class="badge ${r.paid?'b-paid':'b-unpaid'}">${r.paid?'Paid':'Pending'}</span></td><td class="no-print">${!r.paid?`<button class="btn btn-sm btn-ok" onclick="markPaid(${r.id})">Paid</button>`:''}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No entries</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="5"><strong>TOTAL (all ${rows.length})</strong></td><td>${fmtINR(tot)}</td><td></td><td class="no-print"></td></tr></tfoot></table>`;
+  document.getElementById('labour-tbl').innerHTML=html;
+  document.getElementById('labour-pager').innerHTML=pagerHTML('labour',rows.length);
+}
+async function markPaid(id){await api(`/api/labour/${id}/paid`,{method:'PATCH'});loadLabour();}
+async function delLabour(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+async function loadMuster(){
+  const r=await api('/api/workers/');_musterWorkers=r;
+  if(!r.length){document.getElementById('muster-sheet').innerHTML='<div class="empty">No workers in registry. Add in Workers tab first.</div>';return;}
+  let html='<table><thead><tr><th style="width:40px">Present</th><th>Worker</th><th>Type</th><th>Daily Wage</th><th style="width:80px">Days</th></tr></thead><tbody>';
+  r.forEach(w=>{html+=`<tr><td style="text-align:center"><input type="checkbox" id="mp-${w.id}" checked style="width:18px;height:18px"></td><td><strong>${w.name}</strong></td><td>${w.worker_type}</td><td>₹${w.daily_wage}</td><td><input type="number" id="md-${w.id}" value="1" min="0" max="2" step="0.5" style="width:70px;padding:5px 8px;border:1.5px solid #e0e0e0;border-radius:4px;font-size:13px"></td></tr>`;});
+  html+='</tbody></table>';
+  document.getElementById('muster-sheet').innerHTML=html;
+  document.getElementById('muster-save-btn').style.display='inline-block';
+}
+async function saveMuster(){
+  const d=document.getElementById('mu-date').value;
+  const entries=_musterWorkers.map(w=>({worker_id:w.id,present:document.getElementById(`mp-${w.id}`)?.checked||false,days:parseFloat(document.getElementById(`md-${w.id}`)?.value||1)}));
+  try{const r=await api(`/api/workers/muster?muster_date=${d}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entries)});flash(`Muster saved! ${r.saved} workers.`);}
+  catch(e){flash(e.message,false);}
+}
+
+async function addPart(){
+  const body={date:document.getElementById('p-date').value,machine_name:document.getElementById('p-mach').value,part_name:document.getElementById('p-part').value,quantity:parseFloat(document.getElementById('p-qty').value)||1,unit_price:parseFloat(document.getElementById('p-price').value)||0,supplier:document.getElementById('p-supplier').value,notes:document.getElementById('p-notes').value};
+  if(!body.part_name||!body.unit_price){flash('Enter part name and price',false);return;}
+  try{await api('/api/parts/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Part added!');['p-part','p-price','p-supplier','p-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('p-qty').value=1;document.getElementById('p-total').value='';loadParts();}
+  catch(e){flash(e.message,false);}
+}
+async function loadParts(){
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(!f||!t)return;
+  try{
+    const rows=await api(`/api/parts/?from_date=${f}&to_date=${t}`);
+    _allData.parts=rows;_page.parts=_page.parts||1;
+    _renderCache.parts=()=>renderParts();
+    renderParts();
+  }catch(e){}
+}
+function renderParts(){
+  const rows=_allData.parts,cur=_page.parts,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let tot=0;rows.forEach(r=>{tot+=r.total_amount;});
+  let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Part</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Supplier</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.part_name}</td><td>${r.quantity}</td><td>₹${r.unit_price}</td><td>${fmtINR(r.total_amount)}</td><td>${r.supplier||'—'}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No parts</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="5"><strong>TOTAL (all ${rows.length})</strong></td><td>${fmtINR(tot)}</td><td></td></tr></tfoot></table>`;
+  document.getElementById('parts-tbl').innerHTML=html;
+  document.getElementById('parts-pager').innerHTML=pagerHTML('parts',rows.length);
+}
+async function delPart(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+async function addEMI(){
+  const body={machine_name:document.getElementById('emi-mach').value,emi_month:document.getElementById('emi-month').value,emi_amount:parseFloat(document.getElementById('emi-amt').value)||0,due_date:document.getElementById('emi-due').value,notes:document.getElementById('emi-notes').value};
+  if(!body.emi_month||!body.emi_amount){flash('Fill month and amount',false);return;}
+  try{await api('/api/emi/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('EMI record added!');['emi-amt','emi-notes'].forEach(id=>document.getElementById(id).value='');loadEMI();}
+  catch(e){flash(e.message,false);}
+}
+async function loadEMI(){
+  try{const rows=await api('/api/emi/');
+    let html='<table><thead><tr><th>Machine</th><th>Month</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Paid Date</th><th class="no-print">Action</th></tr></thead><tbody>';
+    rows.forEach(r=>{const ov=r.status!=='Paid'&&r.due_date&&new Date(r.due_date)<new Date();html+=`<tr style="${ov?'background:#fff5f5':''}"><td>${r.machine_name}</td><td>${r.emi_month}</td><td><strong>${fmtINR(r.emi_amount)}</strong></td><td>${r.due_date||'—'}</td><td><span class="badge ${r.status==='Paid'?'b-paid':ov?'b-overdue':'b-pending'}">${ov?'OVERDUE':r.status}</span></td><td>${r.paid_date||'—'}</td><td class="no-print">${r.status!=='Paid'?`<button class="btn btn-sm btn-ok" onclick="markEMIPaid(${r.id})">Mark Paid</button>`:''}</td></tr>`;});
+    if(!rows.length)html+='<tr><td colspan="7" class="empty">No EMI records</td></tr>';
+    html+='</tbody></table>';document.getElementById('emi-tbl').innerHTML=html;}catch(e){}
+}
+async function markEMIPaid(id){await api(`/api/emi/${id}/pay?paid_date=${today()}`,{method:'PATCH'});flash('EMI marked paid!');loadEMI();}
+async function delEMI(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+async function addWorker(){
+  const body={name:document.getElementById('w-name').value.trim(),worker_type:document.getElementById('w-type').value,daily_wage:parseFloat(document.getElementById('w-wage').value)||0};
+  if(!body.name||!body.daily_wage){flash('Enter name and wage',false);return;}
+  try{await api('/api/workers/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Worker added!');['w-name','w-wage'].forEach(id=>document.getElementById(id).value='');loadWorkers();}
+  catch(e){flash(e.message,false);}
+}
+async function loadWorkers(){
+  try{const rows=await api('/api/workers/?active_only=false');
+    let html='<table><thead><tr><th>Name</th><th>Type</th><th>Daily Wage</th><th>Status</th></tr></thead><tbody>';
+    rows.forEach(r=>{html+=`<tr style="${!r.active?'opacity:.5':''}"><td><strong>${r.name}</strong></td><td>${r.worker_type}</td><td>₹${r.daily_wage}/day</td><td><span class="badge ${r.active?'b-paid':'b-unpaid'}">${r.active?'Active':'Inactive'}</span></td></tr>`;});
+    if(!rows.length)html+='<tr><td colspan="5" class="empty">No workers</td></tr>';
+    html+='</tbody></table>';document.getElementById('workers-tbl').innerHTML=html;}catch(e){}
+}
+async function removeWorker(id,name){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
+
+// ── Reports ────────────────────────────────────────────────────────────────
+async function loadConfig(){
+  try{const c=await api('/api/exports/config');document.getElementById('cfg-name').value=c.company_name||'';document.getElementById('cfg-gstin').value=c.gstin||'';document.getElementById('cfg-state').value=c.state_code||'29';}catch(e){}
+}
+async function saveConfig(){
+  const body={company_name:document.getElementById('cfg-name').value,gstin:document.getElementById('cfg-gstin').value,state_code:document.getElementById('cfg-state').value};
+  try{await api('/api/exports/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Config saved!');}
+  catch(e){flash(e.message,false);}
+}
+function downloadAudit(){const f=document.getElementById('audit-from').value,t=document.getElementById('audit-to').value;if(!f||!t){flash('Select date range',false);return;}window.open(`/api/reports/audit?from_date=${f}&to_date=${t}`,'_blank');}
+function downloadTallySales(){const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;window.open(`/api/exports/tally/sales?from_date=${f}&to_date=${t}`,'_blank');}
+function downloadTallyExp(){const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;window.open(`/api/exports/tally/expenses?from_date=${f}&to_date=${t}`,'_blank');}
+async function downloadGSTR1(){
+  const[yr,mo]=document.getElementById('gst-month').value.split('-');
+  const url=`/api/exports/gstr1?year=${yr}&month=${parseInt(mo)}`;
+  try{
+    const r=await fetch(url);const data=await r.json();
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`GSTR1_${yr}_${mo}.json`;a.click();
+    document.getElementById('gst-preview').style.display='block';
+    document.getElementById('gst-preview').textContent=`GSTIN: ${data.gstin}\nPeriod: ${data.fp}\nB2B Entries: ${(data.b2b||[]).length}\nB2C Summary: ${(data.b2cs||[]).length} entries\nHSN Entries: ${(data.hsn?.data||[]).length}`;
+    flash('GSTR-1 JSON downloaded!');
+  }catch(e){flash(e.message,false);}
+}
+
+// ── ERP Bank Transactions ─────────────────────────────────────────────────────
+async function loadErpBank(){
+  const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
+  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
+  try{
+    const rows=await api(`/api/sync/erp/bank?from_date=${from}&to_date=${to}`);
+    _allData.erpbank=rows;_page.erpbank=1;_renderCache.erpbank=()=>renderErpBank();renderErpBank();
+  }catch(e){flash(e.message,false);}
+}
+function renderErpBank(){
+  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let totC=0,totD=0;_allData.erpbank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
+  let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.bank_name||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.credit>0?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit>0?fmtINR(r.debit):'—'}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="5" class="empty">No bank transactions</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.erpbank.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totC)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totD)}</strong></td></tr></tfoot></table>`;
+  document.getElementById('erp-bank-tbl').innerHTML=html;
+  document.getElementById('erp-bank-pager').innerHTML=pagerHTML('erpbank',_allData.erpbank.length);
+}
+
+// ── ERP Cash Ledger ───────────────────────────────────────────────────────────
+async function loadErpCash(){
+  const from=document.getElementById('ec-from').value,to=document.getElementById('ec-to').value;
+  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
+  try{
+    const rows=await api(`/api/sync/erp/cash?from_date=${from}&to_date=${to}`);
+    _allData.erpcash=rows;_page.erpcash=1;_renderCache.erpcash=()=>renderErpCash();renderErpCash();
+  }catch(e){flash(e.message,false);}
+}
+function renderErpCash(){
+  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let totR=0,totP=0;_allData.erpcash.forEach(r=>{totR+=r.received;totP+=r.paid;});
+  let html='<table><thead><tr>'+thSort('erpcash','date','Date')+thSort('erpcash','ledger','Ledger')+thSort('erpcash','description','Description')+thSort('erpcash','received','Received (In)')+thSort('erpcash','paid','Paid (Out)')+thSort('erpcash','balance','Balance')+'</tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.ledger||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.received>0?fmtINR(r.received):'—'}</td><td style="color:#c62828">${r.paid>0?fmtINR(r.paid):'—'}</td><td style="font-weight:600">${r.balance!=null?fmtINR(r.balance):'—'}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="6" class="empty">No cash ledger entries</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.erpcash.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totR)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totP)}</strong></td><td></td></tr></tfoot></table>`;
+  document.getElementById('erp-cash-tbl').innerHTML=html;
+  document.getElementById('erp-cash-pager').innerHTML=pagerHTML('erpcash',_allData.erpcash.length);
+}
+
+// ── IOT Movements ─────────────────────────────────────────────────────────────
+async function loadIot(){
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  if(!f||!t)return;
+  try{
+    const rows=await api(`/api/sync/erp/iot?from_date=${f}&to_date=${t}`);
+    _allData.iot=rows;_page.iot=1;_renderCache.iot=()=>renderIot();renderIot();
+  }catch(e){}
+}
+function renderIot(){
+  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  let html='<table><thead><tr>'+thSort('iot','dt','Date/Time')+thSort('iot','linked','Type')+thSort('iot','ticket','Ticket')+thSort('iot','vehicle','Vehicle')+thSort('iot','material','Material')+thSort('iot','party','Party')+thSort('iot','qty','Qty')+thSort('iot','crusher','Crusher')+'</tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td style="white-space:nowrap">${r.dt}</td><td><span class="badge" style="background:#e3f2fd;color:#1565c0">${r.linked||'—'}</span></td><td>${r.ticket||'—'}</td><td>${r.vehicle||'—'}</td><td>${r.material||'—'}</td><td>${r.party||'—'}</td><td>${r.qty||'—'}</td><td>${r.crusher||'—'}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No IOT movements for this period</td></tr>';
+  html+='</tbody></table>';
+  document.getElementById('iot-tbl').innerHTML=html;
+  document.getElementById('iot-pager').innerHTML=pagerHTML('iot',_allData.iot.length);
+}
+
+// ── ERP Sync ───────────────────────────────────────────────────────────────
+function setErpDates(f,t){document.getElementById('erp-from').value=f;document.getElementById('erp-to').value=t;}
+
+async function saveErpConfig(){
+  const body={erp_base:document.getElementById('erp-base').value,erp_org:document.getElementById('erp-org').value,erp_username:document.getElementById('erp-user').value,erp_password:document.getElementById('erp-pass').value};
+  try{await api('/api/sync/erp/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('ERP credentials saved!');}
+  catch(e){flash(e.message,false);}
+}
+
+async function loadErpConfig(){
+  try{
+    const c=await api('/api/sync/erp/config');
+    document.getElementById('erp-base').value=c.erp_base||'https://erp.loctell.com';
+    document.getElementById('erp-org').value=c.erp_org||'';
+    document.getElementById('erp-user').value=c.erp_username||'';
+    // don't pre-fill password
+  }catch(e){}
+}
+
+async function runErpSync(){
+  const f=document.getElementById('erp-from').value,t=document.getElementById('erp-to').value;
+  if(!f||!t){flash('Select sync date range',false);return;}
+  const syncSales=document.getElementById('sync-sales').checked;
+  const syncExp=document.getElementById('sync-expenses').checked;
+  const syncBank=document.getElementById('sync-bank').checked;
+  const syncCash=document.getElementById('sync-cash').checked;
+  const syncIot=document.getElementById('sync-iot').checked;
+  const syncDeb=document.getElementById('sync-debtors').checked;
+  const syncCred=document.getElementById('sync-creditors').checked;
+  const btn=document.getElementById('sync-btn');
+  btn.disabled=true;btn.textContent='⏳ Syncing…';
+  const res=document.getElementById('sync-result');
+  res.style.display='block';res.style.background='#e3f2fd';
+  res.innerHTML='⏳ Syncing all data streams from ERP…<br><small style="color:#555">Sales/Expenses/Bank/Cash scanned day-by-day. IOT &amp; balances: full range in one call.<br>Full month may take 2–4 minutes.</small>';
+  try{
+    const url=`/api/sync/erp?from_date=${f}&to_date=${t}&sync_sales=${syncSales}&sync_expenses=${syncExp}&sync_bank=${syncBank}&sync_cash=${syncCash}&sync_iot=${syncIot}&sync_debtors=${syncDeb}&sync_creditors=${syncCred}`;
+    const r=await api(url,{method:'POST'});
+    res.style.background='#e8f5e9';
+    const custNew=r.customers_created||0,custUpd=r.customers_updated||0;
+    const vendNew=r.vendors_created||0,vendUpd=r.vendors_updated||0;
+    const rows=[
+      ['Sales (tickets)',r.sales_imported,r.sales_skipped],
+      ['Expenses',r.expenses_imported,r.expenses_skipped||0],
+      ['Bank Transactions',r.bank_imported||0,'—'],
+      ['Cash Ledger Entries',r.cash_imported||0,'—'],
+      ['IOT Movements',r.iot_imported||0,'—'],
+      ['ERP Customer Received',r.customer_receipts_imported||0,r.customer_receipts_updated||0],
+      ['Customers new / updated',custNew,custUpd],
+      ['Vendors new / updated',vendNew,vendUpd],
+    ];
+    res.innerHTML=`<strong>✅ ERP Sync Complete!</strong>
+      <table style="margin-top:8px;border-collapse:collapse;font-size:13px;width:100%">
+        <tr style="background:#c8e6c9"><th style="text-align:left;padding:4px 8px">Category</th><th style="padding:4px 8px">Imported / New</th><th style="padding:4px 8px">Skipped / Updated</th></tr>
+        ${rows.map((row,i)=>`<tr style="${i%2?'background:#f1f8f1':''}"><td style="padding:4px 8px">${row[0]}</td><td style="text-align:center;font-weight:700;color:#1b5e20">${row[1]}</td><td style="text-align:center;color:#888">${row[2]}</td></tr>`).join('')}
+      </table>
+      ${r.errors&&r.errors.length?'<div style="margin-top:8px;color:#c62828;font-size:12px">⚠ '+r.errors.join(' | ')+'</div>':''}`;
+    flash(`Synced! ${r.sales_imported} sales · ${r.expenses_imported} exp · ${r.bank_imported||0} bank · ${r.cash_imported||0} cash · ${r.iot_imported||0} IOT`);
+    if(document.getElementById('section-sales').classList.contains('active'))loadSales();
+    if(document.getElementById('section-customers').classList.contains('active'))loadCustomers();
+    if(document.getElementById('section-vendors').classList.contains('active'))loadVendors();
+    if(document.getElementById('section-bank').classList.contains('active')){loadErpBank();loadErpCash();}
+  }catch(e){
+    res.style.background='#ffebee';
+    res.innerHTML=`<strong>❌ Sync Failed</strong><br>${e.message}`;
+    flash(e.message,false);
+  }finally{btn.disabled=false;btn.textContent='🔄 Sync from ERP Now';}
 }
 </script>
 </body>
