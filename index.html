@@ -3,8 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CrusherOps — Live Dashboard</title>
+<title>CrusherOps — Login</title>
 <style>
+  /* LOGIN */
+  #login-screen {
+    position: fixed; inset: 0; background: #0f172a;
+    display: flex; align-items: center; justify-content: center; z-index: 999;
+  }
+  .login-box {
+    background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+    padding: 36px 32px; width: 100%; max-width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .login-box h2 { font-size: 22px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .login-box p  { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+  .login-box label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
+  .login-box input {
+    width: 100%; padding: 10px 14px; background: #0f172a; border: 1px solid #334155;
+    border-radius: 8px; color: #f1f5f9; font-size: 14px; margin-bottom: 16px; outline: none;
+  }
+  .login-box input:focus { border-color: #6366f1; }
+  .login-box button {
+    width: 100%; padding: 11px; background: #6366f1; color: #fff; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px;
+  }
+  .login-box button:hover { background: #4f46e5; }
+  .login-error { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: center; display: none; }
+</style>
   :root {
     --bg: #0f172a;
     --card: #1e293b;
@@ -89,6 +113,20 @@
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h2>⛏ CrusherOps</h2>
+    <p>Operations Dashboard — Sign in to continue</p>
+    <label>Username</label>
+    <input type="text" id="login-user" placeholder="Enter username" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error">Incorrect username or password</div>
+  </div>
+</div>
 
 <div class="header">
   <h1>⛏ CrusherOps</h1>
@@ -459,9 +497,43 @@ function switchTab(name) {
   if (panel) panel.classList.add('active');
 }
 
+// ── AUTH ──────────────────────────────────────────────────────────
+const VALID_USER = 'crusher';
+const VALID_HASH = '118ede621ddb6f2ec0078c61abc02bdf2c4d6e350e5b22383d661e3723181c08';
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const hash = await sha256(pass);
+  if (user === VALID_USER && hash === VALID_HASH) {
+    sessionStorage.setItem('auth', '1');
+    document.getElementById('login-screen').style.display = 'none';
+    load();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function checkAuth() {
+  if (sessionStorage.getItem('auth') === '1') {
+    document.getElementById('login-screen').style.display = 'none';
+    return true;
+  }
+  return false;
+}
+
 // Load data on start and refresh every 5 minutes
-load();
-setInterval(load, 5 * 60 * 1000);
+if (checkAuth()) {
+  load();
+  setInterval(load, 5 * 60 * 1000);
+} else {
+  setInterval(() => { if(checkAuth()) { load(); setInterval(load, 5*60*1000); } }, 200);
+}
 </script>
 </body>
 </html>
