@@ -498,41 +498,27 @@ function switchTab(name) {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────
-const VALID_USER = 'crusher';
-const VALID_HASH = '118ede621ddb6f2ec0078c61abc02bdf2c4d6e350e5b22383d661e3723181c08';
+const CREDS = [['crusher','Otomy@2026'],['admin','Crusher@2026']];
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-async function doLogin() {
+function doLogin() {
   const user = document.getElementById('login-user').value.trim();
   const pass = document.getElementById('login-pass').value;
-  const hash = await sha256(pass);
-  if (user === VALID_USER && hash === VALID_HASH) {
+  const ok = CREDS.some(([u,p]) => u === user && p === pass);
+  if (ok) {
     sessionStorage.setItem('auth', '1');
     document.getElementById('login-screen').style.display = 'none';
     load();
+    setInterval(load, 5 * 60 * 1000);
   } else {
     document.getElementById('login-error').style.display = 'block';
   }
 }
 
-function checkAuth() {
-  if (sessionStorage.getItem('auth') === '1') {
-    document.getElementById('login-screen').style.display = 'none';
-    return true;
-  }
-  return false;
-}
-
 // Load data on start and refresh every 5 minutes
-if (checkAuth()) {
+if (sessionStorage.getItem('auth') === '1') {
+  document.getElementById('login-screen').style.display = 'none';
   load();
   setInterval(load, 5 * 60 * 1000);
-} else {
-  setInterval(() => { if(checkAuth()) { load(); setInterval(load, 5*60*1000); } }, 200);
 }
 </script>
 </body>
