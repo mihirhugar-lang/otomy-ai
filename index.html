@@ -1002,6 +1002,7 @@ function _doLogin(){
   const p=document.getElementById('_lp').value;
   if(_CREDS.some(([a,b])=>a===u&&b===p)){
     sessionStorage.setItem('_auth','1');
+    sessionStorage.setItem('crusherops_unlocked','1');
     document.getElementById('_login').style.display='none';
     if(_REMOTE){document.body.classList.add('readonly');}
   } else {
@@ -1012,6 +1013,7 @@ function _doLogin(){
 if(_REMOTE){
   // Check session
   if(sessionStorage.getItem('_auth')==='1'){
+    sessionStorage.setItem('crusherops_unlocked','1');
     document.getElementById('_login').style.display='none';
     document.body.classList.add('readonly');
   }
@@ -1152,6 +1154,10 @@ async function _filterList(file,from,to){
     return _jresp(rows);
   }catch{return _jresp([]);}
 }
+// On remote: block the enforceLaunchLogin redirect — we handle auth via our overlay
+if(_REMOTE){
+  window._blockLoginRedirect=true;
+}
 // ── END REMOTE MODE ──────────────────────────────────────────────────
 const API='';
 let _customers=[], _vendors=[], _bankAccounts=[], _musterWorkers=[];
@@ -1192,6 +1198,7 @@ let _dashPrefetched=false;
 let _canWrite=true;
 
 function enforceLaunchLogin(){
+  if(window._blockLoginRedirect)return;
   try{
     if(sessionStorage.getItem('crusherops_unlocked')==='1')return;
     fetch('/api/logout',{method:'POST',keepalive:true}).catch(()=>{});
