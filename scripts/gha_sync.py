@@ -173,8 +173,8 @@ def fetch_boulders(sess, from_d, to_d):
         ).text
 
         def parse_table(html, table_id, label_key):
-            m = re.search(rf"<table[^>]*id=['\\"]{re.escape(table_id)}['\"][^>]*>(.*?)</table>",
-                          html, re.DOTALL | re.IGNORECASE)
+            pat = r"<table[^>]*id=['\"]" + re.escape(table_id) + r"['\"][^>]*>(.*?)</table>"
+            m = re.search(pat, html, re.DOTALL | re.IGNORECASE)
             rows, total_trips, total_tonnes = [], 0.0, 0.0
             if not m:
                 return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
