@@ -356,6 +356,73 @@ def build_control(sales, expenses, from_d, to_d, boulders=None):
         "trend": trend, "top_receivables": [], "top_payables": [], "alerts": alerts,
     }
 
+def fetch_debtors(sess):
+    """Fetch customer outstanding balances from ERP."""
+    debtors = []
+    try:
+        ds = date.today().strftime("%d-%m-%Y")
+        start_at, length = 0, 500
+        total = None
+        while total is None or start_at < total:
+            payload = sess.get(
+                f"{ERP_BASE}/crusher/ListCustomerBalance",
+                params={"date": ds, "type": 1, "sortByName": -1, "sortByPayment": -1,
+                        "customerId": -1, "draw": 1, "start": start_at, "length": length},
+                timeout=35, verify=True,
+            ).json()
+            rows = payload.get("data", []) or []
+            total = int(payload.get("recordsTotal", len(rows)))
+            if not rows:
+                break
+            for row in rows:
+                if len(row) < 4:
+                    continue
+                raw_name = re.sub(r"<span[^>]*>.*?</span>", " ", str(row[0]), flags=re.IGNORECASE | re.DOTALL)
+                name = re.sub(r"\s+", " ", _clean(raw_name)).strip()
+                if not name or name.upper() in ("CUSTOMER", "TOTAL", "NAME", "SR NO", ""):
+                    continue
+                billed  = _num(row[2]) if len(row) > 2 else 0
+                received = _num(row[3]) if len(row) > 3 else 0
+                action_html = str(row[4] or "") if len(row) > 4 else ""
+                m = re.search(r"viewLedgerTransactions\?customerId=(\d+)", action_html, re.IGNORECASE)
+                debtors.append({
+                    "name": name[:200],
+                    "outstanding": round(billed - received, 2),
+                    "billed": round(billed, 2),
+                    "received": round(received, 2),
+                    "erp_customer_id": int(m.group(1)) if m else None,
+                })
+            start_at += len(rows)
+            if len(rows) < length:
+                break
+    except Exception as e:
+        print(f"  debtors fetch error: {e}")
+    return debtors
+
+
+def fetch_creditors(sess):
+    """Fetch vendor outstanding payables from ERP."""
+    creditors = []
+    try:
+        ds = date.today().strftime("%d-%m-%Y")
+        data = json.loads(sess.get(
+            f"{ERP_BASE}/crusher/ListSupplierBalance?date={ds}&type=1",
+            timeout=35, verify=True).text)
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or not cells[0]:
+                continue
+            name = cells[0].strip()
+            if name.upper() in ("SUPPLIER", "TOTAL", "NAME", ""):
+                continue
+            credit = _num(cells[1]) if len(cells) > 1 else 0
+            debit  = _num(cells[2]) if len(cells) > 2 else 0
+            creditors.append({"name": name[:200], "payable": round(debit - credit, 2)})
+    except Exception as e:
+        print(f"  creditors fetch error: {e}")
+    return creditors
+
+
 def write(filename, data):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(DATA_DIR / filename, "w") as f:
@@ -423,6 +490,74 @@ def main():
         "cash": cash_rows,
         "bank": bank_rows,
     })
+
+    # Debtors (customer outstanding)
+    print("  Fetching debtors...")
+    debtors = fetch_debtors(sess)
+    print(f"  {len(debtors)} customers")
+
+    # Build sales totals per customer name for customers.json
+    sales_by_customer = {}
+    for s in all_sales:
+        c = s["customer_name"]
+        g = sales_by_customer.setdefault(c, {"total_sales": 0.0, "total_receipts": 0.0})
+        g["total_sales"] += _num(s["amount"])
+        if s["payment_mode"] != "Credit":
+            g["total_receipts"] += _num(s["amount"])
+
+    customers_outstanding = []
+    customers_full = []
+    for i, d in enumerate(sorted(debtors, key=lambda r: r["outstanding"], reverse=True), start=1):
+        stots = sales_by_customer.get(d["name"], {})
+        customers_outstanding.append({
+            "id": i, "name": d["name"], "gstin": "", "phone": "",
+            "balance": d["outstanding"],
+            "outstanding": d["outstanding"],
+            "total_sales": round(stots.get("total_sales", d["billed"]), 2),
+            "total_receipts": round(stots.get("total_receipts", d["received"]), 2),
+        })
+        customers_full.append({
+            "id": i, "name": d["name"], "gstin": "", "phone": "", "address": "",
+            "opening_balance": 0.0, "active": True,
+            "balance": d["outstanding"],
+            "total_sales": round(stots.get("total_sales", d["billed"]), 2),
+            "total_receipts": round(stots.get("total_receipts", d["received"]), 2),
+            "manual_receipts": 0.0,
+            "erp_received": round(d["received"], 2),
+            "received": round(d["received"], 2),
+            "erp_debit_balance": round(d["billed"], 2),
+            "erp_credit_balance": round(d["received"], 2),
+            "erp_balance_as_of": str(date.today()),
+            "outstanding": d["outstanding"],
+        })
+
+    write("customers_outstanding.json", customers_outstanding)
+    write("customers.json", customers_full)
+
+    # Creditors (vendor payables)
+    print("  Fetching creditors...")
+    creditors = fetch_creditors(sess)
+    print(f"  {len(creditors)} vendors")
+
+    vendors_payables = []
+    vendors_full = []
+    for i, c in enumerate(sorted(creditors, key=lambda r: r["payable"], reverse=True), start=1):
+        vendors_payables.append({
+            "id": i, "name": c["name"], "gstin": "", "phone": "",
+            "payable": c["payable"],
+            "total_purchases": 0.0,
+            "total_payments": 0.0,
+        })
+        vendors_full.append({
+            "id": i, "name": c["name"], "gstin": "", "phone": "", "address": "",
+            "opening_balance": c["payable"], "notes": "", "active": True,
+            "payable": c["payable"],
+            "total_purchases": 0.0,
+            "total_payments": 0.0,
+        })
+
+    write("vendors_payables.json", vendors_payables)
+    write("vendors.json", vendors_full)
 
     # Meta
     write("meta.json", {
