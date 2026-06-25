@@ -1,0 +1,918 @@
+#!/usr/bin/env python3
+"""
+GitHub Actions sync script — fetches live data from loctell.com ERP
+and generates JSON files for otomy.ai. Runs every 5 min on GitHub servers.
+No Mac or local database required.
+"""
+import base64, json, re, html as htmllib, os
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
+import requests
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
+IST = ZoneInfo("Asia/Kolkata")
+
+ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
+ERP_ORG  = os.environ.get("ERP_ORG",  "VMIPL")
+ERP_USER = os.environ.get("ERP_USER", "admin")
+ERP_PASS = os.environ.get("ERP_PASS", "")
+
+_TR  = re.compile(r"<tr[^>]*>(.*?)</tr>",  re.DOTALL | re.IGNORECASE)
+_TD  = re.compile(r"<td[^>]*>(.*?)</td>",  re.DOTALL | re.IGNORECASE)
+_PAY = {"CASH", "CREDIT", "CARD/UPI", "SPLIT", "UPI"}
+
+# ─── helpers ────────────────────────────────────────────────────────────────
+
+def _clean(x):
+    return re.sub(r"<[^>]+>", "", htmllib.unescape(str(x))).strip()
+
+def _num(s):
+    s = re.sub(r"[^\d.]", "", str(s).replace(",", "").strip())
+    try:    return float(s)
+    except: return 0.0
+
+def _pay_channel(p):
+    p = (p or "").upper().strip()
+    if p in ("CASH",):        return "cash"
+    if p == "CREDIT":         return "credit"
+    return "bank"
+
+def _norm_pay(p):
+    p = (p or "").upper().strip()
+    if p in ("CARD/UPI", "UPI", "SPLIT"): return "UPI"
+    if p == "CREDIT":                      return "Credit"
+    return "Cash"
+
+def _norm_material(m):
+    m = m.strip().upper()
+    if "40" in m:                                               return "40mm"
+    if "20" in m:                                               return "20mm"
+    if "12" in m or "10" in m:                                  return "12mm"
+    if "6" in m and "MM" in m:                                  return "6mm"
+    if "M-SAND" in m or "MSAND" in m or "MANUFACTURED" in m:   return "M-Sand"
+    if "P-SAND" in m or "PSAND" in m or "PLASTER" in m:        return "P-Sand"
+    if "DUST" in m:                                             return "Dust"
+    return m[:50] or "Mixed"
+
+def _parse_date(raw, fallback):
+    raw = re.sub(r"\s+", " ", str(raw)).strip()
+    for fmt in ("%d-%m-%Y %I:%M:%S %p", "%d-%m-%Y %I:%M %p",
+                "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"):
+        try: return datetime.strptime(raw, fmt).date()
+        except: pass
+    try:   return datetime.strptime(raw[:10], "%d-%m-%Y").date()
+    except: return fallback
+
+# ─── auth ────────────────────────────────────────────────────────────────────
+
+def erp_auth():
+    sess = requests.Session()
+    sess.headers.update({"User-Agent": "Mozilla/5.0"})
+    cred = base64.b64encode(f"{ERP_ORG};{ERP_USER}:{ERP_PASS}".encode()).decode()
+    sess.get(f"{ERP_BASE}/restserver/rest/users/login?web=true",
+             headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
+             timeout=25, verify=True)
+    sess.post(f"{ERP_BASE}/home/MainLogin",
+              data={"loginUsername": ERP_USER, "loginPassword": ERP_PASS,
+                    "loginOrgName": ERP_ORG, "pType": "attendance"},
+              headers={"Content-Type": "application/x-www-form-urlencoded"},
+              timeout=25, verify=True)
+    return sess
+
+# ─── fetchers ────────────────────────────────────────────────────────────────
+
+def fetch_sales(sess, from_d, to_d):
+    tickets = []
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    try:
+        raw = sess.get(f"{ERP_BASE}/crusher/ListCustomerWiseReport"
+                       f"?start={fs}&end={ts}&customerId=-1&type=3",
+                       timeout=60, verify=True).text
+        try:    cw_html = htmllib.unescape(json.loads(raw))
+        except: cw_html = raw
+        for block in cw_html.split("Party Name :"):
+            block = block.strip()
+            if not block: continue
+            party = re.sub(r"<[^>]+>.*", "", block, flags=re.DOTALL).strip().split("\n")[0].strip()[:200]
+            for tr in _TR.finditer(block):
+                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
+                if len(cols) < 10: continue
+                if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
+                if not re.match(r"\d+:\d+\s*[AP]M", cols[3]):   continue
+                if cols[9].upper().strip() not in _PAY:           continue
+                qty = _num(cols[7])
+                if qty == 0: continue
+                dd, mm, yyyy = cols[2].split("-")
+                tickets.append({
+                    "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
+                    "customer_name": party, "ticket_no": cols[1].strip(),
+                    "vehicle_no": cols[4].strip(),
+                    "material": _norm_material(cols[5]),
+                    "rate_per_mt": _num(cols[6]),
+                    "qty_mt": qty, "mdp_ton": qty,
+                    "amount": _num(cols[8]),
+                    "payment_mode": _norm_pay(cols[9]),
+                    "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
+                })
+    except Exception as e:
+        print(f"  sales fetch error: {e}")
+    return tickets
+
+
+def fetch_expenses(sess, from_d, to_d):
+    entries = []
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    try:
+        url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
+               f"?startDt={fs}&endDt={ts}&categoryId=-1&vehicleId=-1"
+               f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=2000")
+        data = json.loads(sess.get(url, timeout=60, verify=True).text)
+        seq = 0
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
+            amt = _num(cells[1]) if len(cells) > 1 else 0
+            if amt <= 0: continue
+            category = cells[3].strip() if len(cells) > 3 else "Other"
+            desc     = cells[2].strip() if len(cells) > 2 else category
+            remarks  = cells[7].strip() if len(cells) > 7 else ""
+            if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
+            pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
+            seq += 1
+            entry_date = _parse_date(cells[0], to_d) if cells[0] else to_d
+            entries.append({
+                "id": seq, "date": str(entry_date), "category": category[:50],
+                "description": desc[:300], "amount": amt,
+                "payment_mode": pay_mode, "notes": remarks[:200],
+                "vendor_id": None, "erp_synced": True,
+            })
+    except Exception as e:
+        print(f"  expenses fetch error: {e}")
+    return entries
+
+
+def fetch_cash_ledger(sess, from_d, to_d):
+    entries = []
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        data = json.loads(sess.get(
+            f"{ERP_BASE}/crusher/CashLedger?start={fs}&end={ts}&type=1&cashLedgerId=-1",
+            timeout=35, verify=True).text)
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
+            entry_date = _parse_date(cells[0], to_d)
+            received = _num(cells[1]) if len(cells) > 1 else 0
+            paid     = _num(cells[2]) if len(cells) > 2 else 0
+            balance  = _num(cells[3]) if len(cells) > 3 else None
+            desc     = cells[4]       if len(cells) > 4 else ""
+            ledger   = cells[5]       if len(cells) > 5 else ""
+            if received == 0 and paid == 0 and not desc: continue
+            entries.append({
+                "date": str(entry_date), "ledger": ledger[:100] or "Entry",
+                "description": desc[:300], "received": received,
+                "paid": paid, "balance": balance,
+            })
+    except Exception as e:
+        print(f"  cash_ledger: {e}")
+    return entries
+
+
+def fetch_bank_entries(sess, from_d, to_d):
+    entries = []
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        data = json.loads(sess.get(
+            f"{ERP_BASE}/crusher/ListBankTransaction?start={fs}&end={ts}&bankId=-1&type=1",
+            timeout=35, verify=True).text)
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
+            entry_date = _parse_date(cells[0], to_d)
+            credit = _num(cells[1]) if len(cells) > 1 else 0
+            debit  = _num(cells[2]) if len(cells) > 2 else 0
+            desc   = cells[3]       if len(cells) > 3 else ""
+            bank   = cells[4]       if len(cells) > 4 else "Bank"
+            if credit == 0 and debit == 0: continue
+            entries.append({
+                "date": str(entry_date), "bank_name": bank[:100],
+                "description": desc[:300], "credit": credit, "debit": debit,
+            })
+    except Exception as e:
+        print(f"  bank_entries: {e}")
+    return entries
+
+
+def fetch_boulders(sess, from_d, to_d):
+    result = {"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": []}
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        html = sess.get(f"{ERP_BASE}/crusher/listInput",
+                        params={"startDt": fs, "end": ts},
+                        timeout=35, verify=True).text
+
+        def parse_table(src, table_id, label_key):
+            pat = r"<table[^>]*id=['\"]" + re.escape(table_id) + r"['\"][^>]*>(.*?)</table>"
+            m = re.search(pat, src, re.DOTALL | re.IGNORECASE)
+            rows, trips, tonnes = [], 0.0, 0.0
+            if not m:
+                return {"rows": rows, "total_trips": trips, "total_tonnes": tonnes}
+            for tr in _TR.finditer(m.group(1)):
+                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
+                if len(cols) < 3: continue
+                label = cols[0].strip()
+                if not label: continue
+                if label.lower() == "total":
+                    trips, tonnes = _num(cols[1]), _num(cols[2])
+                    continue
+                rows.append({label_key: label, "trips": _num(cols[1]), "tonnes": _num(cols[2])})
+            if not trips:   trips   = sum(r["trips"]  for r in rows)
+            if not tonnes:  tonnes  = sum(r["tonnes"] for r in rows)
+            rows.sort(key=lambda r: r["tonnes"], reverse=True)
+            return {"rows": rows, "total_trips": trips, "total_tonnes": tonnes}
+
+        mats = parse_table(html, "itemTable",  "material")
+        sups = parse_table(html, "itemTable1", "supplier")
+        result = {
+            "total_tonnes": mats["total_tonnes"] or sups["total_tonnes"],
+            "total_trips":  mats["total_trips"]  or sups["total_trips"],
+            "materials":    mats["rows"],
+            "suppliers":    sups["rows"],
+        }
+    except Exception as e:
+        print(f"  boulders fetch error: {e}")
+    return result
+
+
+def fetch_debtors(sess, as_of=None):
+    """Fetch customer outstanding balances from ERP for a given date."""
+    debtors = []
+    try:
+        ds = (as_of or date.today()).strftime("%d-%m-%Y")
+        start_at, length = 0, 500
+        total = None
+        while total is None or start_at < total:
+            payload = sess.get(
+                f"{ERP_BASE}/crusher/ListCustomerBalance",
+                params={"date": ds, "type": 1, "sortByName": -1, "sortByPayment": -1,
+                        "customerId": -1, "draw": 1, "start": start_at, "length": length},
+                timeout=35, verify=True,
+            ).json()
+            rows = payload.get("data", []) or []
+            total = int(payload.get("recordsTotal", len(rows)))
+            if not rows: break
+            for row in rows:
+                if len(row) < 4: continue
+                raw_name = re.sub(r"<span[^>]*>.*?</span>", " ", str(row[0]),
+                                  flags=re.IGNORECASE | re.DOTALL)
+                name = re.sub(r"\s+", " ", _clean(raw_name)).strip()
+                if not name or name.upper() in ("CUSTOMER", "TOTAL", "NAME", "SR NO", ""):
+                    continue
+                billed   = _num(row[2]) if len(row) > 2 else 0
+                received = _num(row[3]) if len(row) > 3 else 0
+                action   = str(row[4] or "") if len(row) > 4 else ""
+                m = re.search(r"viewLedgerTransactions\?customerId=(\d+)", action, re.IGNORECASE)
+                debtors.append({
+                    "name": name[:200],
+                    "outstanding": round(billed - received, 2),
+                    "billed":      round(billed, 2),
+                    "received":    round(received, 2),
+                    "erp_customer_id": int(m.group(1)) if m else None,
+                })
+            start_at += len(rows)
+            if len(rows) < length: break
+    except Exception as e:
+        print(f"  debtors fetch error ({as_of}): {e}")
+    return debtors
+
+
+def fetch_creditors(sess, as_of=None):
+    """Fetch vendor outstanding payables from ERP for a given date."""
+    creditors = []
+    try:
+        ds = (as_of or date.today()).strftime("%d-%m-%Y")
+        data = json.loads(sess.get(
+            f"{ERP_BASE}/crusher/ListSupplierBalance?date={ds}&type=1",
+            timeout=35, verify=True).text)
+        for row in data.get("data", []):
+            cells = [_clean(c) for c in row]
+            if not cells or not cells[0]: continue
+            name = cells[0].strip()
+            if name.upper() in ("SUPPLIER", "TOTAL", "NAME", ""): continue
+            credit = _num(cells[1]) if len(cells) > 1 else 0
+            debit  = _num(cells[2]) if len(cells) > 2 else 0
+            creditors.append({"name": name[:200], "payable": round(debit - credit, 2)})
+    except Exception as e:
+        print(f"  creditors fetch error: {e}")
+    return creditors
+
+
+def compute_repayments(debtors_prev, debtors_curr, as_of_date):
+    """
+    Credit repayments = customers whose outstanding balance DECREASED between
+    the previous snapshot and the current snapshot.
+    Returns a list matching the customer_repayments format used by the dashboard.
+    """
+    prev_map = {d["name"]: d for d in debtors_prev}
+    repayments = []
+    for curr in debtors_curr:
+        prev = prev_map.get(curr["name"])
+        if not prev:
+            continue
+        delta = round(prev["outstanding"] - curr["outstanding"], 2)
+        if delta <= 0:
+            continue
+        received_delta = round(curr["received"] - prev["received"], 2)
+        repayments.append({
+            "date": str(as_of_date),
+            "customer_name": curr["name"],
+            "mode": "Cash/Bank",
+            "reference": "ERP balance delta",
+            "payment_received": round(received_delta if received_delta > 0 else delta, 2),
+            "bank_received": 0.0,
+            "cash_received": 0.0,
+            "sale_adjusted": 0.0,
+            "amount": delta,
+            "balance": curr["outstanding"],
+            "previous_balance": prev["outstanding"],
+            "source": "ERP Outstanding Delta",
+        })
+    repayments.sort(key=lambda r: r["amount"], reverse=True)
+    return repayments
+
+# ─── control room builder ─────────────────────────────────────────────────────
+
+def build_control(sales, expenses, from_d, to_d,
+                  boulders=None, debtors=None, creditors=None,
+                  cash_balance=0.0, bank_net=0.0, repayments=None):
+    days        = (to_d - from_d).days + 1
+    total_sales = sum(_num(s["amount"]) for s in sales)
+    total_qty   = sum(_num(s["qty_mt"]) for s in sales)
+    cash_collected = sum(_num(s["amount"]) for s in sales if s["payment_mode"] != "Credit")
+    credit_sales   = total_sales - cash_collected
+    total_exp      = sum(_num(e["amount"]) for e in expenses)
+    profit         = total_sales - total_exp
+
+    # material mix
+    by_material = {}
+    for s in sales:
+        k = s["material"] or "Unknown"
+        if k not in by_material:
+            by_material[k] = {"material": k, "qty_mt": 0.0, "amount": 0.0, "tickets": 0}
+        by_material[k]["qty_mt"]  += _num(s["qty_mt"])
+        by_material[k]["amount"]  += _num(s["amount"])
+        by_material[k]["tickets"] += 1
+
+    # expense mix
+    by_expense = {}
+    for e in expenses:
+        k = e["category"] or "General"
+        by_expense[k] = by_expense.get(k, 0.0) + _num(e["amount"])
+
+    # customer sales breakdown
+    by_customer = {}
+    for s in sales:
+        c  = s["customer_name"] or "Cash Sale"
+        m  = s["material"]      or "Mixed"
+        k  = (c, m)
+        g  = by_customer.setdefault(k, {
+            "customer_name": c, "material": m,
+            "ticket_count": 0, "qty_mt": 0.0, "amount": 0.0,
+            "bank_received": 0.0, "cash_received": 0.0,
+            "paid_against_sale": 0.0, "credit_sale_amount": 0.0, "tickets": [],
+        })
+        amt = _num(s["amount"])
+        pm  = s["payment_mode"]
+        g["ticket_count"] += 1
+        g["qty_mt"]        += _num(s["qty_mt"])
+        g["amount"]        += amt
+        if pm == "Credit":
+            g["credit_sale_amount"] += amt
+        elif pm == "Cash":
+            g["cash_received"]    += amt
+            g["paid_against_sale"] += amt
+        else:
+            g["bank_received"]    += amt
+            g["paid_against_sale"] += amt
+        g["tickets"].append({
+            "date": s["date"], "ticket_no": s.get("ticket_no", "—"),
+            "qty_mt": round(_num(s["qty_mt"]), 2),
+            "amount": round(amt, 2), "payment_mode": pm,
+        })
+
+    csr = []
+    for g in by_customer.values():
+        csr.append({
+            "customer_name": g["customer_name"], "material": g["material"],
+            "ticket_count":  g["ticket_count"],
+            "ticket_nos":    [t["ticket_no"] for t in g["tickets"]],
+            "tickets":       g["tickets"],
+            "qty_mt":               round(g["qty_mt"], 2),
+            "amount":               round(g["amount"], 2),
+            "bank_received":        round(g["bank_received"], 2),
+            "cash_received":        round(g["cash_received"], 2),
+            "paid_against_sale":    round(g["paid_against_sale"], 2),
+            "credit_sale_amount":   round(g["credit_sale_amount"], 2),
+        })
+    csr.sort(key=lambda r: r["amount"], reverse=True)
+
+    # expense rows for the detail table
+    expense_rows = []
+    for e in expenses:
+        expense_rows.append({
+            "date":         e["date"],
+            "type":         "Expense",
+            "category":     e["category"] or "Other",
+            "description":  e["description"] or e["category"] or "Expense",
+            "party":        "",
+            "payment_mode": e["payment_mode"] or "",
+            "amount":       round(_num(e["amount"]), 2),
+        })
+    expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
+
+    # trend
+    trend = []
+    for i in range(days):
+        d  = str(from_d + timedelta(days=i))
+        ds = sum(_num(s["amount"]) for s in sales    if s["date"] == d)
+        de = sum(_num(e["amount"]) for e in expenses if e["date"] == d)
+        trend.append({
+            "date": d, "sales": round(ds, 2), "expenses": round(de, 2),
+            "profit": round(ds - de, 2),
+            "qty_mt": round(sum(_num(s["qty_mt"]) for s in sales if s["date"] == d), 2),
+        })
+
+    # receivables from debtors
+    receivables     = []
+    total_receivable = 0.0
+    for d in sorted(debtors or [], key=lambda r: r["outstanding"], reverse=True):
+        if d["outstanding"] > 0:
+            receivables.append({"name": d["name"], "balance": d["outstanding"]})
+            total_receivable += d["outstanding"]
+
+    # payables from creditors
+    payables       = []
+    total_payable  = 0.0
+    for c in sorted(creditors or [], key=lambda r: r["payable"], reverse=True):
+        if c["payable"] > 0:
+            payables.append({"name": c["name"], "balance": c["payable"]})
+            total_payable += c["payable"]
+
+    # repayments
+    rp = repayments or []
+    rp_total        = round(sum(r["amount"]            for r in rp), 2)
+    rp_pay_total    = round(sum(r["payment_received"]  for r in rp), 2)
+    rp_bank_total   = round(sum(r["bank_received"]     for r in rp), 2)
+    rp_cash_total   = round(sum(r["cash_received"]     for r in rp), 2)
+
+    # alerts
+    alerts = []
+    if profit < 0:
+        alerts.append({"level": "danger", "title": "Loss in selected period",
+                       "detail": "Expenses higher than sales."})
+    if total_qty > 0 and not (boulders or {}).get("total_tonnes"):
+        alerts.append({"level": "warning", "title": "Boulder input missing",
+                       "detail": "Sales exist but quarry input was not captured."})
+    if not alerts:
+        alerts.append({"level": "good", "title": "No major control alert",
+                       "detail": "Data looks stable."})
+
+    return {
+        "period": {"from": str(from_d), "to": str(to_d), "days": days},
+        "summary": {
+            "sales":            round(total_sales, 2),
+            "cash_collected":   round(cash_collected, 2),
+            "credit_sales":     round(credit_sales, 2),
+            "expenses":         round(total_exp, 2),
+            "profit":           round(profit, 2),
+            "margin_pct":       round(profit / total_sales * 100, 1) if total_sales else 0.0,
+            "sales_qty_mt":     round(total_qty, 2),
+            "avg_rate_per_mt":  round(total_sales / total_qty, 2) if total_qty else 0.0,
+            "boulder_input_mt": round((boulders or {}).get("total_tonnes", 0.0), 2),
+            "boulder_trips":    round((boulders or {}).get("total_trips",  0.0), 2),
+            "recovery_pct":     round(total_qty / (boulders or {}).get("total_tonnes", 0) * 100, 1)
+                                if (boulders or {}).get("total_tonnes") else 0.0,
+            "machine_hours":     0.0,
+            "machine_fuel_liters": 0.0,
+            "fuel_per_mt":       0.0,
+            "bank_balance":            round(bank_net, 2),
+            "cash_balance_office":     round(cash_balance, 2),
+            "bank_balance_book":       round(bank_net, 2),
+            "cash_balance_office_book": round(cash_balance, 2),
+            "operating_balance_from":  str(from_d),
+            "kumar_balance":           0.0,
+            "selected_period_profit_per_tonne":
+                round(profit / total_qty, 2) if total_qty else 0.0,
+            "selected_period_profit_director_adjusted": round(profit, 2),
+            "selected_period_director_adjusted_profit_per_tonne":
+                round(profit / total_qty, 2) if total_qty else 0.0,
+            "receivables": round(total_receivable, 2),
+            "payables":    round(total_payable,    2),
+        },
+        "mix": {
+            "materials": sorted(by_material.values(), key=lambda r: r["amount"], reverse=True),
+            "expenses":  [{"category": k, "amount": round(v, 2)}
+                          for k, v in sorted(by_expense.items(), key=lambda i: i[1], reverse=True)],
+        },
+        "input": {
+            "source":    "ERP",
+            "materials": (boulders or {}).get("materials", []),
+            "suppliers": (boulders or {}).get("suppliers", []),
+        },
+        "customer_sales":        csr,
+        "customer_sales_totals": {
+            "ticket_count":       sum(r["ticket_count"]      for r in csr),
+            "qty_mt":             round(sum(r["qty_mt"]       for r in csr), 2),
+            "amount":             round(sum(r["amount"]       for r in csr), 2),
+            "bank_received":      round(sum(r["bank_received"]  for r in csr), 2),
+            "cash_received":      round(sum(r["cash_received"]  for r in csr), 2),
+            "paid_against_sale":  round(sum(r["paid_against_sale"] for r in csr), 2),
+            "credit_sale_amount": round(sum(r["credit_sale_amount"] for r in csr), 2),
+        },
+        "customer_repayments":              rp,
+        "customer_repayments_total":        rp_total,
+        "customer_repayments_payment_total": rp_pay_total,
+        "customer_repayments_bank_total":   rp_bank_total,
+        "customer_repayments_cash_total":   rp_cash_total,
+        "machine_summary": [],
+        "expense_rows":    expense_rows,
+        "trend":           trend,
+        "top_receivables": receivables[:5],
+        "top_payables":    payables[:5],
+        "alerts":          alerts,
+    }
+
+# ─── write helper ─────────────────────────────────────────────────────────────
+
+def write(filename, data):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(DATA_DIR / filename, "w") as f:
+        json.dump(data, f, default=str, indent=2)
+    print(f"  {filename}")
+
+def snapshot_key(url):
+    parts = urlsplit(url)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "_"]
+    normalized = urlunsplit(("", "", parts.path, urlencode(query), ""))
+    return base64.urlsafe_b64encode(normalized.encode("utf-8")).decode("ascii").rstrip("=")
+
+def write_snapshot(url, data):
+    SNAPSHOT_API_DIR.mkdir(parents=True, exist_ok=True)
+    with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
+        json.dump(data, f, default=str, separators=(",", ":"))
+
+def empty_ledger(name, closing=0.0):
+    return {
+        "name": name,
+        "opening_balance": 0.0,
+        "entries": [],
+        "closing_balance": round(closing, 2),
+        "received": 0.0,
+        "erp_received": 0.0,
+        "age_0_15": 0.0,
+        "age_16_30": 0.0,
+        "age_31_45": 0.0,
+        "age_45_plus": round(max(closing, 0.0), 2),
+    }
+
+def write_snapshot_bundle(
+    today,
+    yesterday,
+    month_start,
+    all_sales,
+    all_expenses,
+    cash_rows,
+    bank_rows,
+    cash_balance,
+    bank_net,
+    customers_full,
+    customers_outstanding,
+    vendors_full,
+    vendors_payables,
+    controls,
+):
+    week_start = today - timedelta(days=today.weekday())
+    last_month_end = month_start - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    ranges = [
+        (today, today),
+        (yesterday, yesterday),
+        (week_start, today),
+        (month_start, today),
+        (last_month_start, last_month_end),
+    ]
+
+    control_by_range = {
+        (today, today): controls["today"],
+        (yesterday, yesterday): controls["yesterday"],
+        (month_start, today): controls["mtd"],
+    }
+
+    def rows_between(rows, start, end):
+        fs, ts = str(start), str(end)
+        return [row for row in rows if fs <= row.get("date", "") <= ts]
+
+    write_snapshot("/api/me", {"username": "otomy", "can_write": False})
+    write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
+    write_snapshot("/api/customers/?active_only=false", customers_full)
+    write_snapshot("/api/customers/outstanding", customers_outstanding)
+    write_snapshot("/api/vendors/?active_only=false", vendors_full)
+    write_snapshot("/api/vendors/payables", vendors_payables)
+    write_snapshot("/api/bank/accounts", [
+        {
+            "id": 1,
+            "name": "Operating Bank",
+            "account_no": "",
+            "bank_name": "ERP Bank",
+            "branch": "",
+            "ifsc": "",
+            "initial_balance": bank_net,
+            "initial_balance_date": str(today),
+            "active": True,
+            "current_balance": bank_net,
+        },
+        {
+            "id": 2,
+            "name": "Cash Balance In Office",
+            "account_no": "",
+            "bank_name": "Cash",
+            "branch": "",
+            "ifsc": "",
+            "initial_balance": cash_balance,
+            "initial_balance_date": str(today),
+            "active": True,
+            "current_balance": cash_balance,
+        },
+    ])
+    write_snapshot("/api/bank/accounts/1/statement", bank_rows)
+    write_snapshot("/api/bank/accounts/2/statement", cash_rows)
+    write_snapshot("/api/emi/", [])
+    write_snapshot("/api/workers/", [])
+    write_snapshot("/api/workers/?active_only=false", [])
+    write_snapshot("/api/exports/config", {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"})
+    write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
+    write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
+
+    for row in customers_full:
+        write_snapshot(f"/api/customers/ledger/{row['id']}", empty_ledger(row["name"], row.get("outstanding", 0.0)))
+    for row in vendors_full:
+        write_snapshot(f"/api/vendors/ledger/{row['id']}", empty_ledger(row["name"], row.get("payable", 0.0)))
+
+    for start, end in ranges:
+        control = control_by_range.get((start, end))
+        if control is None:
+            control = build_control(
+                rows_between(all_sales, start, end),
+                rows_between(all_expenses, start, end),
+                start,
+                end,
+                boulders={"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": []},
+                debtors=[{"name": row["name"], "outstanding": row.get("outstanding", 0.0)} for row in customers_full],
+                creditors=[{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
+                cash_balance=cash_balance,
+                bank_net=bank_net,
+                repayments=[],
+            )
+        write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
+        write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
+        write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
+        write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/machines/?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/labour/?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
+        write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
+        write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", [])
+
+    write_snapshot(
+        f"/api/dashboard/monthly?year={today.year}&month={today.month}",
+        {"year": today.year, "month": today.month, "sales": {}, "expenses": {}, "pnl": {}},
+    )
+    write_snapshot(
+        f"/api/exports/gstr1?year={today.year}&month={today.month}",
+        {"gstin": "", "fp": today.strftime("%m%Y"), "b2b": [], "b2cs": [], "hsn": {"data": []}},
+    )
+    (DATA_DIR / "snapshot").mkdir(parents=True, exist_ok=True)
+    with open(DATA_DIR / "snapshot" / "manifest.json", "w") as f:
+        json.dump(
+            {
+                "generated_at": datetime.now(IST).isoformat(timespec="seconds"),
+                "source": "github-actions / loctell.com ERP",
+                "ranges": [{"from": str(start), "to": str(end)} for start, end in ranges],
+            },
+            f,
+            indent=2,
+        )
+
+# ─── main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    print(f"[{datetime.now().isoformat(timespec='seconds')}] GHA ERP sync starting...")
+    sess = erp_auth()
+    print("  Authenticated with loctell.com")
+
+    today       = datetime.now(IST).date()
+    yesterday   = today - timedelta(days=1)
+    month_start = today.replace(day=1)
+    thirty_ago  = today - timedelta(days=30)
+
+    # ── sales & expenses (30-day window) ──────────────────────────────────────
+    print("  Fetching sales...")
+    all_sales = fetch_sales(sess, thirty_ago, today)
+    print(f"  {len(all_sales)} sales tickets")
+
+    print("  Fetching expenses...")
+    all_expenses = fetch_expenses(sess, thirty_ago, today)
+    print(f"  {len(all_expenses)} expenses")
+
+    def sales_for(f, t):
+        fs, ts = str(f), str(t)
+        return [s for s in all_sales if fs <= s["date"] <= ts]
+
+    def exp_for(f, t):
+        fs, ts = str(f), str(t)
+        return [e for e in all_expenses if fs <= e["date"] <= ts]
+
+    # ── boulders ──────────────────────────────────────────────────────────────
+    print("  Fetching boulders...")
+    boulders_today     = fetch_boulders(sess, today,       today)
+    boulders_yesterday = fetch_boulders(sess, yesterday,   yesterday)
+    boulders_mtd       = fetch_boulders(sess, month_start, today)
+    print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
+
+    write("boulders.json", {
+        "today":     boulders_today,
+        "yesterday": boulders_yesterday,
+        "mtd":       boulders_mtd,
+    })
+
+    # ── cash ledger & bank transactions ───────────────────────────────────────
+    print("  Fetching cash ledger...")
+    cash_rows = fetch_cash_ledger(sess, thirty_ago, today)
+
+    print("  Fetching bank transactions...")
+    bank_rows = fetch_bank_entries(sess, thirty_ago, today)
+
+    # absolute cash balance = last row's running balance from ERP cash ledger
+    cash_balance = 0.0
+    for row in cash_rows:
+        if row.get("balance") is not None:
+            cash_balance = row["balance"]
+
+    # bank net = total credits minus total debits over the 30-day window
+    bank_net = round(
+        sum(r["credit"] for r in bank_rows) - sum(r["debit"] for r in bank_rows), 2
+    )
+
+    write("erp_ledger.json", {
+        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "cash":          cash_rows,
+        "bank":          bank_rows,
+        "cash_balance":  round(cash_balance, 2),
+        "bank_net":      bank_net,
+    })
+
+    # ── debtors (today + snapshots for repayment deltas) ──────────────────────
+    print("  Fetching debtors (today)...")
+    debtors_today = fetch_debtors(sess, today)
+    print(f"  {len(debtors_today)} customers")
+
+    print("  Fetching debtors (yesterday, for today repayments)...")
+    debtors_yesterday_snap = fetch_debtors(sess, yesterday)
+
+    print("  Fetching debtors (month_start-1, for MTD repayments)...")
+    debtors_mtd_prev = fetch_debtors(sess, month_start - timedelta(days=1))
+
+    repayments_today = compute_repayments(debtors_yesterday_snap, debtors_today, today)
+    repayments_yesterday = compute_repayments(
+        fetch_debtors(sess, yesterday - timedelta(days=1)),
+        debtors_yesterday_snap, yesterday
+    )
+    repayments_mtd = compute_repayments(debtors_mtd_prev, debtors_today, today)
+
+    print(f"  Repayments today: {len(repayments_today)}, MTD: {len(repayments_mtd)}")
+
+    # ── creditors ─────────────────────────────────────────────────────────────
+    print("  Fetching creditors...")
+    creditors = fetch_creditors(sess, today)
+    print(f"  {len(creditors)} vendors")
+
+    # ── control room JSON ─────────────────────────────────────────────────────
+    ctrl_today = build_control(
+        sales_for(today, today), exp_for(today, today), today, today,
+        boulders=boulders_today, debtors=debtors_today, creditors=creditors,
+        cash_balance=cash_balance, bank_net=bank_net,
+        repayments=repayments_today,
+    )
+    ctrl_yesterday = build_control(
+        sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday, yesterday,
+        boulders=boulders_yesterday, debtors=debtors_yesterday_snap, creditors=creditors,
+        cash_balance=cash_balance, bank_net=bank_net,
+        repayments=repayments_yesterday,
+    )
+    ctrl_mtd = build_control(
+        sales_for(month_start, today), exp_for(month_start, today), month_start, today,
+        boulders=boulders_mtd, debtors=debtors_today, creditors=creditors,
+        cash_balance=cash_balance, bank_net=bank_net,
+        repayments=repayments_mtd,
+    )
+    write("ctrl_today.json", ctrl_today)
+    write("ctrl_yesterday.json", ctrl_yesterday)
+    write("ctrl_mtd.json", ctrl_mtd)
+
+    # ── sales & expenses lists ─────────────────────────────────────────────────
+    write("sales_all.json",    sorted(all_sales,    key=lambda r: r["date"], reverse=True))
+    write("expenses_all.json", sorted(all_expenses, key=lambda r: r["date"], reverse=True))
+
+    # ── customers ─────────────────────────────────────────────────────────────
+    sales_by_cust = {}
+    for s in all_sales:
+        c = s["customer_name"]
+        g = sales_by_cust.setdefault(c, {"total_sales": 0.0, "total_receipts": 0.0})
+        g["total_sales"] += _num(s["amount"])
+        if s["payment_mode"] != "Credit":
+            g["total_receipts"] += _num(s["amount"])
+
+    customers_outstanding = []
+    customers_full        = []
+    for i, d in enumerate(sorted(debtors_today, key=lambda r: r["outstanding"], reverse=True), 1):
+        st = sales_by_cust.get(d["name"], {})
+        customers_outstanding.append({
+            "id": i, "name": d["name"], "gstin": "", "phone": "",
+            "balance":        d["outstanding"],
+            "outstanding":    d["outstanding"],
+            "total_sales":    round(st.get("total_sales",    d["billed"]),   2),
+            "total_receipts": round(st.get("total_receipts", d["received"]), 2),
+        })
+        customers_full.append({
+            "id": i, "name": d["name"], "gstin": "", "phone": "", "address": "",
+            "opening_balance": 0.0, "active": True,
+            "balance":           d["outstanding"],
+            "total_sales":       round(st.get("total_sales",    d["billed"]),   2),
+            "total_receipts":    round(st.get("total_receipts", d["received"]), 2),
+            "manual_receipts":   0.0,
+            "erp_received":      round(d["received"], 2),
+            "received":          round(d["received"], 2),
+            "erp_debit_balance": round(d["billed"],   2),
+            "erp_credit_balance":round(d["received"], 2),
+            "erp_balance_as_of": str(today),
+            "outstanding":       d["outstanding"],
+        })
+
+    write("customers_outstanding.json", customers_outstanding)
+    write("customers.json",             customers_full)
+
+    # ── vendors ───────────────────────────────────────────────────────────────
+    vendors_payables = []
+    vendors_full     = []
+    for i, c in enumerate(sorted(creditors, key=lambda r: r["payable"], reverse=True), 1):
+        vendors_payables.append({
+            "id": i, "name": c["name"], "gstin": "", "phone": "",
+            "payable": c["payable"], "total_purchases": 0.0, "total_payments": 0.0,
+        })
+        vendors_full.append({
+            "id": i, "name": c["name"], "gstin": "", "phone": "", "address": "",
+            "opening_balance": c["payable"], "notes": "", "active": True,
+            "payable": c["payable"], "total_purchases": 0.0, "total_payments": 0.0,
+        })
+
+    write("vendors_payables.json", vendors_payables)
+    write("vendors.json",          vendors_full)
+
+    # ── meta ──────────────────────────────────────────────────────────────────
+    write("meta.json", {
+        "company":     "Crusher & Quarry Operations",
+        "last_sync":   datetime.now(IST).isoformat(timespec="seconds"),
+        "source":      "github-actions / loctell.com ERP",
+        "version":     "3.0",
+        "cash_balance": round(cash_balance, 2),
+        "bank_net":     bank_net,
+    })
+
+    print("  Writing static API snapshot files...")
+    write_snapshot_bundle(
+        today,
+        yesterday,
+        month_start,
+        all_sales,
+        all_expenses,
+        cash_rows,
+        bank_rows,
+        cash_balance,
+        bank_net,
+        customers_full,
+        customers_outstanding,
+        vendors_full,
+        vendors_payables,
+        {"today": ctrl_today, "yesterday": ctrl_yesterday, "mtd": ctrl_mtd},
+    )
+
+    today_sales = sales_for(today, today)
+    print(f"  Done. Today: ₹{sum(_num(s['amount']) for s in today_sales):,.0f} "
+          f"| {len(today_sales)} tickets | Cash: ₹{cash_balance:,.0f}")
+
+if __name__ == "__main__":
+    main()
