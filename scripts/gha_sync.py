@@ -4,7 +4,7 @@ GitHub Actions sync script — fetches live data from loctell.com ERP
 and generates JSON files for otomy.ai. Runs every 5 min on GitHub servers.
 No Mac or local database required.
 """
-import base64, json, re, html as htmllib, os
+import base64, json, re, html as htmllib, os, time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -13,6 +13,7 @@ import requests
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
+LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 IST = ZoneInfo("Asia/Kolkata")
 
 ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
@@ -40,6 +41,18 @@ def _pay_channel(p):
     if p == "CREDIT":         return "credit"
     return "bank"
 
+def _payment_channel(raw):
+    return "cash" if "CASH" in (raw or "").upper() else "bank"
+
+def _mode_bucket(raw):
+    value = (raw or "").strip()
+    upper = value.upper()
+    if "CASH" in upper:
+        return "Cash"
+    if any(token in upper for token in ("BANK", "CARD", "UPI", "NEFT", "RTGS", "IMPS", "ICICI", "HDFC", "AXIS", "SBI")):
+        return "Bank"
+    return value or "Payment"
+
 def _norm_pay(p):
     p = (p or "").upper().strip()
     if p in ("CARD/UPI", "UPI", "SPLIT"): return "UPI"
@@ -65,6 +78,14 @@ def _parse_date(raw, fallback):
         except: pass
     try:   return datetime.strptime(raw[:10], "%d-%m-%Y").date()
     except: return fallback
+
+def load_local_seed():
+    try:
+        with open(LOCAL_SEED_PATH) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 # ─── auth ────────────────────────────────────────────────────────────────────
 
@@ -345,17 +366,136 @@ def compute_repayments(debtors_prev, debtors_curr, as_of_date):
     repayments.sort(key=lambda r: r["amount"], reverse=True)
     return repayments
 
+def fetch_customer_ledger_rows(sess, from_d, to_d, erp_customer_id):
+    try:
+        payload = sess.get(
+            f"{ERP_BASE}/crusher/ViewLedgerTransactions",
+            params={
+                "start": from_d.strftime("%d-%m-%Y"),
+                "end": to_d.strftime("%d-%m-%Y"),
+                "customerId": erp_customer_id,
+                "materialId": -1,
+                "transactionType": -1,
+                "marketingPersonId": -1,
+                "orderType": 2,
+                "type": 1,
+            },
+            timeout=35,
+            verify=True,
+        ).json()
+        return payload.get("data", []) or []
+    except Exception as e:
+        print(f"  customer ledger {erp_customer_id}: {e}")
+        return []
+
+def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debtors):
+    repayments = []
+    current_day = start
+    previous_snapshot = {
+        row.get("erp_customer_id"): row
+        for row in previous_debtors
+        if row.get("erp_customer_id") is not None
+    }
+    while current_day <= end:
+        day_debtors = current_debtors if current_day == end else fetch_debtors(sess, current_day)
+        current_snapshot = {
+            row.get("erp_customer_id"): row
+            for row in day_debtors
+            if row.get("erp_customer_id") is not None
+        }
+
+        for erp_customer_id, current in current_snapshot.items():
+            previous = previous_snapshot.get(erp_customer_id, {})
+            credit_delta = round(
+                _num(current.get("received")) - _num(previous.get("received")),
+                2,
+            )
+            balance_change = round(
+                abs(_num(current.get("outstanding")) - _num(previous.get("outstanding"))),
+                2,
+            )
+            if credit_delta <= 0 and balance_change <= 0:
+                continue
+
+            total_debit = 0.0
+            total_credit = 0.0
+            credit_by_channel = {"bank": 0.0, "cash": 0.0}
+            raw_modes = []
+            for row in fetch_customer_ledger_rows(sess, current_day, current_day, erp_customer_id):
+                cols = [_clean(col) for col in row]
+                if not cols or (cols[0] or "").upper() == "TOTAL":
+                    continue
+                debit = _num(cols[11]) if len(cols) > 11 else 0.0
+                credit = _num(cols[12]) if len(cols) > 12 else 0.0
+                mode = cols[13] if len(cols) > 13 else ""
+                if debit > 0:
+                    total_debit += debit
+                if credit > 0:
+                    total_credit += credit
+                    credit_by_channel[_payment_channel(mode)] += credit
+                    raw_modes.append(mode or "Payment")
+
+            if total_credit <= 0:
+                continue
+            cash_sale_adjusted = min(
+                round(credit_by_channel["cash"], 2),
+                round(total_debit * (credit_by_channel["cash"] / total_credit), 2),
+            )
+            bank_sale_adjusted = min(
+                round(credit_by_channel["bank"], 2),
+                round(total_debit * (credit_by_channel["bank"] / total_credit), 2),
+            )
+            cash_amount = round(max(credit_by_channel["cash"] - cash_sale_adjusted, 0.0), 2)
+            bank_amount = round(max(credit_by_channel["bank"] - bank_sale_adjusted, 0.0), 2)
+            mode_notes = ", ".join(dict.fromkeys([m for m in raw_modes if m]))[:120]
+            for mode, amount, payment_received, sale_adjusted in (
+                ("Cash", cash_amount, round(credit_by_channel["cash"], 2), cash_sale_adjusted),
+                ("Bank", bank_amount, round(credit_by_channel["bank"], 2), bank_sale_adjusted),
+            ):
+                if payment_received <= 0:
+                    continue
+                repayments.append({
+                    "date": str(current_day),
+                    "customer_name": current["name"],
+                    "mode": mode,
+                    "reference": f"ERP-CREDIT-{erp_customer_id}-{current_day.isoformat()}-{mode.upper()}",
+                    "payment_received": payment_received,
+                    "bank_received": payment_received if mode == "Bank" else 0.0,
+                    "cash_received": payment_received if mode == "Cash" else 0.0,
+                    "sale_adjusted": round(sale_adjusted, 2),
+                    "amount": amount,
+                    "balance": round(_num(current.get("outstanding")), 2),
+                    "source": "Customer Ledger",
+                    "erp_customer_id": erp_customer_id,
+                    "notes": f"ledger modes={mode_notes}",
+                })
+            time.sleep(0.03)
+
+        previous_snapshot = current_snapshot
+        current_day += timedelta(days=1)
+
+    repayments.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
+    return repayments
+
 # ─── control room builder ─────────────────────────────────────────────────────
 
 def build_control(sales, expenses, from_d, to_d,
                   boulders=None, debtors=None, creditors=None,
-                  cash_balance=0.0, bank_net=0.0, repayments=None):
+                  cash_balance=0.0, bank_net=0.0, repayments=None,
+                  labour=None, parts=None, machines=None,
+                  bank_balance_book=0.0, cash_balance_office_book=0.0):
     days        = (to_d - from_d).days + 1
     total_sales = sum(_num(s["amount"]) for s in sales)
     total_qty   = sum(_num(s["qty_mt"]) for s in sales)
     cash_collected = sum(_num(s["amount"]) for s in sales if s["payment_mode"] != "Credit")
     credit_sales   = total_sales - cash_collected
-    total_exp      = sum(_num(e["amount"]) for e in expenses)
+    labour = labour or []
+    parts = parts or []
+    machines = machines or []
+    expense_direct = sum(_num(e["amount"]) for e in expenses)
+    labour_total = sum(_num(row.get("amount")) for row in labour)
+    parts_total = sum(_num(row.get("total_amount")) for row in parts)
+    total_exp = expense_direct + labour_total + parts_total
     profit         = total_sales - total_exp
 
     # material mix
@@ -373,6 +513,10 @@ def build_control(sales, expenses, from_d, to_d,
     for e in expenses:
         k = e["category"] or "General"
         by_expense[k] = by_expense.get(k, 0.0) + _num(e["amount"])
+    if labour_total:
+        by_expense["Labour"] = by_expense.get("Labour", 0.0) + labour_total
+    if parts_total:
+        by_expense["Parts"] = by_expense.get("Parts", 0.0) + parts_total
 
     # customer sales breakdown
     by_customer = {}
@@ -433,6 +577,26 @@ def build_control(sales, expenses, from_d, to_d,
             "payment_mode": e["payment_mode"] or "",
             "amount":       round(_num(e["amount"]), 2),
         })
+    for row in labour:
+        expense_rows.append({
+            "date": row.get("date"),
+            "type": "Labour",
+            "category": row.get("worker_type") or "Labour",
+            "description": row.get("worker_name") or "Labour entry",
+            "party": row.get("worker_name") or "",
+            "payment_mode": "Paid" if row.get("paid") else "Unpaid",
+            "amount": round(_num(row.get("amount")), 2),
+        })
+    for row in parts:
+        expense_rows.append({
+            "date": row.get("date"),
+            "type": "Part",
+            "category": row.get("machine_name") or "Parts",
+            "description": row.get("part_name") or "Part / Repair",
+            "party": row.get("supplier") or "",
+            "payment_mode": "",
+            "amount": round(_num(row.get("total_amount")), 2),
+        })
     expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
 
     # trend
@@ -440,7 +604,11 @@ def build_control(sales, expenses, from_d, to_d,
     for i in range(days):
         d  = str(from_d + timedelta(days=i))
         ds = sum(_num(s["amount"]) for s in sales    if s["date"] == d)
-        de = sum(_num(e["amount"]) for e in expenses if e["date"] == d)
+        de = (
+            sum(_num(e["amount"]) for e in expenses if e["date"] == d)
+            + sum(_num(row.get("amount")) for row in labour if row.get("date") == d)
+            + sum(_num(row.get("total_amount")) for row in parts if row.get("date") == d)
+        )
         trend.append({
             "date": d, "sales": round(ds, 2), "expenses": round(de, 2),
             "profit": round(ds - de, 2),
@@ -497,13 +665,13 @@ def build_control(sales, expenses, from_d, to_d,
             "boulder_trips":    round((boulders or {}).get("total_trips",  0.0), 2),
             "recovery_pct":     round(total_qty / (boulders or {}).get("total_tonnes", 0) * 100, 1)
                                 if (boulders or {}).get("total_tonnes") else 0.0,
-            "machine_hours":     0.0,
-            "machine_fuel_liters": 0.0,
+            "machine_hours":     round(sum(_num(row.get("running_hours")) for row in machines), 2),
+            "machine_fuel_liters": round(sum(_num(row.get("fuel_liters")) for row in machines), 2),
             "fuel_per_mt":       0.0,
             "bank_balance":            round(bank_net, 2),
             "cash_balance_office":     round(cash_balance, 2),
-            "bank_balance_book":       round(bank_net, 2),
-            "cash_balance_office_book": round(cash_balance, 2),
+            "bank_balance_book":       round(bank_balance_book, 2),
+            "cash_balance_office_book": round(cash_balance_office_book, 2),
             "operating_balance_from":  str(from_d),
             "kumar_balance":           0.0,
             "selected_period_profit_per_tonne":
@@ -566,6 +734,38 @@ def write_snapshot(url, data):
     with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
 
+def apply_seed_control_overrides(control, local_seed, start, end):
+    seed_control = (local_seed.get("controls") or {}).get(f"{start}|{end}") if isinstance(local_seed, dict) else None
+    if not seed_control:
+        return control
+    seed_summary = seed_control.get("summary") or {}
+    summary = control.setdefault("summary", {})
+    for key in (
+        "bank_balance",
+        "cash_balance_office",
+        "bank_balance_book",
+        "cash_balance_office_book",
+        "operating_balance_from",
+        "receivables",
+        "payables",
+    ):
+        if key in seed_summary:
+            summary[key] = seed_summary[key]
+    for key in (
+        "customer_repayments",
+        "customer_repayments_total",
+        "customer_repayments_payment_total",
+        "customer_repayments_bank_total",
+        "customer_repayments_cash_total",
+    ):
+        if key in seed_control:
+            control[key] = seed_control[key]
+    if "top_receivables" in seed_control:
+        control["top_receivables"] = seed_control["top_receivables"]
+    if "top_payables" in seed_control:
+        control["top_payables"] = seed_control["top_payables"]
+    return control
+
 def empty_ledger(name, closing=0.0):
     return {
         "name": name,
@@ -586,14 +786,21 @@ def write_snapshot_bundle(
     month_start,
     all_sales,
     all_expenses,
+    labour_rows,
+    parts_rows,
+    machines_rows,
+    boulder_rows,
     cash_rows,
     bank_rows,
     cash_balance,
     bank_net,
+    bank_balance_book,
+    cash_balance_office_book,
     customers_full,
     customers_outstanding,
     vendors_full,
     vendors_payables,
+    local_seed,
     controls,
 ):
     week_start = today - timedelta(days=today.weekday())
@@ -617,13 +824,11 @@ def write_snapshot_bundle(
         fs, ts = str(start), str(end)
         return [row for row in rows if fs <= row.get("date", "") <= ts]
 
-    write_snapshot("/api/me", {"username": "otomy", "can_write": False})
-    write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
-    write_snapshot("/api/customers/?active_only=false", customers_full)
-    write_snapshot("/api/customers/outstanding", customers_outstanding)
-    write_snapshot("/api/vendors/?active_only=false", vendors_full)
-    write_snapshot("/api/vendors/payables", vendors_payables)
-    write_snapshot("/api/bank/accounts", [
+    seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
+    seed_customer_ledgers = local_seed.get("customer_ledgers", {}) if isinstance(local_seed, dict) else {}
+    seed_vendor_ledgers = local_seed.get("vendor_ledgers", {}) if isinstance(local_seed, dict) else {}
+    seed_bank_statements = local_seed.get("bank_statements", {}) if isinstance(local_seed, dict) else {}
+    bank_accounts = seed_endpoints.get("bank_accounts") or [
         {
             "id": 1,
             "name": "Operating Bank",
@@ -635,33 +840,30 @@ def write_snapshot_bundle(
             "initial_balance_date": str(today),
             "active": True,
             "current_balance": bank_net,
-        },
-        {
-            "id": 2,
-            "name": "Cash Balance In Office",
-            "account_no": "",
-            "bank_name": "Cash",
-            "branch": "",
-            "ifsc": "",
-            "initial_balance": cash_balance,
-            "initial_balance_date": str(today),
-            "active": True,
-            "current_balance": cash_balance,
-        },
-    ])
-    write_snapshot("/api/bank/accounts/1/statement", bank_rows)
-    write_snapshot("/api/bank/accounts/2/statement", cash_rows)
-    write_snapshot("/api/emi/", [])
-    write_snapshot("/api/workers/", [])
-    write_snapshot("/api/workers/?active_only=false", [])
-    write_snapshot("/api/exports/config", {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"})
+        }
+    ]
+    exports_config = seed_endpoints.get("exports_config") or {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"}
+
+    write_snapshot("/api/me", {"username": "otomy", "can_write": False})
+    write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
+    write_snapshot("/api/customers/?active_only=false", customers_full)
+    write_snapshot("/api/customers/outstanding", customers_outstanding)
+    write_snapshot("/api/vendors/?active_only=false", vendors_full)
+    write_snapshot("/api/vendors/payables", vendors_payables)
+    write_snapshot("/api/bank/accounts", bank_accounts)
+    for account in bank_accounts:
+        write_snapshot(f"/api/bank/accounts/{account['id']}/statement", seed_bank_statements.get(str(account["id"]), []))
+    write_snapshot("/api/emi/", seed_endpoints.get("emi", []))
+    write_snapshot("/api/workers/", [row for row in seed_endpoints.get("workers", []) if row.get("active", True)])
+    write_snapshot("/api/workers/?active_only=false", seed_endpoints.get("workers", []))
+    write_snapshot("/api/exports/config", exports_config)
     write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
     write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
 
     for row in customers_full:
-        write_snapshot(f"/api/customers/ledger/{row['id']}", empty_ledger(row["name"], row.get("outstanding", 0.0)))
+        write_snapshot(f"/api/customers/ledger/{row['id']}", seed_customer_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("outstanding", 0.0))))
     for row in vendors_full:
-        write_snapshot(f"/api/vendors/ledger/{row['id']}", empty_ledger(row["name"], row.get("payable", 0.0)))
+        write_snapshot(f"/api/vendors/ledger/{row['id']}", seed_vendor_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("payable", 0.0))))
 
     for start, end in ranges:
         control = control_by_range.get((start, end))
@@ -676,15 +878,21 @@ def write_snapshot_bundle(
                 creditors=[{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
                 cash_balance=cash_balance,
                 bank_net=bank_net,
+                labour=rows_between(labour_rows, start, end),
+                parts=rows_between(parts_rows, start, end),
+                machines=rows_between(machines_rows, start, end),
+                bank_balance_book=bank_balance_book,
+                cash_balance_office_book=cash_balance_office_book,
                 repayments=[],
             )
+        control = apply_seed_control_overrides(control, local_seed, start, end)
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
-        write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", [])
-        write_snapshot(f"/api/machines/?from_date={start}&to_date={end}", [])
-        write_snapshot(f"/api/labour/?from_date={start}&to_date={end}", [])
-        write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", rows_between(boulder_rows, start, end))
+        write_snapshot(f"/api/machines/?from_date={start}&to_date={end}", rows_between(machines_rows, start, end))
+        write_snapshot(f"/api/labour/?from_date={start}&to_date={end}", rows_between(labour_rows, start, end))
+        write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", rows_between(parts_rows, start, end))
         write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
         write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
         write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", [])
@@ -720,6 +928,28 @@ def main():
     yesterday   = today - timedelta(days=1)
     month_start = today.replace(day=1)
     thirty_ago  = today - timedelta(days=30)
+    local_seed = load_local_seed()
+    seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
+    labour_rows = seed_endpoints.get("labour_30d", [])
+    parts_rows = seed_endpoints.get("parts_30d", [])
+    machines_rows = seed_endpoints.get("machines_30d", [])
+    boulder_rows = seed_endpoints.get("boulders_30d", [])
+    seed_config = seed_endpoints.get("exports_config", {})
+    seed_bank_accounts = seed_endpoints.get("bank_accounts", [])
+
+    bank_balance_book = round(
+        sum(_num(row.get("current_balance")) for row in seed_bank_accounts if row.get("active", True)),
+        2,
+    )
+    cash_balance_office_book = round(
+        sum(
+            _num(row.get("current_balance"))
+            for row in seed_bank_accounts
+            if row.get("active", True)
+            and "HDFC" in f"{row.get('name', '')} {row.get('bank_name', '')}".upper()
+        ),
+        2,
+    )
 
     # ── sales & expenses (30-day window) ──────────────────────────────────────
     print("  Fetching sales...")
@@ -737,6 +967,10 @@ def main():
     def exp_for(f, t):
         fs, ts = str(f), str(t)
         return [e for e in all_expenses if fs <= e["date"] <= ts]
+
+    def seed_for(rows, f, t):
+        fs, ts = str(f), str(t)
+        return [row for row in rows if fs <= row.get("date", "") <= ts]
 
     # ── boulders ──────────────────────────────────────────────────────────────
     print("  Fetching boulders...")
@@ -777,39 +1011,121 @@ def main():
         "bank_net":      bank_net,
     })
 
-    # ── debtors (current outstanding snapshot) ────────────────────────────────
-    print("  Fetching debtors (today)...")
+    # ── debtors and ERP credit repayments ─────────────────────────────────────
+    print("  Fetching debtors (today/yesterday/month)...")
     debtors_today = fetch_debtors(sess, today)
     print(f"  {len(debtors_today)} customers")
-    debtors_yesterday_snap = debtors_today
-    repayments_today = []
-    repayments_yesterday = []
-    repayments_mtd = []
+    seed_controls = local_seed.get("controls") or {}
+
+    def seeded_repayments(start, end):
+        control = seed_controls.get(f"{start}|{end}") or {}
+        return control.get("customer_repayments")
+
+    repayments_today = seeded_repayments(today, today)
+    repayments_yesterday = seeded_repayments(yesterday, yesterday)
+    repayments_mtd = seeded_repayments(month_start, today)
+    need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd))
+    debtors_yesterday = debtors_today
+    if need_repayment_fetch:
+        debtors_yesterday = fetch_debtors(sess, yesterday)
+        debtors_day_before_yesterday = fetch_debtors(sess, yesterday - timedelta(days=1))
+        debtors_before_mtd = fetch_debtors(sess, month_start - timedelta(days=1))
+        if repayments_today is None:
+            repayments_today = compute_repayments_from_erp(sess, today, today, debtors_yesterday, debtors_today)
+        if repayments_yesterday is None:
+            repayments_yesterday = compute_repayments_from_erp(
+                sess, yesterday, yesterday, debtors_day_before_yesterday, debtors_yesterday
+            )
+        if repayments_mtd is None:
+            repayments_mtd = compute_repayments_from_erp(sess, month_start, today, debtors_before_mtd, debtors_today)
+    repayments_today = repayments_today or []
+    repayments_yesterday = repayments_yesterday or []
+    repayments_mtd = repayments_mtd or []
+
+    opening = seed_config.get("operating_balance_opening") or {}
+    try:
+        opening_as_of = datetime.fromisoformat(str(opening.get("as_of"))).date()
+    except Exception:
+        opening_as_of = today - timedelta(days=1)
+    movement_start = opening_as_of + timedelta(days=1)
+    today_seed_summary = (seed_controls.get(f"{today}|{today}") or {}).get("summary") or {}
+    if "bank_balance" in today_seed_summary and "cash_balance_office" in today_seed_summary:
+        operating_bank_balance = _num(today_seed_summary.get("bank_balance"))
+        operating_cash_balance = _num(today_seed_summary.get("cash_balance_office"))
+    else:
+        movement_prev = fetch_debtors(sess, movement_start - timedelta(days=1))
+        repayments_movement = compute_repayments_from_erp(sess, movement_start, today, movement_prev, debtors_today)
+        operating_bank_balance = _num(opening.get("bank_balance"))
+        operating_cash_balance = _num(opening.get("cash_balance_office"))
+        for sale in sales_for(movement_start, today):
+            mode = sale.get("payment_mode") or "Credit"
+            if mode.lower() == "credit":
+                continue
+            if _payment_channel(mode) == "cash":
+                operating_cash_balance += _num(sale.get("amount"))
+            else:
+                operating_bank_balance += _num(sale.get("amount"))
+        for receipt in repayments_movement:
+            operating_cash_balance += _num(receipt.get("cash_received"))
+            operating_bank_balance += _num(receipt.get("bank_received"))
+        for expense in exp_for(movement_start, today):
+            if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
+                operating_cash_balance -= _num(expense.get("amount"))
+            else:
+                operating_bank_balance -= _num(expense.get("amount"))
+    operating_bank_balance = round(operating_bank_balance, 2)
+    operating_cash_balance = round(operating_cash_balance, 2)
 
     # ── creditors ─────────────────────────────────────────────────────────────
     print("  Fetching creditors...")
     creditors = fetch_creditors(sess, today)
     print(f"  {len(creditors)} vendors")
+    control_debtors = [
+        {"name": row.get("name"), "outstanding": row.get("balance", row.get("outstanding", 0.0))}
+        for row in seed_endpoints.get("customers_outstanding", [])
+    ] or debtors_today
+    control_creditors = [
+        {"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))}
+        for row in seed_endpoints.get("vendors_payables", [])
+    ] or creditors
 
     # ── control room JSON ─────────────────────────────────────────────────────
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
-        boulders=boulders_today, debtors=debtors_today, creditors=creditors,
-        cash_balance=cash_balance, bank_net=bank_net,
+        boulders=boulders_today, debtors=control_debtors, creditors=control_creditors,
+        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        labour=seed_for(labour_rows, today, today),
+        parts=seed_for(parts_rows, today, today),
+        machines=seed_for(machines_rows, today, today),
+        bank_balance_book=bank_balance_book,
+        cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_today,
     )
     ctrl_yesterday = build_control(
         sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday, yesterday,
-        boulders=boulders_yesterday, debtors=debtors_yesterday_snap, creditors=creditors,
-        cash_balance=cash_balance, bank_net=bank_net,
+        boulders=boulders_yesterday, debtors=control_debtors, creditors=control_creditors,
+        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        labour=seed_for(labour_rows, yesterday, yesterday),
+        parts=seed_for(parts_rows, yesterday, yesterday),
+        machines=seed_for(machines_rows, yesterday, yesterday),
+        bank_balance_book=bank_balance_book,
+        cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_yesterday,
     )
     ctrl_mtd = build_control(
         sales_for(month_start, today), exp_for(month_start, today), month_start, today,
-        boulders=boulders_mtd, debtors=debtors_today, creditors=creditors,
-        cash_balance=cash_balance, bank_net=bank_net,
+        boulders=boulders_mtd, debtors=control_debtors, creditors=control_creditors,
+        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        labour=seed_for(labour_rows, month_start, today),
+        parts=seed_for(parts_rows, month_start, today),
+        machines=seed_for(machines_rows, month_start, today),
+        bank_balance_book=bank_balance_book,
+        cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_mtd,
     )
+    ctrl_today = apply_seed_control_overrides(ctrl_today, local_seed, today, today)
+    ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
+    ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
     write("ctrl_today.json", ctrl_today)
     write("ctrl_yesterday.json", ctrl_yesterday)
     write("ctrl_mtd.json", ctrl_mtd)
@@ -827,19 +1143,36 @@ def main():
         if s["payment_mode"] != "Credit":
             g["total_receipts"] += _num(s["amount"])
 
-    customers_outstanding = []
-    customers_full        = []
-    for i, d in enumerate(sorted(debtors_today, key=lambda r: r["outstanding"], reverse=True), 1):
+    seed_customers = seed_endpoints.get("customers_all", [])
+    debtors_by_name = {d["name"]: d for d in debtors_today}
+    customers_by_name = {}
+    max_customer_id = 0
+    for seed_row in seed_customers:
+        row = dict(seed_row)
+        max_customer_id = max(max_customer_id, int(row.get("id") or 0))
+        d = debtors_by_name.pop(row.get("name", ""), None)
+        if d:
+            st = sales_by_cust.get(d["name"], {})
+            row.update({
+                "balance": d["outstanding"],
+                "total_sales": round(st.get("total_sales", row.get("total_sales", d["billed"])), 2),
+                "total_receipts": round(st.get("total_receipts", row.get("total_receipts", d["received"])), 2),
+                "manual_receipts": row.get("manual_receipts", 0.0),
+                "erp_received": round(d["received"], 2),
+                "received": round(d["received"], 2),
+                "erp_debit_balance": round(d["billed"], 2),
+                "erp_credit_balance": round(d["received"], 2),
+                "erp_balance_as_of": str(today),
+                "outstanding": d["outstanding"],
+                "age_45_plus": round(max(d["outstanding"], 0.0), 2),
+            })
+        customers_by_name[row.get("name", "")] = row
+
+    for name, d in debtors_by_name.items():
+        max_customer_id += 1
         st = sales_by_cust.get(d["name"], {})
-        customers_outstanding.append({
-            "id": i, "name": d["name"], "gstin": "", "phone": "",
-            "balance":        d["outstanding"],
-            "outstanding":    d["outstanding"],
-            "total_sales":    round(st.get("total_sales",    d["billed"]),   2),
-            "total_receipts": round(st.get("total_receipts", d["received"]), 2),
-        })
-        customers_full.append({
-            "id": i, "name": d["name"], "gstin": "", "phone": "", "address": "",
+        customers_by_name[name] = {
+            "id": max_customer_id, "name": d["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": 0.0, "active": True,
             "balance":           d["outstanding"],
             "total_sales":       round(st.get("total_sales",    d["billed"]),   2),
@@ -851,24 +1184,75 @@ def main():
             "erp_credit_balance":round(d["received"], 2),
             "erp_balance_as_of": str(today),
             "outstanding":       d["outstanding"],
-        })
+            "age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0,
+            "age_45_plus": round(max(d["outstanding"], 0.0), 2),
+        }
+
+    customers_full = sorted(customers_by_name.values(), key=lambda row: row.get("name", ""))
+    customers_outstanding = [
+        {
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "gstin": row.get("gstin"),
+            "phone": row.get("phone"),
+            "balance": row.get("outstanding", row.get("balance", 0.0)),
+            "outstanding": row.get("outstanding", row.get("balance", 0.0)),
+            "total_sales": row.get("total_sales", 0.0),
+            "total_receipts": row.get("total_receipts", row.get("received", 0.0)),
+        }
+        for row in customers_full
+        if row.get("active", True) and _num(row.get("outstanding", row.get("balance", 0.0))) > 0
+    ]
+    customers_outstanding.sort(key=lambda row: row.get("balance", 0.0), reverse=True)
+    if seed_endpoints.get("customers_outstanding"):
+        customers_outstanding = seed_endpoints["customers_outstanding"]
 
     write("customers_outstanding.json", customers_outstanding)
     write("customers.json",             customers_full)
 
     # ── vendors ───────────────────────────────────────────────────────────────
-    vendors_payables = []
-    vendors_full     = []
-    for i, c in enumerate(sorted(creditors, key=lambda r: r["payable"], reverse=True), 1):
-        vendors_payables.append({
-            "id": i, "name": c["name"], "gstin": "", "phone": "",
-            "payable": c["payable"], "total_purchases": 0.0, "total_payments": 0.0,
-        })
-        vendors_full.append({
-            "id": i, "name": c["name"], "gstin": "", "phone": "", "address": "",
+    seed_vendors = seed_endpoints.get("vendors_all", [])
+    creditors_by_name = {c["name"]: c for c in creditors}
+    vendors_by_name = {}
+    max_vendor_id = 0
+    for seed_row in seed_vendors:
+        row = dict(seed_row)
+        max_vendor_id = max(max_vendor_id, int(row.get("id") or 0))
+        c = creditors_by_name.pop(row.get("name", ""), None)
+        if c:
+            row.update({
+                "payable": c["payable"],
+                "age_45_plus": round(max(c["payable"], 0.0), 2),
+            })
+        vendors_by_name[row.get("name", "")] = row
+
+    for name, c in creditors_by_name.items():
+        max_vendor_id += 1
+        vendors_by_name[name] = {
+            "id": max_vendor_id, "name": c["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": c["payable"], "notes": "", "active": True,
             "payable": c["payable"], "total_purchases": 0.0, "total_payments": 0.0,
-        })
+            "age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0,
+            "age_45_plus": round(max(c["payable"], 0.0), 2),
+        }
+
+    vendors_full = sorted(vendors_by_name.values(), key=lambda row: row.get("name", ""))
+    vendors_payables = [
+        {
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "gstin": row.get("gstin"),
+            "phone": row.get("phone"),
+            "payable": row.get("payable", 0.0),
+            "total_purchases": row.get("total_purchases", 0.0),
+            "total_payments": row.get("total_payments", 0.0),
+        }
+        for row in vendors_full
+        if row.get("active", True) and _num(row.get("payable")) > 0
+    ]
+    vendors_payables.sort(key=lambda row: row.get("payable", 0.0), reverse=True)
+    if seed_endpoints.get("vendors_payables"):
+        vendors_payables = seed_endpoints["vendors_payables"]
 
     write("vendors_payables.json", vendors_payables)
     write("vendors.json",          vendors_full)
@@ -890,20 +1274,27 @@ def main():
         month_start,
         all_sales,
         all_expenses,
+        labour_rows,
+        parts_rows,
+        machines_rows,
+        boulder_rows,
         cash_rows,
         bank_rows,
-        cash_balance,
-        bank_net,
+        operating_cash_balance,
+        operating_bank_balance,
+        bank_balance_book,
+        cash_balance_office_book,
         customers_full,
         customers_outstanding,
         vendors_full,
         vendors_payables,
+        local_seed,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "mtd": ctrl_mtd},
     )
 
     today_sales = sales_for(today, today)
     print(f"  Done. Today: ₹{sum(_num(s['amount']) for s in today_sales):,.0f} "
-          f"| {len(today_sales)} tickets | Cash: ₹{cash_balance:,.0f}")
+          f"| {len(today_sales)} tickets | Cash: ₹{operating_cash_balance:,.0f}")
 
 if __name__ == "__main__":
     main()
