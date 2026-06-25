@@ -162,6 +162,55 @@ def fetch_cash_ledger(sess, from_d, to_d):
         print(f"  cash_ledger: {e}")
     return entries
 
+def fetch_boulders(sess, from_d, to_d):
+    result = {"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": [], "rows": []}
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        html = sess.get(
+            f"{ERP_BASE}/crusher/listInput",
+            params={"startDt": fs, "end": ts},
+            timeout=35, verify=True,
+        ).text
+
+        def parse_table(html, table_id, label_key):
+            m = re.search(rf"<table[^>]*id=['\\"]{re.escape(table_id)}['\"][^>]*>(.*?)</table>",
+                          html, re.DOTALL | re.IGNORECASE)
+            rows, total_trips, total_tonnes = [], 0.0, 0.0
+            if not m:
+                return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
+            for tr in _TR.finditer(m.group(1)):
+                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
+                if len(cols) < 3:
+                    continue
+                label = cols[0].strip()
+                if not label:
+                    continue
+                if label.lower() == "total":
+                    total_trips = _num(cols[1])
+                    total_tonnes = _num(cols[2])
+                    continue
+                rows.append({label_key: label, "trips": _num(cols[1]), "tonnes": _num(cols[2])})
+            if not total_trips:
+                total_trips = sum(r["trips"] for r in rows)
+            if not total_tonnes:
+                total_tonnes = sum(r["tonnes"] for r in rows)
+            rows.sort(key=lambda r: r["tonnes"], reverse=True)
+            return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
+
+        materials = parse_table(html, "itemTable",  "material")
+        suppliers = parse_table(html, "itemTable1", "supplier")
+        total_tonnes = materials["total_tonnes"] or suppliers["total_tonnes"]
+        total_trips  = materials["total_trips"]  or suppliers["total_trips"]
+        result = {
+            "total_tonnes": total_tonnes,
+            "total_trips":  total_trips,
+            "materials": materials["rows"],
+            "suppliers": suppliers["rows"],
+        }
+    except Exception as e:
+        print(f"  boulders fetch error: {e}")
+    return result
+
 def fetch_bank_entries(sess, from_d, to_d):
     entries = []
     try:
@@ -186,7 +235,7 @@ def fetch_bank_entries(sess, from_d, to_d):
         print(f"  bank_entries: {e}")
     return entries
 
-def build_control(sales, expenses, from_d, to_d):
+def build_control(sales, expenses, from_d, to_d, boulders=None):
     days = (to_d - from_d).days + 1
     total_sales = sum(_num(s["amount"]) for s in sales)
     total_qty = sum(_num(s["qty_mt"]) for s in sales)
@@ -266,7 +315,10 @@ def build_control(sales, expenses, from_d, to_d):
             "margin_pct": round(profit/total_sales*100,1) if total_sales else 0.0,
             "sales_qty_mt": round(total_qty,2),
             "avg_rate_per_mt": round(total_sales/total_qty,2) if total_qty else 0.0,
-            "boulder_input_mt": 0.0, "boulder_trips": 0.0, "recovery_pct": 0.0,
+            "boulder_input_mt": round((boulders or {}).get("total_tonnes", 0.0), 2),
+            "boulder_trips": round((boulders or {}).get("total_trips", 0.0), 2),
+            "recovery_pct": round(total_qty / (boulders or {}).get("total_tonnes", 0) * 100, 1)
+                            if (boulders or {}).get("total_tonnes") else 0.0,
             "machine_hours": 0.0, "machine_fuel_liters": 0.0, "fuel_per_mt": 0.0,
             "bank_balance": 0.0, "cash_balance_office": 0.0,
             "bank_balance_book": 0.0, "cash_balance_office_book": 0.0,
@@ -281,7 +333,11 @@ def build_control(sales, expenses, from_d, to_d):
             "expenses": [{"category": k, "amount": round(v,2)}
                          for k,v in sorted(by_expense.items(), key=lambda i: i[1], reverse=True)],
         },
-        "input": {"source": "ERP", "materials": [], "suppliers": []},
+        "input": {
+            "source": "ERP",
+            "materials": (boulders or {}).get("materials", []),
+            "suppliers": (boulders or {}).get("suppliers", []),
+        },
         "customer_sales": csr,
         "customer_sales_totals": {
             "ticket_count": sum(r["ticket_count"] for r in csr),
@@ -325,6 +381,21 @@ def main():
     all_expenses = fetch_expenses(sess, thirty_ago, today)
     print(f"  {len(all_expenses)} expenses")
 
+    # Boulders / quarry input
+    print("  Fetching boulders (today)...")
+    boulders_today     = fetch_boulders(sess, today, today)
+    print("  Fetching boulders (yesterday)...")
+    boulders_yesterday = fetch_boulders(sess, yesterday, yesterday)
+    print("  Fetching boulders (MTD)...")
+    boulders_mtd       = fetch_boulders(sess, month_start, today)
+    print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
+
+    write("boulders.json", {
+        "today":     boulders_today,
+        "yesterday": boulders_yesterday,
+        "mtd":       boulders_mtd,
+    })
+
     # Control room JSON
     def sales_for(f, t):
         fs, ts = str(f), str(t)
@@ -333,9 +404,9 @@ def main():
         fs, ts = str(f), str(t)
         return [e for e in all_expenses if fs <= e["date"] <= ts]
 
-    write("ctrl_today.json",     build_control(sales_for(today, today),       exp_for(today, today),       today, today))
-    write("ctrl_yesterday.json", build_control(sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday, yesterday))
-    write("ctrl_mtd.json",       build_control(sales_for(month_start, today), exp_for(month_start, today), month_start, today))
+    write("ctrl_today.json",     build_control(sales_for(today, today),         exp_for(today, today),         today,       today,     boulders_today))
+    write("ctrl_yesterday.json", build_control(sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday,   yesterday, boulders_yesterday))
+    write("ctrl_mtd.json",       build_control(sales_for(month_start, today),   exp_for(month_start, today),   month_start, today,     boulders_mtd))
 
     # Sales and expenses lists
     write("sales_all.json",    sorted(all_sales,    key=lambda r: r["date"], reverse=True))
