@@ -124,33 +124,35 @@ def fetch_sales(sess, from_d, to_d):
 
 def fetch_expenses(sess, from_d, to_d):
     entries = []
-    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    try:
-        url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
-               f"?startDt={fs}&endDt={ts}&categoryId=-1&vehicleId=-1"
-               f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=2000")
-        data = json.loads(sess.get(url, timeout=60, verify=True).text)
-        seq = 0
-        for row in data.get("data", []):
-            cells = [_clean(c) for c in row]
-            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
-            amt = _num(cells[1]) if len(cells) > 1 else 0
-            if amt <= 0: continue
-            category = cells[3].strip() if len(cells) > 3 else "Other"
-            desc     = cells[2].strip() if len(cells) > 2 else category
-            remarks  = cells[7].strip() if len(cells) > 7 else ""
-            if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
-            pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
-            seq += 1
-            entry_date = _parse_date(cells[0], to_d) if cells[0] else to_d
-            entries.append({
-                "id": seq, "date": str(entry_date), "category": category[:50],
-                "description": desc[:300], "amount": amt,
-                "payment_mode": pay_mode, "notes": remarks[:200],
-                "vendor_id": None, "erp_synced": True,
-            })
-    except Exception as e:
-        print(f"  expenses fetch error: {e}")
+    cur = from_d
+    seq = 0
+    while cur <= to_d:
+        ds = cur.strftime("%d-%m-%Y")
+        try:
+            url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
+                   f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
+                   f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
+            data = json.loads(sess.get(url, timeout=25, verify=True).text)
+            for row in data.get("data", []):
+                cells = [_clean(c) for c in row]
+                if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
+                amt = _num(cells[1]) if len(cells) > 1 else 0
+                if amt <= 0: continue
+                category = cells[3].strip() if len(cells) > 3 else "Other"
+                desc     = cells[2].strip() if len(cells) > 2 else category
+                remarks  = cells[7].strip() if len(cells) > 7 else ""
+                if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
+                pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
+                seq += 1
+                entries.append({
+                    "id": seq, "date": str(cur), "category": category[:50],
+                    "description": desc[:300], "amount": amt,
+                    "payment_mode": pay_mode, "notes": remarks[:200],
+                    "vendor_id": None, "erp_synced": True,
+                })
+        except Exception as e:
+            print(f"  expenses fetch error {ds}: {e}")
+        cur += timedelta(days=1)
     return entries
 
 
@@ -775,25 +777,14 @@ def main():
         "bank_net":      bank_net,
     })
 
-    # ── debtors (today + snapshots for repayment deltas) ──────────────────────
+    # ── debtors (current outstanding snapshot) ────────────────────────────────
     print("  Fetching debtors (today)...")
     debtors_today = fetch_debtors(sess, today)
     print(f"  {len(debtors_today)} customers")
-
-    print("  Fetching debtors (yesterday, for today repayments)...")
-    debtors_yesterday_snap = fetch_debtors(sess, yesterday)
-
-    print("  Fetching debtors (month_start-1, for MTD repayments)...")
-    debtors_mtd_prev = fetch_debtors(sess, month_start - timedelta(days=1))
-
-    repayments_today = compute_repayments(debtors_yesterday_snap, debtors_today, today)
-    repayments_yesterday = compute_repayments(
-        fetch_debtors(sess, yesterday - timedelta(days=1)),
-        debtors_yesterday_snap, yesterday
-    )
-    repayments_mtd = compute_repayments(debtors_mtd_prev, debtors_today, today)
-
-    print(f"  Repayments today: {len(repayments_today)}, MTD: {len(repayments_mtd)}")
+    debtors_yesterday_snap = debtors_today
+    repayments_today = []
+    repayments_yesterday = []
+    repayments_mtd = []
 
     # ── creditors ─────────────────────────────────────────────────────────────
     print("  Fetching creditors...")

@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: erp-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   refresh:
