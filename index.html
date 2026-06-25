@@ -676,22 +676,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
       <div class="form-actions"><button class="btn btn-primary" onclick="addBankTxn()">Add Transaction</button></div>
     </div>
   </div>
-  <div class="card">
-    <h3>Bank Statement</h3>
-    <div class="preset-bar no-print">
-      <span class="preset-label">Period:</span>
-      <button class="pbtn act" onclick="preset('bank','today',this)">Today</button>
-      <button class="pbtn" onclick="preset('bank','yesterday',this)">Yesterday</button>
-      <button class="pbtn" onclick="preset('bank','week',this)">This Week</button>
-      <button class="pbtn" onclick="preset('bank','mtd',this)">Month Till Date</button>
-      <button class="pbtn" onclick="preset('bank','lastmonth',this)">Last Month</button>
-      <div class="preset-dates">
-        <label>Account:</label><select id="stmt-acct" onchange="loadStatement()"></select>
-      </div>
-      <button class="print-btn" onclick="printSection('Bank Statement','bank-stmt')">Print / PDF</button>
-    </div>
-    <div class="tbl-wrap" id="bank-stmt"></div>
-  </div>
 
   <!-- ERP Bank Ledger -->
   <div class="card" style="border-top:3px solid #1565c0">
@@ -2065,10 +2049,18 @@ async function addBankAccount(){
 }
 async function loadBankAccounts(){
   try{
+    const sumDiv=document.getElementById('bank-summary-cards');
+    if(typeof _REMOTE!=='undefined'&&_REMOTE){
+      const ctrl=await fetch('data/ctrl_today.json?t='+Date.now()).then(r=>r.json());
+      const s=ctrl.summary||{};
+      sumDiv.innerHTML=`
+        <div class="kpi navy"><div class="kpi-label">Total Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Running balance from ERP</div></div>
+        <div class="kpi green"><div class="kpi-label">Total Cash In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Running balance from ERP</div></div>`;
+      return;
+    }
     const accts=await api('/api/bank/accounts');
     _bankAccounts=accts;
     fillAcctSelect('bt-acct');fillAcctSelect('stmt-acct');
-    const sumDiv=document.getElementById('bank-summary-cards');
     let totBal=accts.reduce((s,a)=>s+(a.current_balance||0),0);
     let html=`<div class="kpi navy"><div class="kpi-label">Total Bank Balance</div><div class="kpi-value">${fmtINR(totBal)}</div></div>`;
     accts.filter(a=>a.active).forEach(a=>{const color=(a.current_balance||0)<0?'red':'green';const name=displayBankAccountName(a);html+=`<div class="kpi ${color}"><div class="kpi-label">${esc(name)}</div><div class="kpi-value">${fmtINR(a.current_balance||0)}</div><div class="kpi-sub">${name==='CASH BALANCE IN OFFICE'?'':esc(a.bank_name||'')} ${a.account_no?'...'+esc(a.account_no.slice(-4)):''}</div></div>`;});
