@@ -734,11 +734,27 @@ def write_snapshot(url, data):
     with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
 
+def latest_seed_control(local_seed):
+    controls = (local_seed.get("controls") or {}) if isinstance(local_seed, dict) else {}
+    latest_key = ""
+    latest_control = None
+    for key, value in controls.items():
+        if "|" not in key:
+            continue
+        _, end = key.split("|", 1)
+        if end >= latest_key:
+            latest_key = end
+            latest_control = value
+    return latest_control
+
 def apply_seed_control_overrides(control, local_seed, start, end):
-    seed_control = (local_seed.get("controls") or {}).get(f"{start}|{end}") if isinstance(local_seed, dict) else None
-    if not seed_control:
+    controls = (local_seed.get("controls") or {}) if isinstance(local_seed, dict) else {}
+    seed_control = controls.get(f"{start}|{end}")
+    fallback_control = latest_seed_control(local_seed)
+    source_control = seed_control or fallback_control
+    if not source_control:
         return control
-    seed_summary = seed_control.get("summary") or {}
+    seed_summary = source_control.get("summary") or {}
     summary = control.setdefault("summary", {})
     for key in (
         "bank_balance",
@@ -746,11 +762,13 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         "bank_balance_book",
         "cash_balance_office_book",
         "operating_balance_from",
-        "receivables",
-        "payables",
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
+    if seed_control:
+        for key in ("receivables", "payables"):
+            if key in seed_summary:
+                summary[key] = seed_summary[key]
     for key in (
         "customer_repayments",
         "customer_repayments_total",
@@ -758,11 +776,11 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         "customer_repayments_bank_total",
         "customer_repayments_cash_total",
     ):
-        if key in seed_control:
+        if seed_control and key in seed_control:
             control[key] = seed_control[key]
-    if "top_receivables" in seed_control:
+    if seed_control and "top_receivables" in seed_control:
         control["top_receivables"] = seed_control["top_receivables"]
-    if "top_payables" in seed_control:
+    if seed_control and "top_payables" in seed_control:
         control["top_payables"] = seed_control["top_payables"]
     return control
 
