@@ -84,6 +84,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 
 /* ── Tables ── */
 .tbl-wrap{overflow-x:auto}
+.tbl-wrap.no-side-scroll{overflow-x:visible}
+.tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
+.tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
@@ -252,7 +255,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .subtabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .subtab{padding:10px 13px}
   .tbl-wrap,.report-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl-wrap.no-side-scroll{overflow-x:visible}
   table,.report-table{min-width:760px;font-size:12px}
+  .tbl-wrap.no-side-scroll table{min-width:0;font-size:11px}
   thead th,.report-table thead th{padding:8px 9px;font-size:10px}
   tbody td,tfoot td,.report-table tbody td,.report-table tfoot td{padding:8px 9px}
   .bar-row{grid-template-columns:86px 1fr 74px;gap:8px}
@@ -267,6 +272,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .kpi-value{font-size:19px}
   .preset-dates input{min-width:120px}
   table,.report-table{min-width:700px}
+  .tbl-wrap.no-side-scroll table{min-width:0;font-size:10px}
 }
 
 /* ── PRINT ── */
@@ -940,6 +946,12 @@ function _rangeDaysForKey(key){
 function pageSizeFor(key,total){
   const days=_rangeDaysForKey(key);
   return days!==null&&days<=2?Math.max(total,1):PAGE_SIZE;
+}
+function applyTableRangeMode(key,wrapId){
+  const el=document.getElementById(wrapId);
+  if(!el)return;
+  const days=_rangeDaysForKey(key);
+  el.classList.toggle('no-side-scroll',days!==null&&days<=2);
 }
 
 function pagerHTML(key,total){
@@ -1626,6 +1638,7 @@ async function loadSales(){
   }catch(e){flash(e.message,false);}
 }
 function renderSales(){
+  applyTableRangeMode('sales','sales-tbl');
   const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
   let tot=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=r.amount;totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
@@ -1661,6 +1674,7 @@ async function loadExpenses(){
   }catch(e){flash(e.message,false);}
 }
 function renderExpenses(){
+  applyTableRangeMode('expenses','exp-tbl');
   const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'—'}).name:'—'};
   const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,size=pageSizeFor('expenses',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
@@ -1999,6 +2013,7 @@ async function loadBoulders(){
   }catch(e){}
 }
 function renderBoulders(){
+  applyTableRangeMode('boulders','boulders-tbl');
   const rows=_allData.boulders,cur=_page.boulders,size=pageSizeFor('boulders',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_tonnes;});
   let html='<table><thead><tr><th>Date</th><th>Source</th><th>Trips</th><th>MT/Trip</th><th>Total MT</th></tr></thead><tbody>';
@@ -2026,6 +2041,7 @@ async function loadMachines(){
   }catch(e){}
 }
 function renderMachines(){
+  applyTableRangeMode('machines','machines-tbl');
   const rows=_allData.machines,cur=_page.machines,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Start Hrs</th><th>End Hrs</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.start_hours}</td><td>${r.end_hours}</td><td><strong>${r.running_hours}</strong></td><td>${r.production_mt}</td><td>${r.fuel_liters}</td></tr>`;});
@@ -2053,6 +2069,7 @@ async function loadLabour(){
   }catch(e){}
 }
 function renderLabour(){
+  applyTableRangeMode('labour','labour-tbl');
   const rows=_allData.labour,cur=_page.labour,size=pageSizeFor('labour',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr><th>Date</th><th>Worker</th><th>Type</th><th>Days</th><th>Rate</th><th>Amount</th><th>Status</th><th class="no-print">Action</th></tr></thead><tbody>';
@@ -2098,6 +2115,7 @@ async function loadParts(){
   }catch(e){}
 }
 function renderParts(){
+  applyTableRangeMode('parts','parts-tbl');
   const rows=_allData.parts,cur=_page.parts,size=pageSizeFor('parts',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_amount;});
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Part</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Supplier</th></tr></thead><tbody>';
@@ -2199,6 +2217,7 @@ async function loadErpBank(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpBank(){
+  applyTableRangeMode('erpbank','erp-bank-tbl');
   const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totC=0,totD=0;_allData.erpbank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
   let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
@@ -2220,6 +2239,7 @@ async function loadErpCash(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpCash(){
+  applyTableRangeMode('erpcash','erp-cash-tbl');
   const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,size=pageSizeFor('erpcash',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totR=0,totP=0;_allData.erpcash.forEach(r=>{totR+=r.received;totP+=r.paid;});
   let html='<table><thead><tr>'+thSort('erpcash','date','Date')+thSort('erpcash','ledger','Ledger')+thSort('erpcash','description','Description')+thSort('erpcash','received','Received (In)')+thSort('erpcash','paid','Paid (Out)')+thSort('erpcash','balance','Balance')+'</tr></thead><tbody>';
@@ -2240,6 +2260,7 @@ async function loadIot(){
   }catch(e){}
 }
 function renderIot(){
+  applyTableRangeMode('iot','iot-tbl');
   const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,size=pageSizeFor('iot',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr>'+thSort('iot','dt','Date/Time')+thSort('iot','linked','Type')+thSort('iot','ticket','Ticket')+thSort('iot','vehicle','Vehicle')+thSort('iot','material','Material')+thSort('iot','party','Party')+thSort('iot','qty','Qty')+thSort('iot','crusher','Crusher')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td style="white-space:nowrap">${r.dt}</td><td><span class="badge" style="background:#e3f2fd;color:#1565c0">${r.linked||'—'}</span></td><td>${r.ticket||'—'}</td><td>${r.vehicle||'—'}</td><td>${r.material||'—'}</td><td>${r.party||'—'}</td><td>${r.qty||'—'}</td><td>${r.crusher||'—'}</td></tr>`;});
