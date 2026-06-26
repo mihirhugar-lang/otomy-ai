@@ -765,6 +765,54 @@ def _merge_archive_rows(existing, incoming, section):
         merged[_archive_key(section, row)] = row
     return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
 
+def derive_bank_transactions(sales, expenses, repayments, existing=None):
+    rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])]
+    for sale in sales:
+        mode = sale.get("payment_mode") or "Credit"
+        if mode.lower() == "credit" or _payment_channel(mode) == "cash":
+            continue
+        rows.append({
+            "id": f"sale-{sale.get('id') or sale.get('ticket_no') or ''}-{sale.get('date')}",
+            "date": sale.get("date"),
+            "description": (
+                f"Sale received by bank/UPI - {sale.get('customer_name') or 'Customer'}"
+                f" - Ticket {sale.get('ticket_no') or '-'} - {sale.get('vehicle_no') or '-'}"
+            ),
+            "credit": _num(sale.get("amount")),
+            "debit": 0.0,
+            "bank_name": "UPI/Bank Sale",
+            "source": "Sale",
+        })
+    for expense in expenses:
+        if _payment_channel(expense.get("payment_mode") or "") == "cash":
+            continue
+        rows.append({
+            "id": f"expense-{expense.get('id') or ''}-{expense.get('date')}-{expense.get('amount')}",
+            "date": expense.get("date"),
+            "description": f"Expense paid by bank/UPI - {expense.get('category') or 'Expense'} - {expense.get('description') or ''}",
+            "credit": 0.0,
+            "debit": _num(expense.get("amount")),
+            "bank_name": "UPI/Bank Expense",
+            "source": "Expense",
+        })
+    for idx, receipt in enumerate(repayments or []):
+        bank_received = _num(receipt.get("bank_received"))
+        if bank_received <= 0 and _payment_channel(receipt.get("mode") or "") != "cash":
+            bank_received = _num(receipt.get("payment_received", receipt.get("amount")))
+        if bank_received <= 0:
+            continue
+        rows.append({
+            "id": f"receipt-{receipt.get('erp_customer_id') or idx}-{receipt.get('date')}",
+            "date": str(receipt.get("date", ""))[:10],
+            "description": f"Credit payment received by bank/UPI - {receipt.get('customer_name') or 'Customer'}",
+            "credit": bank_received,
+            "debit": 0.0,
+            "bank_name": "UPI/Bank Credit Payment",
+            "source": "Credit Payment",
+        })
+    rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
+    return rows
+
 def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, local_seed):
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     by_month = {}
@@ -1331,6 +1379,18 @@ def main():
     repayments_today = repayments_today or []
     repayments_yesterday = repayments_yesterday or []
     repayments_mtd = repayments_mtd or []
+    bank_rows = derive_bank_transactions(all_sales, all_expenses, repayments_mtd, bank_rows)
+    bank_net = round(
+        sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
+        2,
+    )
+    write("erp_ledger.json", {
+        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "cash":          cash_rows,
+        "bank":          bank_rows,
+        "cash_balance":  round(cash_balance, 2),
+        "bank_net":      bank_net,
+    })
 
     opening = seed_config.get("operating_balance_opening") or {}
     try:
