@@ -403,7 +403,7 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
   <div class="kpi-row">
     <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
     <div class="kpi green"><div class="kpi-label">Cash Collected</div><div class="kpi-value" id="d-cash">—</div></div>
-    <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
+    <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
     <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
   </div>
   <div id="dash-print-area">
@@ -414,27 +414,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 <!-- SALES -->
 <div class="section" id="section-sales">
   <div class="page-header"><h2>Sales Ledger</h2></div>
-  <div class="card no-print">
-    <h3>Add Sale</h3>
-    <div class="form-grid">
-      <div class="fg"><label>Date</label><input type="date" id="s-date"></div>
-      <div class="fg"><label>Customer</label><select id="s-customer"><option value="">-- Cash/Walk-in --</option></select></div>
-      <div class="fg"><label>Customer Name (manual)</label><input type="text" id="s-cname" placeholder="Or type name"></div>
-      <div class="fg"><label>Material</label>
-        <select id="s-mat"><option>40mm</option><option>20mm</option><option>12mm</option><option>60/80mm</option><option>6mm</option><option>M-Sand</option><option>P-Sand</option><option>Dust</option><option>Mixed</option></select>
-      </div>
-      <div class="fg"><label>Qty (MT)</label><input type="number" id="s-qty" step="0.01" oninput="calcSale()"></div>
-      <div class="fg"><label>Rate/MT (₹)</label><input type="number" id="s-rate" step="0.01" oninput="calcSale()"></div>
-      <div class="fg"><label>Amount (auto)</label><input type="number" id="s-amt" readonly style="background:#f5f5f5"></div>
-      <div class="fg"><label>Payment</label><select id="s-pay"><option>Credit</option><option>Cash</option><option>UPI</option><option>Cheque</option></select></div>
-      <div class="fg"><label>Vehicle No</label><input type="text" id="s-vehicle" placeholder="KA XX XXXX"></div>
-      <div class="fg"><label>Ticket No</label><input type="text" id="s-ticket" placeholder="ERP ticket #"></div>
-      <div class="fg"><label>HSN Code</label><input type="text" id="s-hsn" value="2517"></div>
-      <div class="fg"><label>GST %</label><input type="number" id="s-gst" value="5" step="0.1"></div>
-      <div class="fg"><label>Notes</label><input type="text" id="s-notes"></div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary" onclick="addSale()">Add Sale</button></div>
-  </div>
   <div class="card">
     <h3>Sales Records</h3>
     <div class="preset-bar no-print">
@@ -459,21 +438,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 <!-- EXPENSES -->
 <div class="section" id="section-expenses">
   <div class="page-header"><h2>Expenses Ledger</h2></div>
-  <div class="card no-print">
-    <h3>Add Expense</h3>
-    <div class="form-grid">
-      <div class="fg"><label>Date</label><input type="date" id="e-date"></div>
-      <div class="fg"><label>Category</label>
-        <select id="e-cat"><option>Fuel</option><option>EMI</option><option>Crusher Repair</option><option>Vehicle Repair</option><option>Blasting</option><option>Wages</option><option>Transport</option><option>Electricity</option><option>Weighbridge</option><option>Food/Batta</option><option>Other</option></select>
-      </div>
-      <div class="fg"><label>Vendor</label><select id="e-vendor"><option value="">-- None --</option></select></div>
-      <div class="fg full"><label>Description</label><input type="text" id="e-desc"></div>
-      <div class="fg"><label>Amount (₹)</label><input type="number" id="e-amt"></div>
-      <div class="fg"><label>Payment Mode</label><select id="e-pay"><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option></select></div>
-      <div class="fg"><label>Notes</label><input type="text" id="e-notes"></div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary" onclick="addExpense()">Add Expense</button></div>
-  </div>
   <div class="card">
     <h3>Expenses</h3>
     <div class="preset-bar no-print">
@@ -516,31 +480,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
     <div class="kpi"><div class="kpi-label">Total Customers</div><div class="kpi-value" id="c-total">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Balance</div><div class="kpi-value" id="c-with-bal">—</div></div>
   </div>
-  <div class="card-row no-print">
-    <div class="card">
-      <h3>Add Customer</h3>
-      <div class="form-grid">
-        <div class="fg full"><label>Name</label><input type="text" id="c-name"></div>
-        <div class="fg"><label>GSTIN</label><input type="text" id="c-gstin" placeholder="29XXXXX..."></div>
-        <div class="fg"><label>Phone</label><input type="text" id="c-phone"></div>
-        <div class="fg"><label>Opening Balance (₹)</label><input type="number" id="c-opbal" value="0"></div>
-        <div class="fg full"><label>Address</label><input type="text" id="c-addr"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary" onclick="addCustomer()">Add Customer</button></div>
-    </div>
-    <div class="card">
-      <h3>Add Receipt from Customer</h3>
-      <div class="form-grid">
-        <div class="fg"><label>Date</label><input type="date" id="cr-date"></div>
-        <div class="fg"><label>Customer</label><select id="cr-cust"></select></div>
-        <div class="fg"><label>Amount (₹)</label><input type="number" id="cr-amt"></div>
-        <div class="fg"><label>Mode</label><select id="cr-mode"><option>Cash</option><option>UPI</option><option>Cheque</option><option>Bank Transfer</option></select></div>
-        <div class="fg"><label>Reference</label><input type="text" id="cr-ref"></div>
-        <div class="fg"><label>Notes</label><input type="text" id="cr-notes"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-green" onclick="addReceipt()">Record Receipt</button></div>
-    </div>
-  </div>
   <div class="card">
     <h3>Customer List — Outstanding Balances</h3>
     <div class="tbl-wrap" id="cust-tbl"></div>
@@ -575,31 +514,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
     <div class="kpi"><div class="kpi-label">Total Vendors</div><div class="kpi-value" id="v-total">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Payable</div><div class="kpi-value" id="v-with-pay">—</div></div>
   </div>
-  <div class="card-row no-print">
-    <div class="card">
-      <h3>Add Vendor</h3>
-      <div class="form-grid">
-        <div class="fg full"><label>Name</label><input type="text" id="v-name"></div>
-        <div class="fg"><label>GSTIN</label><input type="text" id="v-gstin"></div>
-        <div class="fg"><label>Phone</label><input type="text" id="v-phone"></div>
-        <div class="fg"><label>Opening Balance (₹ owed)</label><input type="number" id="v-opbal" value="0"></div>
-        <div class="fg full"><label>Address / Notes</label><input type="text" id="v-notes"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary" onclick="addVendor()">Add Vendor</button></div>
-    </div>
-    <div class="card">
-      <h3>Record Payment to Vendor</h3>
-      <div class="form-grid">
-        <div class="fg"><label>Date</label><input type="date" id="vp-date"></div>
-        <div class="fg"><label>Vendor</label><select id="vp-vend"></select></div>
-        <div class="fg"><label>Amount (₹)</label><input type="number" id="vp-amt"></div>
-        <div class="fg"><label>Mode</label><select id="vp-mode"><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option></select></div>
-        <div class="fg"><label>Reference</label><input type="text" id="vp-ref"></div>
-        <div class="fg"><label>Notes</label><input type="text" id="vp-notes"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-green" onclick="addVendorPayment()">Record Payment</button></div>
-    </div>
-  </div>
   <div class="card">
     <h3>Vendor List — Payable Balances</h3>
     <div class="tbl-wrap" id="vend-tbl"></div>
@@ -618,33 +532,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 <div class="section" id="section-bank">
   <div class="page-header"><h2>Cash & Bank</h2></div>
   <div id="bank-summary-cards" class="kpi-row"></div>
-  <div class="card-row no-print">
-    <div class="card">
-      <h3>Add Bank Account</h3>
-      <div class="form-grid">
-        <div class="fg full"><label>Account Name</label><input type="text" id="ba-name" placeholder="e.g. HDFC Current Account"></div>
-        <div class="fg"><label>Account No</label><input type="text" id="ba-accno"></div>
-        <div class="fg"><label>Bank Name</label><input type="text" id="ba-bank"></div>
-        <div class="fg"><label>Branch</label><input type="text" id="ba-branch"></div>
-        <div class="fg"><label>IFSC</label><input type="text" id="ba-ifsc"></div>
-        <div class="fg"><label>Initial Balance (₹)</label><input type="number" id="ba-initbal" value="0"></div>
-        <div class="fg"><label>Balance as on Date</label><input type="date" id="ba-initdate"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary" onclick="addBankAccount()">Add Account</button></div>
-    </div>
-    <div class="card">
-      <h3>Add Transaction</h3>
-      <div class="form-grid">
-        <div class="fg"><label>Date</label><input type="date" id="bt-date"></div>
-        <div class="fg"><label>Account</label><select id="bt-acct"></select></div>
-        <div class="fg"><label>Type</label><select id="bt-type"><option>Credit</option><option>Debit</option></select></div>
-        <div class="fg full"><label>Description</label><input type="text" id="bt-desc"></div>
-        <div class="fg"><label>Amount (₹)</label><input type="number" id="bt-amt"></div>
-        <div class="fg"><label>Reference</label><input type="text" id="bt-ref"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary" onclick="addBankTxn()">Add Transaction</button></div>
-    </div>
-  </div>
   <div class="card">
     <h3>Bank Statement</h3>
     <div class="preset-bar no-print">
@@ -724,14 +611,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 <!-- REPORTS -->
 <div class="section" id="section-reports">
   <div class="page-header"><h2>Reports & Exports</h2></div>
-  <div class="card"><h3>Company Configuration (for GST & Tally)</h3>
-    <div class="form-grid">
-      <div class="fg"><label>Company Name</label><input type="text" id="cfg-name"></div>
-      <div class="fg"><label>GSTIN</label><input type="text" id="cfg-gstin" placeholder="29AAAAA0000A1Z5"></div>
-      <div class="fg"><label>State Code</label><input type="text" id="cfg-state" value="29"></div>
-    </div>
-    <div class="form-actions"><button class="btn btn-navy" onclick="saveConfig()">Save Config</button></div>
-  </div>
   <div class="card"><h3>🔍 Audit Report</h3>
     <p style="font-size:13px;color:#555;margin-bottom:10px">Comprehensive internal audit with auto-detected flags — overdue EMI, unpaid labour, missing data, high-value cash expenses, outstanding debtors.</p>
     <div class="preset-bar" style="margin-bottom:12px">
@@ -777,47 +656,6 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
     <div id="gst-preview" style="margin-top:12px;font-size:12px;color:#555;background:#f5f5f5;padding:10px;border-radius:5px;display:none;white-space:pre-wrap;font-family:monospace;max-height:200px;overflow-y:auto"></div>
   </div>
 
-  <!-- ERP SYNC -->
-  <div class="card" style="border-top:3px solid #1565c0">
-    <h3 style="color:#1565c0">🔄 ERP Auto-Sync — erp.loctell.com</h3>
-    <p style="font-size:13px;color:#555;margin-bottom:14px">Full sync from Loctell ERP — sales tickets (with MDP ton), individual expenses, customer debtors outstanding, and vendor/supplier creditor balances. Duplicates are auto-skipped.</p>
-    <div class="card" style="background:#f0f4ff;border:1px solid #c5cae9;margin-bottom:14px">
-      <h3 style="color:#1565c0">ERP Credentials</h3>
-      <div class="form-grid">
-        <div class="fg"><label>ERP Base URL</label><input type="text" id="erp-base" value="https://erp.loctell.com"></div>
-        <div class="fg"><label>Organisation</label><input type="text" id="erp-org" placeholder="e.g. VMIPL"></div>
-        <div class="fg"><label>Username</label><input type="text" id="erp-user" placeholder="admin"></div>
-        <div class="fg"><label>Password</label><input type="password" id="erp-pass"></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-navy" onclick="saveErpConfig()">Save ERP Credentials</button></div>
-    </div>
-    <div class="preset-bar" style="border-left-color:#1565c0;margin-bottom:14px">
-      <span class="preset-label">Sync Period:</span>
-      <button class="pbtn act" onclick="setErpDates(today(),today())">Today</button>
-      <button class="pbtn" onclick="setErpDates(yesterday(),yesterday())">Yesterday</button>
-      <button class="pbtn" onclick="setErpDates(weekStart(),today())">This Week</button>
-      <button class="pbtn" onclick="setErpDates(mtdStart(),today())">Month Till Date</button>
-      <button class="pbtn" onclick="setErpDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
-      <div class="preset-dates">
-        <label>From:</label><input type="date" id="erp-from">
-        <label>To:</label><input type="date" id="erp-to">
-      </div>
-    </div>
-    <div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:8px;padding:12px;margin-bottom:12px">
-      <div style="font-weight:600;font-size:13px;color:#1565c0;margin-bottom:8px">What to sync:</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
-        <label><input type="checkbox" id="sync-sales" checked> <strong>Sales</strong> — tickets &amp; MDP ton</label>
-        <label><input type="checkbox" id="sync-expenses" checked> <strong>Expenses</strong></label>
-        <label><input type="checkbox" id="sync-bank" checked> <strong>Bank Transactions</strong></label>
-        <label><input type="checkbox" id="sync-cash" checked> <strong>Cash Ledger</strong></label>
-        <label><input type="checkbox" id="sync-iot" checked> <strong>IOT Movements</strong></label>
-        <label><input type="checkbox" id="sync-debtors" checked> <strong>Debtors</strong> — outstanding balances</label>
-        <label><input type="checkbox" id="sync-creditors" checked> <strong>Creditors</strong> — payable balances</label>
-      </div>
-    </div>
-    <button class="btn btn-primary" onclick="runErpSync()" id="sync-btn" style="background:#1565c0;min-width:200px">🔄 Sync from ERP Now</button>
-    <div id="sync-result" style="margin-top:12px;font-size:13px;display:none;padding:12px;border-radius:6px"></div>
-  </div>
 </div>
 
 </div><!-- /content -->
@@ -935,7 +773,7 @@ async function applyAccessMode(){
   document.body.classList.toggle('readonly', !_canWrite);
   document.querySelectorAll('button').forEach(btn=>{
     const action=btn.getAttribute('onclick')||'';
-    if(/^(add|save|del|deactivate|remove|markPaid|syncNow|runErpSync|saveConfig|saveErpConfig|saveMuster)/.test(action)){
+    if(/^(add|del|deactivate|remove|markPaid|saveMuster)/.test(action)){
       btn.classList.add('write-only');
     }
   });
@@ -1043,7 +881,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ledger:'Ledger View',operations:'Operations',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1072,8 +910,7 @@ function nav(name){
   if(name==='vendors'){loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankAccounts();loadStatement();loadErpBank();loadErpCash();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
-  if(name==='operations'){_initDates('op-from','op-to');loadOpsDefaults();}
-  if(name==='reports'){loadConfig();loadErpConfig();setErpDates(mtdStart(),today());}
+  if(name==='reports'){}
 }
 function subTab(id,el){
   document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('active'));
@@ -1410,7 +1247,7 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Avg Rate/MT</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
           <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,1)} MT</strong></div>
           <div class="control-metric"><span>Input Trips</span><strong>${fmtNum(s.boulder_trips,0)}</strong></div>
-          <div class="control-metric"><span>Total Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
+          <div class="control-metric"><span>Operating Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
           <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
@@ -1988,14 +1825,6 @@ async function loadWorkers(){
 async function removeWorker(id,name){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
 // ── Reports ────────────────────────────────────────────────────────────────
-async function loadConfig(){
-  try{const c=await api('/api/exports/config');document.getElementById('cfg-name').value=c.company_name||'';document.getElementById('cfg-gstin').value=c.gstin||'';document.getElementById('cfg-state').value=c.state_code||'29';}catch(e){}
-}
-async function saveConfig(){
-  const body={company_name:document.getElementById('cfg-name').value,gstin:document.getElementById('cfg-gstin').value,state_code:document.getElementById('cfg-state').value};
-  try{await api('/api/exports/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Config saved!');}
-  catch(e){flash(e.message,false);}
-}
 function downloadAudit(){const f=document.getElementById('audit-from').value,t=document.getElementById('audit-to').value;if(!f||!t){flash('Select date range',false);return;}if(isStaticSnapshotHost()){printDashboard();return;}window.open(`/api/reports/audit?from_date=${f}&to_date=${t}`,'_blank');}
 function xmlEsc(v){return String(v??'').replace(/[<>&"']/g,m=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[m]));}
 function tallyDate(v){return String(v||'').replaceAll('-','');}
@@ -2102,73 +1931,6 @@ function renderIot(){
   document.getElementById('iot-pager').innerHTML=pagerHTML('iot',_allData.iot.length);
 }
 
-// ── ERP Sync ───────────────────────────────────────────────────────────────
-function setErpDates(f,t){document.getElementById('erp-from').value=f;document.getElementById('erp-to').value=t;}
-
-async function saveErpConfig(){
-  const body={erp_base:document.getElementById('erp-base').value,erp_org:document.getElementById('erp-org').value,erp_username:document.getElementById('erp-user').value,erp_password:document.getElementById('erp-pass').value};
-  try{await api('/api/sync/erp/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('ERP credentials saved!');}
-  catch(e){flash(e.message,false);}
-}
-
-async function loadErpConfig(){
-  try{
-    const c=await api('/api/sync/erp/config');
-    document.getElementById('erp-base').value=c.erp_base||'https://erp.loctell.com';
-    document.getElementById('erp-org').value=c.erp_org||'';
-    document.getElementById('erp-user').value=c.erp_username||'';
-    // don't pre-fill password
-  }catch(e){}
-}
-
-async function runErpSync(){
-  const f=document.getElementById('erp-from').value,t=document.getElementById('erp-to').value;
-  if(!f||!t){flash('Select sync date range',false);return;}
-  const syncSales=document.getElementById('sync-sales').checked;
-  const syncExp=document.getElementById('sync-expenses').checked;
-  const syncBank=document.getElementById('sync-bank').checked;
-  const syncCash=document.getElementById('sync-cash').checked;
-  const syncIot=document.getElementById('sync-iot').checked;
-  const syncDeb=document.getElementById('sync-debtors').checked;
-  const syncCred=document.getElementById('sync-creditors').checked;
-  const btn=document.getElementById('sync-btn');
-  btn.disabled=true;btn.textContent='⏳ Syncing…';
-  const res=document.getElementById('sync-result');
-  res.style.display='block';res.style.background='#e3f2fd';
-  res.innerHTML='⏳ Syncing all data streams from ERP…<br><small style="color:#555">Sales/Expenses/Bank/Cash scanned day-by-day. IOT &amp; balances: full range in one call.<br>Full month may take 2–4 minutes.</small>';
-  try{
-    const url=`/api/sync/erp?from_date=${f}&to_date=${t}&sync_sales=${syncSales}&sync_expenses=${syncExp}&sync_bank=${syncBank}&sync_cash=${syncCash}&sync_iot=${syncIot}&sync_debtors=${syncDeb}&sync_creditors=${syncCred}`;
-    const r=await api(url,{method:'POST'});
-    res.style.background='#e8f5e9';
-    const custNew=r.customers_created||0,custUpd=r.customers_updated||0;
-    const vendNew=r.vendors_created||0,vendUpd=r.vendors_updated||0;
-    const rows=[
-      ['Sales (tickets)',r.sales_imported,r.sales_skipped],
-      ['Expenses',r.expenses_imported,r.expenses_skipped||0],
-      ['Bank Transactions',r.bank_imported||0,'—'],
-      ['Cash Ledger Entries',r.cash_imported||0,'—'],
-      ['IOT Movements',r.iot_imported||0,'—'],
-      ['ERP Customer Received',r.customer_receipts_imported||0,r.customer_receipts_updated||0],
-      ['Customers new / updated',custNew,custUpd],
-      ['Vendors new / updated',vendNew,vendUpd],
-    ];
-    res.innerHTML=`<strong>✅ ERP Sync Complete!</strong>
-      <table style="margin-top:8px;border-collapse:collapse;font-size:13px;width:100%">
-        <tr style="background:#c8e6c9"><th style="text-align:left;padding:4px 8px">Category</th><th style="padding:4px 8px">Imported / New</th><th style="padding:4px 8px">Skipped / Updated</th></tr>
-        ${rows.map((row,i)=>`<tr style="${i%2?'background:#f1f8f1':''}"><td style="padding:4px 8px">${row[0]}</td><td style="text-align:center;font-weight:700;color:#1b5e20">${row[1]}</td><td style="text-align:center;color:#888">${row[2]}</td></tr>`).join('')}
-      </table>
-      ${r.errors&&r.errors.length?'<div style="margin-top:8px;color:#c62828;font-size:12px">⚠ '+r.errors.join(' | ')+'</div>':''}`;
-    flash(`Synced! ${r.sales_imported} sales · ${r.expenses_imported} exp · ${r.bank_imported||0} bank · ${r.cash_imported||0} cash · ${r.iot_imported||0} IOT`);
-    if(document.getElementById('section-sales').classList.contains('active'))loadSales();
-    if(document.getElementById('section-customers').classList.contains('active'))loadCustomers();
-    if(document.getElementById('section-vendors').classList.contains('active'))loadVendors();
-    if(document.getElementById('section-bank').classList.contains('active')){loadErpBank();loadErpCash();}
-  }catch(e){
-    res.style.background='#ffebee';
-    res.innerHTML=`<strong>❌ Sync Failed</strong><br>${e.message}`;
-    flash(e.message,false);
-  }finally{btn.disabled=false;btn.textContent='🔄 Sync from ERP Now';}
-}
 </script>
 </body>
 </html>

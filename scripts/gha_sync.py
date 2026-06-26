@@ -44,6 +44,10 @@ def _pay_channel(p):
 def _payment_channel(raw):
     return "cash" if "CASH" in (raw or "").upper() else "bank"
 
+def _is_director_payment(*values):
+    text = " ".join(str(value or "") for value in values).upper()
+    return "PRASHANT" in text or "KUMAR" in text
+
 def _mode_bucket(raw):
     value = (raw or "").strip()
     upper = value.upper()
@@ -496,7 +500,23 @@ def build_control(sales, expenses, from_d, to_d,
     labour_total = sum(_num(row.get("amount")) for row in labour)
     parts_total = sum(_num(row.get("total_amount")) for row in parts)
     total_exp = expense_direct + labour_total + parts_total
-    profit         = total_sales - total_exp
+    operating_exp = sum(
+        _num(e["amount"])
+        for e in expenses
+        if not _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"))
+    )
+    operating_labour = sum(
+        _num(row.get("amount"))
+        for row in labour
+        if not _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"))
+    )
+    operating_parts = sum(
+        _num(row.get("total_amount"))
+        for row in parts
+        if not _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"))
+    )
+    operating_total_exp = operating_exp + operating_labour + operating_parts
+    profit = total_sales - operating_total_exp
 
     # material mix
     by_material = {}
@@ -656,7 +676,8 @@ def build_control(sales, expenses, from_d, to_d,
             "sales":            round(total_sales, 2),
             "cash_collected":   round(cash_collected, 2),
             "credit_sales":     round(credit_sales, 2),
-            "expenses":         round(total_exp, 2),
+            "expenses":         round(operating_total_exp, 2),
+            "expenses_before_director_adjustment": round(total_exp, 2),
             "profit":           round(profit, 2),
             "margin_pct":       round(profit / total_sales * 100, 1) if total_sales else 0.0,
             "sales_qty_mt":     round(total_qty, 2),
@@ -954,6 +975,10 @@ def write_snapshot_bundle(
         (month_start, today),
         (last_month_start, last_month_end),
     ]
+    for day in range(1, today.day + 1):
+        start = today.replace(day=day)
+        if (start, today) not in ranges:
+            ranges.append((start, today))
 
     control_by_range = {
         (today, today): controls["today"],
