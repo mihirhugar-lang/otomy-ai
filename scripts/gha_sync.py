@@ -547,7 +547,29 @@ def build_control(sales, expenses, from_d, to_d,
     parts_total = sum(_num(row.get("total_amount")) for row in parts)
     vendor_payment_total = sum(_num(row.get("amount")) for row in vendor_payments)
     total_exp = expense_direct + labour_total + parts_total + vendor_payment_total
-    operating_total_exp = total_exp
+    director_expense_total = (
+        sum(
+            _num(e.get("amount"))
+            for e in expenses
+            if _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"))
+        )
+        + sum(
+            _num(row.get("amount"))
+            for row in labour
+            if _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"))
+        )
+        + sum(
+            _num(row.get("total_amount"))
+            for row in parts
+            if _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"))
+        )
+        + sum(
+            _num(row.get("amount"))
+            for row in vendor_payments
+            if _is_director_payment(row.get("vendor_name"), row.get("mode"), row.get("reference"), row.get("notes"))
+        )
+    )
+    operating_total_exp = total_exp - director_expense_total
     profit = total_sales - operating_total_exp
 
     # material mix
