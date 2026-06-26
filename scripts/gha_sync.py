@@ -13,6 +13,7 @@ import requests
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
+ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -745,6 +746,99 @@ def write(filename, data):
         json.dump(data, f, default=str, indent=2)
     print(f"  {filename}")
 
+def _archive_key(section, row):
+    if row.get("id"):
+        return f"id:{row['id']}"
+    parts = [
+        row.get("date", ""),
+        row.get("ticket_no", ""),
+        row.get("description", ""),
+        row.get("customer_name", ""),
+        row.get("amount", row.get("received", row.get("credit", ""))),
+        row.get("paid", row.get("debit", "")),
+    ]
+    return f"{section}:" + "|".join(str(part) for part in parts)
+
+def _merge_archive_rows(existing, incoming, section):
+    merged = {_archive_key(section, row): row for row in existing}
+    for row in incoming:
+        merged[_archive_key(section, row)] = row
+    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
+
+def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, local_seed):
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    by_month = {}
+    for section, rows in (
+        ("sales", all_sales),
+        ("expenses", all_expenses),
+        ("cash", cash_rows),
+        ("bank", bank_rows),
+    ):
+        for row in rows:
+            month = str(row.get("date", ""))[:7]
+            if not month:
+                continue
+            by_month.setdefault(month, {}).setdefault(section, []).append(row)
+
+    for idx, row in enumerate(repayments or []):
+        day = str(row.get("date", ""))[:10]
+        month = day[:7]
+        if not month:
+            continue
+        by_month.setdefault(month, {}).setdefault("receipts", []).append({
+            "id": f"gha-{day}-{idx}",
+            "date": day,
+            "customer_id": None,
+            "amount": row.get("amount", 0.0),
+            "mode": row.get("mode", "Cash"),
+            "reference": row.get("reference", ""),
+            "notes": (
+                "ERP credit balance repayment; "
+                f"payment_received={row.get('payment_received', row.get('amount', 0.0))}; "
+                f"sale_adjusted={row.get('sale_adjusted', 0.0)}"
+            ),
+        })
+
+    for month, sections in by_month.items():
+        path = ARCHIVE_DIR / f"{month}.json"
+        if path.exists():
+            with open(path, "r") as f:
+                payload = json.load(f)
+        else:
+            payload = {
+                "month": month,
+                "sales": [],
+                "expenses": [],
+                "receipts": [],
+                "bank": [],
+                "cash": [],
+                "labour": [],
+                "parts": [],
+                "machines": [],
+            }
+        for section, rows in sections.items():
+            payload[section] = _merge_archive_rows(payload.get(section, []), rows, section)
+        with open(path, "w") as f:
+            json.dump(payload, f, default=str, separators=(",", ":"))
+
+    manifest_path = ARCHIVE_DIR / "manifest.json"
+    if manifest_path.exists():
+        with open(manifest_path, "r") as f:
+            manifest = json.load(f)
+    else:
+        manifest = {"from": "2025-02-14", "months": []}
+    months = sorted({*(manifest.get("months") or []), *by_month.keys()})
+    seed_config = ((local_seed.get("endpoints") or {}).get("exports_config") or {}) if isinstance(local_seed, dict) else {}
+    manifest.update({
+        "generated_at": datetime.now(IST).isoformat(timespec="seconds"),
+        "source": "github-actions archive merge",
+        "from": manifest.get("from") or "2025-02-14",
+        "months": months,
+        "operating_balance_opening": seed_config.get("operating_balance_opening") or manifest.get("operating_balance_opening", {}),
+    })
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
 def snapshot_key(url):
     parts = urlsplit(url)
     query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "_"]
@@ -1462,6 +1556,9 @@ def main():
         "cash_balance": round(cash_balance, 2),
         "bank_net":     bank_net,
     })
+
+    print("  Updating monthly archive files...")
+    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments_mtd, local_seed)
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(

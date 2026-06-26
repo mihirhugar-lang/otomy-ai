@@ -690,8 +690,191 @@ function fiveMinuteCacheBust(){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
-  if(!r.ok)throw new Error('Snapshot missing for '+url);
+  if(!r.ok){
+    const archived=await archiveFetch(url);
+    if(archived!==null)return archived;
+    throw new Error('Snapshot missing for '+url);
+  }
   return r.json();
+}
+const _archiveCache={};
+function _dateMonths(from,to){
+  const out=[];
+  const cur=new Date(`${from}T00:00:00`);
+  const end=new Date(`${to}T00:00:00`);
+  cur.setDate(1);
+  end.setDate(1);
+  while(cur<=end){
+    out.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`);
+    cur.setMonth(cur.getMonth()+1);
+  }
+  return out;
+}
+async function _loadArchiveMonth(month){
+  if(_archiveCache[month])return _archiveCache[month];
+  const r=await fetch(`/data/archive/${month}.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'});
+  if(!r.ok){_archiveCache[month]=null;return null;}
+  _archiveCache[month]=await r.json();
+  return _archiveCache[month];
+}
+async function _loadArchiveRange(from,to){
+  const months=await Promise.all(_dateMonths(from,to).map(m=>_loadArchiveMonth(m)));
+  return months.filter(Boolean);
+}
+function _rowsInRange(months,section,from,to){
+  return months.flatMap(m=>m[section]||[]).filter(r=>r.date>=from&&r.date<=to);
+}
+function _num(v){const n=Number(v||0);return Number.isFinite(n)?n:0;}
+function _payChannel(mode){
+  const s=String(mode||'').toUpperCase();
+  return s.includes('CASH')?'cash':'bank';
+}
+function _isDirectorPayment(...values){
+  const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
+  return text.includes('PRASHANT')||text.includes('KUMAR');
+}
+function _receiptNoteAmount(notes,key){
+  const m=String(notes||'').match(new RegExp(`${key}=([\\d.]+)`));
+  return m?Number(m[1]):null;
+}
+function _receiptPaymentAmount(row){
+  const noted=_receiptNoteAmount(row.notes,'payment_received');
+  return noted==null?_num(row.amount):_num(noted);
+}
+async function _archiveOperatingBalances(){
+  const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  const opening=(manifest&&manifest.operating_balance_opening)||{};
+  const asOf=String(opening.as_of||'').slice(0,10);
+  const from=asOf?localISO(new Date(new Date(`${asOf}T00:00:00`).getTime()+86400000)):'2025-02-14';
+  const to=today();
+  let bank=_num(opening.bank_balance), cash=_num(opening.cash_balance_office);
+  const months=await _loadArchiveRange(from,to);
+  const sales=_rowsInRange(months,'sales',from,to);
+  const expenses=_rowsInRange(months,'expenses',from,to);
+  const receipts=_rowsInRange(months,'receipts',from,to);
+  sales.forEach(s=>{
+    if(String(s.payment_mode||'').toLowerCase()==='credit')return;
+    if(_payChannel(s.payment_mode)==='cash')cash+=_num(s.amount);else bank+=_num(s.amount);
+  });
+  receipts.forEach(r=>{
+    const amount=_receiptPaymentAmount(r);
+    if(_payChannel(r.mode)==='cash')cash+=amount;else bank+=amount;
+  });
+  expenses.forEach(e=>{
+    if(_payChannel(e.payment_mode)==='cash')cash-=_num(e.amount);else bank-=_num(e.amount);
+  });
+  return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
+}
+function _archiveCustomerSales(sales){
+  const map=new Map();
+  sales.slice().sort((a,b)=>`${a.customer_name}|${a.material}|${a.date}|${a.ticket_no}`.localeCompare(`${b.customer_name}|${b.material}|${b.date}|${b.ticket_no}`)).forEach(s=>{
+    const customer=(s.customer_name||'Cash Sale').trim()||'Cash Sale';
+    const material=(s.material||'Mixed').trim()||'Mixed';
+    const key=`${customer}||${material}`;
+    if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
+    const g=map.get(key), amount=_num(s.amount), mode=s.payment_mode||'Credit';
+    g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.ticket_nos.push(s.ticket_no||'—');
+    if(String(mode).toLowerCase()==='credit')g.credit_sale_amount+=amount;
+    else if(_payChannel(mode)==='cash'){g.cash_received+=amount;g.paid_against_sale+=amount;}
+    else{g.bank_received+=amount;g.paid_against_sale+=amount;}
+    g.tickets.push({date:s.date,ticket_no:s.ticket_no||'—',qty_mt:_num(s.qty_mt),amount,payment_mode:mode});
+  });
+  return [...map.values()].map(g=>({
+    ...g,
+    qty_mt:Math.round(g.qty_mt*100)/100,
+    amount:Math.round(g.amount*100)/100,
+    bank_received:Math.round(g.bank_received*100)/100,
+    cash_received:Math.round(g.cash_received*100)/100,
+    paid_against_sale:Math.round(g.paid_against_sale*100)/100,
+    credit_sale_amount:Math.round(g.credit_sale_amount*100)/100,
+  })).sort((a,b)=>b.amount-a.amount);
+}
+async function _archiveControl(from,to){
+  const months=await _loadArchiveRange(from,to);
+  if(!months.length)return null;
+  const sales=_rowsInRange(months,'sales',from,to);
+  const expenses=_rowsInRange(months,'expenses',from,to);
+  const receipts=_rowsInRange(months,'receipts',from,to);
+  const labour=_rowsInRange(months,'labour',from,to);
+  const parts=_rowsInRange(months,'parts',from,to);
+  const machines=_rowsInRange(months,'machines',from,to);
+  const totalSales=sales.reduce((s,r)=>s+_num(r.amount),0);
+  const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
+  const cashCollected=sales.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
+  const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes)).reduce((s,r)=>s+_num(r.amount),0);
+  const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes)).reduce((s,r)=>s+_num(r.amount),0);
+  const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes)).reduce((s,r)=>s+_num(r.total_amount),0);
+  const expensesAdj=expAdj+labourAdj+partsAdj;
+  const expensesRaw=expenses.reduce((s,r)=>s+_num(r.amount),0)+labour.reduce((s,r)=>s+_num(r.amount),0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
+  const repayments=receipts.map(r=>{
+    const payment=_receiptPaymentAmount(r);
+    return {date:r.date,customer_name:'Customer',mode:r.mode||'Cash',reference:r.reference||r.notes||'Customer receipt',payment_received:payment,bank_received:_payChannel(r.mode)==='cash'?0:payment,cash_received:_payChannel(r.mode)==='cash'?payment:0,sale_adjusted:_receiptNoteAmount(r.notes,'sale_adjusted')||0,amount:_num(r.amount),source:'Archive Customer Receipt'};
+  }).sort((a,b)=>`${b.date}|${b.payment_received}`.localeCompare(`${a.date}|${a.payment_received}`));
+  const byMaterial={};
+  sales.forEach(s=>{const k=s.material||'Unknown';byMaterial[k]=byMaterial[k]||{material:k,qty_mt:0,amount:0,tickets:0};byMaterial[k].qty_mt+=_num(s.qty_mt);byMaterial[k].amount+=_num(s.amount);byMaterial[k].tickets+=1;});
+  const byExpense={};
+  expenses.forEach(e=>{const k=e.category||'General';byExpense[k]=(byExpense[k]||0)+_num(e.amount);});
+  if(labour.length)byExpense.Labour=(byExpense.Labour||0)+labour.reduce((s,r)=>s+_num(r.amount),0);
+  if(parts.length)byExpense.Parts=(byExpense.Parts||0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
+  const customerSales=_archiveCustomerSales(sales);
+  const expenseRows=[
+    ...expenses.map(e=>({date:e.date,type:'Expense',category:e.category||'Other',description:e.description||e.category||'Expense',party:'',payment_mode:e.payment_mode||'',amount:_num(e.amount)})),
+    ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount)})),
+    ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount)})),
+  ].sort((a,b)=>`${b.date}|${b.amount}`.localeCompare(`${a.date}|${a.amount}`));
+  const operating=await _archiveOperatingBalances();
+  const days=Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
+  const trend=[];
+  for(let i=0;i<days;i++){
+    const d=localISO(new Date(new Date(`${from}T00:00:00`).getTime()+i*86400000));
+    const daySales=sales.filter(r=>r.date===d), dayExpenses=expenses.filter(r=>r.date===d), dayLabour=labour.filter(r=>r.date===d), dayParts=parts.filter(r=>r.date===d);
+    const ds=daySales.reduce((s,r)=>s+_num(r.amount),0);
+    const de=dayExpenses.reduce((s,r)=>s+_num(r.amount),0)+dayLabour.reduce((s,r)=>s+_num(r.amount),0)+dayParts.reduce((s,r)=>s+_num(r.total_amount),0);
+    trend.push({date:d,sales:Math.round(ds*100)/100,expenses:Math.round(de*100)/100,profit:Math.round((ds-de)*100)/100,qty_mt:Math.round(daySales.reduce((s,r)=>s+_num(r.qty_mt),0)*100)/100});
+  }
+  return {
+    period:{from,to,days},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:0,boulder_trips:0,recovery_pct:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:0,payables:0},
+    mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
+    input:{source:'Archive',materials:[],suppliers:[]},
+    customer_sales:customerSales,
+    customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
+    customer_repayments:repayments,customer_repayments_total:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,customer_repayments_payment_total:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,customer_repayments_bank_total:Math.round(repayments.reduce((s,r)=>s+_num(r.bank_received),0)*100)/100,customer_repayments_cash_total:Math.round(repayments.reduce((s,r)=>s+_num(r.cash_received),0)*100)/100,
+    machine_summary:[],expense_rows:expenseRows,trend,top_receivables:[],top_payables:[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
+  };
+}
+async function _archiveLedger(year,month){
+  const ym=`${year}-${String(month).padStart(2,'0')}`;
+  const payload=await _loadArchiveMonth(ym);
+  if(!payload)return null;
+  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], cash=payload.cash||[], bank=payload.bank||[];
+  const days=new Date(year,month,0).getDate(), rows=[];
+  for(let d=1;d<=days;d++){
+    const day=`${ym}-${String(d).padStart(2,'0')}`;
+    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day);
+    const saleAmount=ds.reduce((s,r)=>s+_num(r.amount),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_receiptPaymentAmount(r),0)*100)/100,expenses:Math.round(de.reduce((s,r)=>s+_num(r.amount),0)*100)/100,cash_balance_office:(cash.filter(r=>r.date<=day).slice(-1)[0]||{}).balance||0,bank_balance:bank.filter(r=>r.date<=day).reduce((s,r)=>s+_num(r.credit)-_num(r.debit),0),boulder_input_mt:0,boulder_trips:0});
+  }
+  const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
+  return {year,month,rows,totals};
+}
+async function archiveFetch(url){
+  const u=new URL(url, window.location.origin);
+  const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
+  if(from&&to){
+    const months=await _loadArchiveRange(from,to);
+    if(!months.length)return null;
+    if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
+  }
+  if(u.pathname==='/api/dashboard/ledger-view'){
+    const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
+    if(year&&month)return _archiveLedger(year,month);
+  }
+  return null;
 }
 let _customers=[], _vendors=[], _bankAccounts=[], _musterWorkers=[];
 // Pagination state — keyed by section
