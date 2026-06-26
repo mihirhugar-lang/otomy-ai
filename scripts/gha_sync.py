@@ -674,6 +674,7 @@ def build_control(sales, expenses, from_d, to_d,
             "cash_balance_office_book": round(cash_balance_office_book, 2),
             "operating_balance_from":  str(from_d),
             "kumar_balance":           0.0,
+            "credit_payment_received": rp_pay_total,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
             "selected_period_profit_director_adjusted": round(profit, 2),
@@ -762,6 +763,7 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         "bank_balance_book",
         "cash_balance_office_book",
         "operating_balance_from",
+        "credit_payment_received",
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
@@ -783,6 +785,127 @@ def apply_seed_control_overrides(control, local_seed, start, end):
     if seed_control and "top_payables" in seed_control:
         control["top_payables"] = seed_control["top_payables"]
     return control
+
+def build_ledger_view(
+    sales,
+    expenses,
+    labour_rows,
+    parts_rows,
+    boulder_rows,
+    repayments,
+    year,
+    month,
+    opening_bank,
+    opening_cash,
+    movement_start,
+    today,
+):
+    month_start = date(year, month, 1)
+    display_end = min(today, (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1))
+    if month_start > today:
+        return {"year": year, "month": month, "rows": [], "totals": {}}
+
+    def by_date(rows, date_key="date"):
+        out = {}
+        for row in rows or []:
+            value = row.get(date_key, "")
+            if value:
+                out.setdefault(value[:10], []).append(row)
+        return out
+
+    sales_by_date = by_date(sales)
+    expenses_by_date = by_date(expenses)
+    labour_by_date = by_date(labour_rows)
+    parts_by_date = by_date(parts_rows)
+    boulders_by_date = by_date(boulder_rows)
+    repayments_by_date = by_date(repayments)
+
+    bank_balance = _num(opening_bank)
+    cash_balance = _num(opening_cash)
+    rows = []
+    current = movement_start
+    while current < month_start:
+        key = str(current)
+        for sale in sales_by_date.get(key, []):
+            mode = sale.get("payment_mode") or "Credit"
+            if mode.lower() == "credit":
+                continue
+            if _payment_channel(mode) == "cash":
+                cash_balance += _num(sale.get("amount"))
+            else:
+                bank_balance += _num(sale.get("amount"))
+        for receipt in repayments_by_date.get(key, []):
+            cash_balance += _num(receipt.get("cash_received"))
+            bank_balance += _num(receipt.get("bank_received"))
+        for expense in expenses_by_date.get(key, []):
+            if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
+                cash_balance -= _num(expense.get("amount"))
+            else:
+                bank_balance -= _num(expense.get("amount"))
+        current += timedelta(days=1)
+    current = month_start
+    while current <= display_end:
+        key = str(current)
+        if current >= movement_start:
+            for sale in sales_by_date.get(key, []):
+                mode = sale.get("payment_mode") or "Credit"
+                if mode.lower() == "credit":
+                    continue
+                if _payment_channel(mode) == "cash":
+                    cash_balance += _num(sale.get("amount"))
+                else:
+                    bank_balance += _num(sale.get("amount"))
+            for receipt in repayments_by_date.get(key, []):
+                cash_balance += _num(receipt.get("cash_received"))
+                bank_balance += _num(receipt.get("bank_received"))
+            for expense in expenses_by_date.get(key, []):
+                if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
+                    cash_balance -= _num(expense.get("amount"))
+                else:
+                    bank_balance -= _num(expense.get("amount"))
+
+        if current >= month_start:
+            day_sales = sales_by_date.get(key, [])
+            day_expenses = expenses_by_date.get(key, [])
+            day_labour = labour_by_date.get(key, [])
+            day_parts = parts_by_date.get(key, [])
+            day_boulders = boulders_by_date.get(key, [])
+            day_repayments = repayments_by_date.get(key, [])
+            sale_amount = sum(_num(row.get("amount")) for row in day_sales)
+            spot_sale_amount = sum(_num(row.get("amount")) for row in day_sales if (row.get("payment_mode") or "").lower() != "credit")
+            expense_total = (
+                sum(_num(row.get("amount")) for row in day_expenses)
+                + sum(_num(row.get("amount")) for row in day_labour)
+                + sum(_num(row.get("total_amount")) for row in day_parts)
+            )
+            rows.append({
+                "date": key,
+                "sale_trips": len(day_sales),
+                "sale_amount": round(sale_amount, 2),
+                "spot_sale_amount": round(spot_sale_amount, 2),
+                "credit_sale_amount": round(sale_amount - spot_sale_amount, 2),
+                "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
+                "expenses": round(expense_total, 2),
+                "cash_balance_office": round(cash_balance, 2),
+                "bank_balance": round(bank_balance, 2),
+                "boulder_input_mt": round(sum(_num(row.get("total_tonnes")) for row in day_boulders), 2),
+                "boulder_trips": round(sum(_num(row.get("trips")) for row in day_boulders), 2),
+            })
+        current += timedelta(days=1)
+
+    totals = {
+        "sale_trips": sum(row["sale_trips"] for row in rows),
+        "sale_amount": round(sum(row["sale_amount"] for row in rows), 2),
+        "spot_sale_amount": round(sum(row["spot_sale_amount"] for row in rows), 2),
+        "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
+        "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
+        "expenses": round(sum(row["expenses"] for row in rows), 2),
+        "boulder_input_mt": round(sum(row["boulder_input_mt"] for row in rows), 2),
+        "boulder_trips": round(sum(row["boulder_trips"] for row in rows), 2),
+        "cash_balance_office": rows[-1]["cash_balance_office"] if rows else 0.0,
+        "bank_balance": rows[-1]["bank_balance"] if rows else 0.0,
+    }
+    return {"year": year, "month": month, "rows": rows, "totals": totals}
 
 def empty_ledger(name, closing=0.0):
     return {
@@ -861,6 +984,12 @@ def write_snapshot_bundle(
         }
     ]
     exports_config = seed_endpoints.get("exports_config") or {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"}
+    opening = exports_config.get("operating_balance_opening") or {}
+    try:
+        opening_as_of = datetime.fromisoformat(str(opening.get("as_of"))).date()
+    except Exception:
+        opening_as_of = today - timedelta(days=1)
+    movement_start = opening_as_of + timedelta(days=1)
 
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
@@ -914,6 +1043,28 @@ def write_snapshot_bundle(
         write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
         write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
         write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", [])
+
+    ledger_current = build_ledger_view(
+        all_sales,
+        all_expenses,
+        labour_rows,
+        parts_rows,
+        boulder_rows,
+        (controls.get("mtd") or {}).get("customer_repayments", []),
+        today.year,
+        today.month,
+        opening.get("bank_balance", 0.0),
+        opening.get("cash_balance_office", 0.0),
+        movement_start,
+        today,
+    )
+    latest_summary = (latest_seed_control(local_seed) or {}).get("summary") or {}
+    if ledger_current.get("rows") and "bank_balance" in latest_summary and "cash_balance_office" in latest_summary:
+        ledger_current["rows"][-1]["bank_balance"] = latest_summary["bank_balance"]
+        ledger_current["rows"][-1]["cash_balance_office"] = latest_summary["cash_balance_office"]
+        ledger_current["totals"]["bank_balance"] = latest_summary["bank_balance"]
+        ledger_current["totals"]["cash_balance_office"] = latest_summary["cash_balance_office"]
+    write_snapshot(f"/api/dashboard/ledger-view?year={today.year}&month={today.month}", ledger_current)
 
     write_snapshot(
         f"/api/dashboard/monthly?year={today.year}&month={today.month}",

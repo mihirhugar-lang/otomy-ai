@@ -365,8 +365,8 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
-  <div class="nav-section">Operations</div>
-  <div class="nav-item" onclick="nav('operations')"><span class="icon">⚙️</span><span>Operations</span></div>
+  <div class="nav-section">Ledger</div>
+  <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Ledger View</span></div>
   <div class="nav-section">Reports</div>
   <div class="nav-item" id="nav-reports" onclick="nav('reports')"><span class="icon">📄</span><span>Reports & Exports</span></div>
 </nav>
@@ -702,6 +702,22 @@ body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
     </div>
     <div class="tbl-wrap" id="erp-cash-tbl"></div>
     <div id="erp-cash-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- LEDGER VIEW -->
+<div class="section" id="section-ledger">
+  <div class="page-header"><h2>Ledger View</h2></div>
+  <div class="card">
+    <div class="preset-bar no-print">
+      <span class="preset-label">Month:</span>
+      <button class="pbtn" onclick="document.getElementById('ledger-month').value=monthNow();loadLedgerView()">This Month</button>
+      <button class="pbtn" onclick="document.getElementById('ledger-month').value=lastMonthYM();loadLedgerView()">Last Month</button>
+      <div class="preset-dates"><input type="month" id="ledger-month" onchange="loadLedgerView()"></div>
+      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Print / PDF</button>
+    </div>
+    <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
+    <div class="tbl-wrap" id="ledger-tbl"></div>
   </div>
 </div>
 
@@ -1178,7 +1194,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',operations:'Operations',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ledger:'Ledger View',operations:'Operations',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1206,6 +1222,7 @@ function nav(name){
   if(name==='customers'){loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankAccounts();loadStatement();loadErpBank();loadErpCash();}
+  if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='operations'){_initDates('op-from','op-to');loadOpsDefaults();}
   if(name==='reports'){loadConfig();loadErpConfig();setErpDates(mtdStart(),today());}
 }
@@ -1407,7 +1424,7 @@ window.onload=async function(){
   document.getElementById('dash-from').value=t;
   document.getElementById('dash-date').value=t;
   ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['rpt-month','gst-month','emi-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
+  ['rpt-month','gst-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   await loadDash();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
     printDashboard(false);
@@ -1548,7 +1565,7 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
-          <div class="control-metric"><span>Kumar Balance</span><strong>${fmtINR(s.kumar_balance||0)}</strong></div>
+          <div class="control-metric"><span>Credit Payment Received</span><strong>${fmtINR(s.credit_payment_received ?? repaymentPaymentTotal)}</strong></div>
           <div class="control-metric glass-green"><span>Selected Period Profit / MT</span><strong>${fmtINR(s.selected_period_profit_per_tonne||0)}</strong></div>
         </div>
       </div>
@@ -1901,6 +1918,61 @@ function renderStatement(){
 }
 async function delBankTxn(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
+// ── Ledger View ───────────────────────────────────────────────────────────
+async function loadLedgerView(){
+  const ym=document.getElementById('ledger-month').value||monthNow();
+  const[yr,mo]=ym.split('-');
+  try{
+    const data=await api(`/api/dashboard/ledger-view?year=${yr}&month=${parseInt(mo)}`);
+    renderLedgerView(data);
+  }catch(e){
+    document.getElementById('ledger-tbl').innerHTML=`<div class="empty">Ledger error: ${esc(e.message)}</div>`;
+  }
+}
+function renderLedgerView(data){
+  const rows=data.rows||[];
+  const t=data.totals||{};
+  document.getElementById('ledger-summary').innerHTML=`
+    <div class="kpi green"><div class="kpi-label">Spot Sales</div><div class="kpi-value">${fmtINR(t.spot_sale_amount||0)}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Credit Payment Received</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
+  `;
+  let html='<table><thead><tr><th>Date</th><th>Sale Trips</th><th>Sale Amount</th><th>Spot Sale</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Trips That Day</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    html+=`<tr>
+      <td>${esc(r.date)}</td>
+      <td>${fmtNum(r.sale_trips||0,0)}</td>
+      <td>${fmtINR(r.sale_amount||0)}</td>
+      <td>${fmtINR(r.spot_sale_amount||0)}</td>
+      <td>${fmtINR(r.credit_sale_amount||0)}</td>
+      <td>${fmtINR(r.credit_repayment||0)}</td>
+      <td>${fmtINR(r.expenses||0)}</td>
+      <td><strong>${fmtINR(r.cash_balance_office||0)}</strong></td>
+      <td><strong>${fmtINR(r.bank_balance||0)}</strong></td>
+      <td>${fmtNum(r.boulder_input_mt||0,1)} MT</td>
+      <td>${fmtNum(r.boulder_trips||0,0)}</td>
+    </tr>`;
+  });
+  if(!rows.length)html+='<tr><td colspan="11" class="empty">No ledger data for this month</td></tr>';
+  html+=`</tbody><tfoot><tr>
+    <td><strong>Total</strong></td>
+    <td><strong>${fmtNum(t.sale_trips||0,0)}</strong></td>
+    <td><strong>${fmtINR(t.sale_amount||0)}</strong></td>
+    <td><strong>${fmtINR(t.spot_sale_amount||0)}</strong></td>
+    <td><strong>${fmtINR(t.credit_sale_amount||0)}</strong></td>
+    <td><strong>${fmtINR(t.credit_repayment||0)}</strong></td>
+    <td><strong>${fmtINR(t.expenses||0)}</strong></td>
+    <td><strong>${fmtINR(t.cash_balance_office||0)}</strong></td>
+    <td><strong>${fmtINR(t.bank_balance||0)}</strong></td>
+    <td><strong>${fmtNum(t.boulder_input_mt||0,1)} MT</strong></td>
+    <td><strong>${fmtNum(t.boulder_trips||0,0)}</strong></td>
+  </tr></tfoot></table>`;
+  document.getElementById('ledger-tbl').innerHTML=html;
+}
+
 // ── Operations ─────────────────────────────────────────────────────────────
 function loadOpsDefaults(){loadBoulders();loadMachines();loadLabour();loadParts();loadEMI();loadWorkers();}
 function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
@@ -2075,14 +2147,45 @@ async function saveConfig(){
   try{await api('/api/exports/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Config saved!');}
   catch(e){flash(e.message,false);}
 }
-function downloadAudit(){const f=document.getElementById('audit-from').value,t=document.getElementById('audit-to').value;if(!f||!t){flash('Select date range',false);return;}window.open(`/api/reports/audit?from_date=${f}&to_date=${t}`,'_blank');}
-function downloadTallySales(){const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;window.open(`/api/exports/tally/sales?from_date=${f}&to_date=${t}`,'_blank');}
-function downloadTallyExp(){const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;window.open(`/api/exports/tally/expenses?from_date=${f}&to_date=${t}`,'_blank');}
+function downloadAudit(){const f=document.getElementById('audit-from').value,t=document.getElementById('audit-to').value;if(!f||!t){flash('Select date range',false);return;}if(isStaticSnapshotHost()){printDashboard();return;}window.open(`/api/reports/audit?from_date=${f}&to_date=${t}`,'_blank');}
+function xmlEsc(v){return String(v??'').replace(/[<>&"']/g,m=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[m]));}
+function tallyDate(v){return String(v||'').replaceAll('-','');}
+function downloadBlob(name,content,type){const blob=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+function tallyEnvelope(vouchers){return `<?xml version="1.0" encoding="UTF-8"?>\n<ENVELOPE>\n  <BODY>\n    <IMPORTDATA>\n      <REQUESTDESC>\n        <REPORTNAME>Vouchers</REPORTNAME>\n      </REQUESTDESC>\n      <REQUESTDATA>\n${vouchers.join('\n')}\n      </REQUESTDATA>\n    </IMPORTDATA>\n  </BODY>\n</ENVELOPE>`;}
+function buildTallySalesXml(rows){
+  const vouchers=(rows||[]).map(s=>{
+    const gst=Number(s.gst_rate||5),cgst=gst/2,sgst=gst/2,amount=Number(s.amount||0),taxable=Math.round((amount/(1+gst/100))*100)/100,cgstAmt=Math.round(taxable*cgst)/100,sgstAmt=Math.round(taxable*sgst)/100;
+    const party=xmlEsc(s.customer_name||'Cash'),material=xmlEsc(s.material||'Aggregate'),narr=xmlEsc(`Sale of ${s.material||'Aggregate'} - Veh: ${s.vehicle_no||'N/A'} - Ticket: ${s.ticket_no||'N/A'}`);
+    return `    <VOUCHER VCHTYPE="Sales" ACTION="Create">\n      <DATE>${tallyDate(s.date)}</DATE>\n      <NARRATION>${narr}</NARRATION>\n      <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${party}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>${(-amount).toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Sales - ${material}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${taxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Output CGST @${cgst.toFixed(1)}%</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${cgstAmt.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Output SGST @${sgst.toFixed(1)}%</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${sgstAmt.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n    </VOUCHER>`;
+  });
+  return tallyEnvelope(vouchers);
+}
+function buildTallyExpensesXml(rows){
+  const vouchers=(rows||[]).map(e=>{
+    const amount=Number(e.amount||0),ledger=(String(e.payment_mode||'Cash').toUpperCase().includes('CASH')?'Cash':'Bank'),narr=xmlEsc((e.description||e.category||'Expense').slice(0,200));
+    return `    <VOUCHER VCHTYPE="Payment" ACTION="Create">\n      <DATE>${tallyDate(e.date)}</DATE>\n      <NARRATION>${narr}</NARRATION>\n      <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${xmlEsc(e.category||'General Expenses')}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>${(-amount).toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${ledger}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${amount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n    </VOUCHER>`;
+  });
+  return tallyEnvelope(vouchers);
+}
+async function downloadTallySales(){
+  const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;
+  if(!f||!t){flash('Select date range',false);return;}
+  if(!isStaticSnapshotHost()){window.open(`/api/exports/tally/sales?from_date=${f}&to_date=${t}`,'_blank');return;}
+  const rows=await api(`/api/sales/?from_date=${f}&to_date=${t}`);
+  downloadBlob(`tally_sales_${f}_${t}.xml`,buildTallySalesXml(rows),'application/xml');
+}
+async function downloadTallyExp(){
+  const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;
+  if(!f||!t){flash('Select date range',false);return;}
+  if(!isStaticSnapshotHost()){window.open(`/api/exports/tally/expenses?from_date=${f}&to_date=${t}`,'_blank');return;}
+  const rows=await api(`/api/expenses/?from_date=${f}&to_date=${t}`);
+  downloadBlob(`tally_expenses_${f}_${t}.xml`,buildTallyExpensesXml(rows),'application/xml');
+}
 async function downloadGSTR1(){
   const[yr,mo]=document.getElementById('gst-month').value.split('-');
   const url=`/api/exports/gstr1?year=${yr}&month=${parseInt(mo)}`;
   try{
-    const r=await fetch(url);const data=await r.json();
+    const data=await api(url);
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`GSTR1_${yr}_${mo}.json`;a.click();
     document.getElementById('gst-preview').style.display='block';
