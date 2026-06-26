@@ -1,0 +1,12 @@
+.DS_Store
+.venv/
+data/
+reports/
+tmp/
+whatsapp/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite3
+*.log
