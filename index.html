@@ -395,6 +395,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
+  <div class="nav-section">Operations</div>
+  <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations / IOT</span></div>
   <div class="nav-section">Ledger</div>
   <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Ledger View</span></div>
   <div class="nav-section">Reports</div>
@@ -603,6 +605,53 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     </div>
     <div class="tbl-wrap" id="erp-cash-tbl"></div>
     <div id="erp-cash-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- OPERATIONS / IOT -->
+<div class="section" id="section-ops">
+  <div class="page-header"><h2>Operations / IOT</h2></div>
+  <div class="preset-bar" id="ops-preset-bar">
+    <span class="preset-label">View:</span>
+    <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
+    <button class="pbtn" onclick="opsPreset('yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="opsPreset('week',this)">This Week</button>
+    <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
+      <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>IOT Movements</h3>
+    <div class="tbl-wrap" id="iot-tbl"></div>
+    <div id="iot-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Boulder Input</h3>
+    <div class="tbl-wrap" id="boulders-tbl"></div>
+    <div id="boulders-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Machine Readings</h3>
+    <div class="tbl-wrap" id="machines-tbl"></div>
+    <div id="machines-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Labour</h3>
+    <div class="tbl-wrap" id="labour-tbl"></div>
+    <div id="labour-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Parts</h3>
+    <div class="tbl-wrap" id="parts-tbl"></div>
+    <div id="parts-pager" class="no-print"></div>
   </div>
 </div>
 
@@ -1174,7 +1223,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations / IOT',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1211,6 +1260,7 @@ function nav(name){
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
+  if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='reports'){}
 }
@@ -1281,7 +1331,7 @@ function opsPreset(p,btn){
   document.getElementById('op-to').value=t;
   document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
   // Reset pages for all ops sections
-  ['boulders','machines','labour','parts'].forEach(k=>{_page[k]=1;});
+  ['boulders','machines','labour','parts','iot'].forEach(k=>{_page[k]=1;});
   btn.classList.add('act');
   opsReload();
 }
