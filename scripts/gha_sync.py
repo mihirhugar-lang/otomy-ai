@@ -332,10 +332,53 @@ def fetch_creditors(sess, as_of=None):
             if name.upper() in ("SUPPLIER", "TOTAL", "NAME", ""): continue
             credit = _num(cells[1]) if len(cells) > 1 else 0
             debit  = _num(cells[2]) if len(cells) > 2 else 0
-            creditors.append({"name": name[:200], "payable": round(debit - credit, 2)})
+            action = str(row[3] or "") if len(row) > 3 else ""
+            match = re.search(r"viewSupplierLedgerTransactions\?supplierId=([^'\"&\s]+)", action, re.IGNORECASE)
+            creditors.append({
+                "name": name[:200],
+                "payable": round(debit - credit, 2),
+                "erp_supplier_id": match.group(1) if match else None,
+            })
     except Exception as e:
         print(f"  creditors fetch error: {e}")
     return creditors
+
+def fetch_vendor_payments(sess, creditors, from_d, to_d):
+    payments = []
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    for creditor in creditors:
+        supplier_id = creditor.get("erp_supplier_id")
+        if not supplier_id:
+            continue
+        try:
+            data = json.loads(sess.get(
+                f"{ERP_BASE}/crusher/ViewSupplierLedgerTransactions"
+                f"?start={fs}&end={ts}&supplierId={supplier_id}&materialId=-1&crusherId=-1&orderType=2&type=1",
+                timeout=45, verify=True).text)
+            sequence = 0
+            for row in data.get("data", []):
+                cells = [_clean(c) for c in row]
+                if not cells or "TOTAL" in cells[0].upper():
+                    continue
+                amount = _num(cells[6]) if len(cells) > 6 else 0
+                payment_type = cells[8].strip() if len(cells) > 8 else ""
+                details = cells[9].strip() if len(cells) > 9 else ""
+                remarks = cells[12].strip() if len(cells) > 12 else ""
+                if amount <= 0 or not payment_type:
+                    continue
+                paid_on = _parse_date(cells[0], to_d)
+                sequence += 1
+                payments.append({
+                    "date": str(paid_on),
+                    "vendor_name": creditor["name"],
+                    "amount": amount,
+                    "mode": _mode_bucket(payment_type),
+                    "reference": f"ERP-SUP-{supplier_id}-{paid_on.isoformat()}-{sequence}-{int(round(amount))}"[:100],
+                    "notes": f"ERP supplier_id={supplier_id}; {payment_type}; {details}; {remarks}"[:1000],
+                })
+        except Exception as e:
+            print(f"  vendor payment fetch error ({creditor.get('name')}): {e}")
+    return payments
 
 
 def compute_repayments(debtors_prev, debtors_curr, as_of_date):
@@ -926,10 +969,11 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         "bank_balance_book",
         "cash_balance_office_book",
         "operating_balance_from",
-        "credit_payment_received",
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
+    if seed_control and "credit_payment_received" in seed_summary:
+        summary["credit_payment_received"] = seed_summary["credit_payment_received"]
     if seed_control:
         for key in ("receivables", "payables"):
             if key in seed_summary:
@@ -947,6 +991,8 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         control["top_receivables"] = seed_control["top_receivables"]
     if seed_control and "top_payables" in seed_control:
         control["top_payables"] = seed_control["top_payables"]
+    if "customer_repayments_payment_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
     return control
 
 def build_ledger_view(
@@ -1084,6 +1130,42 @@ def empty_ledger(name, closing=0.0):
         "age_45_plus": round(max(closing, 0.0), 2),
     }
 
+def build_vendor_ledgers(vendors_full, vendor_payments):
+    payments_by_name = {}
+    for payment in vendor_payments:
+        payments_by_name.setdefault(payment.get("vendor_name", ""), []).append(payment)
+
+    ledgers = {}
+    for vendor in vendors_full:
+        payments = payments_by_name.get(vendor.get("name", ""), [])
+        total_payments = round(sum(_num(row.get("amount")) for row in payments), 2)
+        opening = round(_num(vendor.get("payable")) + total_payments, 2)
+        entries = []
+        running = opening
+        for index, payment in enumerate(sorted(payments, key=lambda row: (row.get("date", ""), row.get("reference", ""))), start=1):
+            amount = _num(payment.get("amount"))
+            running = round(running - amount, 2)
+            entries.append({
+                "type": "payment",
+                "id": index,
+                "date": payment.get("date"),
+                "description": f"Payment ({payment.get('mode') or 'Payment'})" + (f" Ref: {payment.get('reference')}" if payment.get("reference") else ""),
+                "amount": amount,
+                "debit": 0.0,
+                "credit": amount,
+                "running_balance": running,
+            })
+        ledger = empty_ledger(vendor.get("name", ""), vendor.get("payable", 0.0))
+        ledger.update({
+            "vendor_id": vendor.get("id"),
+            "vendor_name": vendor.get("name", ""),
+            "opening_balance": opening,
+            "entries": entries,
+            "closing_balance": round(_num(vendor.get("payable")), 2),
+        })
+        ledgers[str(vendor.get("id"))] = ledger
+    return ledgers
+
 def write_snapshot_bundle(
     today,
     yesterday,
@@ -1104,6 +1186,7 @@ def write_snapshot_bundle(
     customers_outstanding,
     vendors_full,
     vendors_payables,
+    vendor_ledgers,
     local_seed,
     controls,
 ):
@@ -1179,7 +1262,10 @@ def write_snapshot_bundle(
     for row in customers_full:
         write_snapshot(f"/api/customers/ledger/{row['id']}", seed_customer_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("outstanding", 0.0))))
     for row in vendors_full:
-        write_snapshot(f"/api/vendors/ledger/{row['id']}", seed_vendor_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("payable", 0.0))))
+        write_snapshot(
+            f"/api/vendors/ledger/{row['id']}",
+            vendor_ledgers.get(str(row["id"])) or seed_vendor_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("payable", 0.0))),
+        )
 
     for start, end in ranges:
         control = control_by_range.get((start, end))
@@ -1430,6 +1516,8 @@ def main():
     print("  Fetching creditors...")
     creditors = fetch_creditors(sess, today)
     print(f"  {len(creditors)} vendors")
+    vendor_payments = fetch_vendor_payments(sess, creditors, month_start, today)
+    print(f"  {len(vendor_payments)} vendor payments")
     control_debtors = [
         {"name": row.get("name"), "outstanding": row.get("balance", row.get("outstanding", 0.0))}
         for row in seed_endpoints.get("customers_outstanding", [])
@@ -1570,23 +1658,27 @@ def main():
         max_vendor_id = max(max_vendor_id, int(row.get("id") or 0))
         c = creditors_by_name.pop(row.get("name", ""), None)
         if c:
+            payments_total = round(sum(_num(payment.get("amount")) for payment in vendor_payments if payment.get("vendor_name") == row.get("name", "")), 2)
             row.update({
                 "payable": c["payable"],
+                "total_payments": payments_total,
                 "age_45_plus": round(max(c["payable"], 0.0), 2),
             })
         vendors_by_name[row.get("name", "")] = row
 
     for name, c in creditors_by_name.items():
         max_vendor_id += 1
+        payments_total = round(sum(_num(payment.get("amount")) for payment in vendor_payments if payment.get("vendor_name") == name), 2)
         vendors_by_name[name] = {
             "id": max_vendor_id, "name": c["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": c["payable"], "notes": "", "active": True,
-            "payable": c["payable"], "total_purchases": 0.0, "total_payments": 0.0,
+            "payable": c["payable"], "total_purchases": 0.0, "total_payments": payments_total,
             "age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0,
             "age_45_plus": round(max(c["payable"], 0.0), 2),
         }
 
     vendors_full = sorted(vendors_by_name.values(), key=lambda row: row.get("name", ""))
+    vendor_ledgers = build_vendor_ledgers(vendors_full, vendor_payments)
     vendors_payables = [
         {
             "id": row.get("id"),
@@ -1641,6 +1733,7 @@ def main():
         customers_outstanding,
         vendors_full,
         vendors_payables,
+        vendor_ledgers,
         local_seed,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "mtd": ctrl_mtd},
     )
