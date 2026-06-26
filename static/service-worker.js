@@ -1,13 +1,9 @@
-const CACHE = 'crusherops-v1';
-const STATIC_PRECACHE = [
-  '/',
-  '/static/manifest.webmanifest',
-];
+const CACHE = 'crusherops-v2';
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(STATIC_PRECACHE))
+      .then(c => c.addAll(['/static/manifest.webmanifest']))
       .then(() => self.skipWaiting())
   );
 });
@@ -23,10 +19,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API calls — always network, never cache
+  // API calls and HTML navigation — always network, never cache
   if (url.pathname.startsWith('/api/')) return;
+  if (event.request.mode === 'navigate') return;
 
-  // Static assets and root — cache first, fall back to network and cache response
+  // Static assets only (icons, manifest, etc.) — cache first
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;

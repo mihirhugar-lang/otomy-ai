@@ -119,11 +119,15 @@ def _matches_vendor_text(vendor_name: str, expense: Expense) -> bool:
     return False
 
 
-def _vendor_bill_rows(vendor: Vendor, db: Session) -> list:
-    linked = db.query(Expense).filter(Expense.vendor_id == vendor.id).all()
+def _vendor_bill_rows(vendor: Vendor, db: Session, _unlinked=None, _linked_by_vendor=None) -> list:
+    if _linked_by_vendor is not None:
+        linked = _linked_by_vendor.get(vendor.id, [])
+    else:
+        linked = db.query(Expense).filter(Expense.vendor_id == vendor.id).all()
     seen = {e.id for e in linked}
-    unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
-    matched = [e for e in unlinked if e.id not in seen and _matches_vendor_text(vendor.name, e)]
+    if _unlinked is None:
+        _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
+    matched = [e for e in _unlinked if e.id not in seen and _matches_vendor_text(vendor.name, e)]
     return sorted(linked + matched, key=lambda e: (e.date, e.id))
 
 
@@ -148,14 +152,16 @@ def _add_aging_bucket(aging: dict, entry_date: date, amount: float, as_of: date)
         aging["age_45_plus"] += amount
 
 
-def _payable_aging(vendor: Vendor, payable: float, db: Session) -> dict:
+def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _unlinked=None, _linked_by_vendor=None) -> dict:
     aging = _empty_aging()
     remaining = round(max(float(payable or 0), 0.0), 2)
     if remaining <= 0:
         return aging
 
     as_of = date.today()
-    bills = sorted(_vendor_bill_rows(vendor, db), key=lambda e: (e.date, e.id), reverse=True)
+    if _bills is None:
+        _bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+    bills = sorted(_bills, key=lambda e: (e.date, e.id), reverse=True)
     for bill in bills:
         if remaining <= 0:
             break
@@ -170,21 +176,19 @@ def _payable_aging(vendor: Vendor, payable: float, db: Session) -> dict:
     return {k: round(v, 2) for k, v in aging.items()}
 
 
-def _apply_vendor_totals(out: VendorOut, vendor: Vendor, db: Session) -> VendorOut:
-    linked_purchases = db.query(
-        func.coalesce(func.sum(Expense.amount), 0.0)
-    ).filter(Expense.vendor_id == vendor.id).scalar()
-    matched_purchases = sum(e.amount or 0 for e in _vendor_bill_rows(vendor, db))
-    total_payments = db.query(
-        func.coalesce(func.sum(VendorPayment.amount), 0.0)
-    ).filter(VendorPayment.vendor_id == vendor.id).scalar()
-    manual_payments = sum(
-        p.amount or 0
-        for p in db.query(VendorPayment).filter(VendorPayment.vendor_id == vendor.id).all()
-        if not _is_erp_vendor_payment(p)
-    )
+def _apply_vendor_totals(out: VendorOut, vendor: Vendor, db: Session,
+                         _unlinked=None, _linked_by_vendor=None, _payments_by_vendor=None) -> VendorOut:
+    linked_purchases = sum(e.amount or 0 for e in (_linked_by_vendor or {}).get(vendor.id, [])
+                           ) if _linked_by_vendor is not None else float(
+        db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(Expense.vendor_id == vendor.id).scalar() or 0)
+    bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+    matched_purchases = sum(e.amount or 0 for e in bills)
+    vendor_payments = (_payments_by_vendor or {}).get(vendor.id, []) if _payments_by_vendor is not None else \
+        db.query(VendorPayment).filter(VendorPayment.vendor_id == vendor.id).all()
+    total_payments = sum(p.amount or 0 for p in vendor_payments)
+    manual_payments = sum(p.amount or 0 for p in vendor_payments if not _is_erp_vendor_payment(p))
     payable = float(vendor.opening_balance or 0) + float(linked_purchases or 0) - float(manual_payments or 0)
-    aging = _payable_aging(vendor, payable, db)
+    aging = _payable_aging(vendor, payable, db, _bills=bills)
     out.payable = round(payable, 2)
     out.total_purchases = round(float(matched_purchases), 2)
     out.total_payments = round(float(total_payments), 2)
@@ -205,10 +209,22 @@ def list_vendors(active_only: bool = True, db: Session = Depends(get_db)):
     if active_only:
         q = q.filter(Vendor.active == True)
     vendors = q.order_by(Vendor.name).all()
+
+    # Preload once — eliminates N×SQL queries
+    _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
+    _linked_by_vendor: dict = {}
+    for e in db.query(Expense).filter(Expense.vendor_id.isnot(None)).all():
+        _linked_by_vendor.setdefault(e.vendor_id, []).append(e)
+    _payments_by_vendor: dict = {}
+    for p in db.query(VendorPayment).all():
+        _payments_by_vendor.setdefault(p.vendor_id, []).append(p)
+
     result = []
     for v in vendors:
         out = VendorOut.model_validate(v)
-        _apply_vendor_totals(out, v, db)
+        _apply_vendor_totals(out, v, db, _unlinked=_unlinked,
+                             _linked_by_vendor=_linked_by_vendor,
+                             _payments_by_vendor=_payments_by_vendor)
         result.append(out)
     return result
 
@@ -386,20 +402,28 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db)):
 @router.get("/payables")
 def list_payables(db: Session = Depends(get_db)):
     vendors = db.query(Vendor).filter(Vendor.active == True).all()
+
+    # Preload once
+    _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
+    _linked_by_vendor: dict = {}
+    for e in db.query(Expense).filter(Expense.vendor_id.isnot(None)).all():
+        _linked_by_vendor.setdefault(e.vendor_id, []).append(e)
+    _payments_by_vendor: dict = {}
+    for p in db.query(VendorPayment).all():
+        _payments_by_vendor.setdefault(p.vendor_id, []).append(p)
+
     result = []
     for v in vendors:
-        linked_purchases = db.query(
-            func.coalesce(func.sum(Expense.amount), 0.0)
-        ).filter(Expense.vendor_id == v.id).scalar()
-        matched_purchases = sum(e.amount or 0 for e in _vendor_bill_rows(v, db))
-        total_payments = db.query(
-            func.coalesce(func.sum(VendorPayment.amount), 0.0)
-        ).filter(VendorPayment.vendor_id == v.id).scalar()
-        payments_rows = db.query(VendorPayment).filter(VendorPayment.vendor_id == v.id).all()
-        manual_payments = sum(p.amount or 0 for p in payments_rows if not _is_erp_vendor_payment(p))
-        payable = v.opening_balance + float(linked_purchases) - float(manual_payments)
+        linked_list = _linked_by_vendor.get(v.id, [])
+        linked_purchases = sum(e.amount or 0 for e in linked_list)
+        vendor_payments = _payments_by_vendor.get(v.id, [])
+        total_payments = sum(p.amount or 0 for p in vendor_payments)
+        manual_payments = sum(p.amount or 0 for p in vendor_payments if not _is_erp_vendor_payment(p))
+        payable = float(v.opening_balance or 0) + float(linked_purchases) - float(manual_payments)
         if payable > 0:
-            aging = _payable_aging(v, payable, db)
+            bills = _vendor_bill_rows(v, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+            matched_purchases = sum(e.amount or 0 for e in bills)
+            aging = _payable_aging(v, payable, db, _bills=bills)
             result.append({
                 "id": v.id,
                 "name": v.name,

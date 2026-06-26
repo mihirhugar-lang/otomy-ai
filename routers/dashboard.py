@@ -7,6 +7,7 @@ from typing import Optional
 import time
 import re
 import json
+import threading
 from database import (
     get_db,
     Sale,
@@ -113,14 +114,8 @@ def _extract_table_rows(html: str, table_id: str, label_key: str) -> dict:
     return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
 
 
-def _fetch_erp_input_summary(start: date, end: date, allow_live: bool = True) -> Optional[dict]:
+def _do_erp_input_fetch(start: date, end: date) -> Optional[dict]:
     cache_key = (str(start), str(end))
-    cached = _ERP_INPUT_CACHE.get(cache_key)
-    if cached and time.time() - cached["ts"] < _ERP_INPUT_CACHE_TTL_SECONDS:
-        return cached["data"]
-    if not allow_live:
-        return cached["data"] if cached else None
-
     cfg = load_config()
     erp_base = (cfg.get("erp_base") or "").strip()
     erp_org = (cfg.get("erp_org") or "").strip()
@@ -128,15 +123,11 @@ def _fetch_erp_input_summary(start: date, end: date, allow_live: bool = True) ->
     erp_password = cfg.get("erp_password") or ""
     if not all([erp_base, erp_org, erp_user, erp_password]):
         return None
-
     try:
         session = erp_auth(erp_base, erp_org, erp_user, erp_password)
         response = session.get(
             f"{erp_base}/crusher/listInput",
-            params={
-                "startDt": start.strftime("%d-%m-%Y"),
-                "end": end.strftime("%d-%m-%Y"),
-            },
+            params={"startDt": start.strftime("%d-%m-%Y"), "end": end.strftime("%d-%m-%Y")},
             timeout=6,
             verify=True,
         )
@@ -156,6 +147,23 @@ def _fetch_erp_input_summary(start: date, end: date, allow_live: bool = True) ->
         return data
     except Exception:
         return None
+
+
+def _fetch_erp_input_summary(start: date, end: date, allow_live: bool = True) -> Optional[dict]:
+    cache_key = (str(start), str(end))
+    cached = _ERP_INPUT_CACHE.get(cache_key)
+    is_fresh = cached and time.time() - cached["ts"] < _ERP_INPUT_CACHE_TTL_SECONDS
+
+    if is_fresh:
+        return cached["data"]
+    if not allow_live:
+        return cached["data"] if cached else None
+    if cached:
+        # Stale data exists — return it immediately, refresh in background
+        threading.Thread(target=_do_erp_input_fetch, args=(start, end), daemon=True).start()
+        return cached["data"]
+    # No data at all — must block on first fetch
+    return _do_erp_input_fetch(start, end)
 
 
 def _machine_bucket(name: str) -> str:
