@@ -689,13 +689,32 @@ function fiveMinuteCacheBust(){
 }
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
+  const u=new URL(url, window.location.origin);
+  if(u.pathname==='/api/dashboard/control'){
+    const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
+    const currentMonthStart=mtdStart();
+    if(from && to && to<currentMonthStart){
+      const archived=await archiveFetch(url);
+      if(archived!==null)return archived;
+    }
+  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
     const archived=await archiveFetch(url);
     if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
-  return r.json();
+  const data=await r.json();
+  if(u.pathname==='/api/dashboard/control' && data && data.summary){
+    const to=u.searchParams.get('to_date');
+    if(to){
+      const operating=await _archiveOperatingBalances(to);
+      data.summary.bank_balance=operating.bank_balance;
+      data.summary.cash_balance_office=operating.cash_balance_office;
+      data.summary.operating_balance_from=operating.operating_balance_from;
+    }
+  }
+  return data;
 }
 const _archiveCache={};
 function _dateMonths(from,to){
@@ -741,13 +760,14 @@ function _receiptPaymentAmount(row){
   const noted=_receiptNoteAmount(row.notes,'payment_received');
   return noted==null?_num(row.amount):_num(noted);
 }
-async function _archiveOperatingBalances(){
+async function _archiveOperatingBalances(toDate=today()){
   const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
   const opening=(manifest&&manifest.operating_balance_opening)||{};
   const asOf=String(opening.as_of||'').slice(0,10);
   const from=asOf?localISO(new Date(new Date(`${asOf}T00:00:00`).getTime()+86400000)):'2025-02-14';
-  const to=today();
+  const to=toDate||today();
   let bank=_num(opening.bank_balance), cash=_num(opening.cash_balance_office);
+  if(to<from)return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
   const months=await _loadArchiveRange(from,to);
   const sales=_rowsInRange(months,'sales',from,to);
   const expenses=_rowsInRange(months,'expenses',from,to);
@@ -822,7 +842,7 @@ async function _archiveControl(from,to){
     ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount)})),
     ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount)})),
   ].sort((a,b)=>`${b.date}|${b.amount}`.localeCompare(`${a.date}|${a.amount}`));
-  const operating=await _archiveOperatingBalances();
+  const operating=await _archiveOperatingBalances(to);
   const days=Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
   const trend=[];
   for(let i=0;i<days;i++){
