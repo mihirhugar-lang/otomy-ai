@@ -886,7 +886,9 @@ async function _archiveControl(from,to){
   const expensesRaw=expenses.reduce((s,r)=>s+_num(r.amount),0)+labour.reduce((s,r)=>s+_num(r.amount),0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
   const repayments=receipts.map(r=>{
     const payment=_receiptPaymentAmount(r);
-    return {date:r.date,customer_name:'Customer',mode:r.mode||'Cash',reference:r.reference||r.notes||'Customer receipt',payment_received:payment,bank_received:_payChannel(r.mode)==='cash'?0:payment,cash_received:_payChannel(r.mode)==='cash'?payment:0,sale_adjusted:_receiptNoteAmount(r.notes,'sale_adjusted')||0,amount:_num(r.amount),source:'Archive Customer Receipt'};
+    const saleAdjusted=r.sale_adjusted!=null?_num(r.sale_adjusted):(_receiptNoteAmount(r.notes,'sale_adjusted')||0);
+    const balance=r.balance!=null?_num(r.balance):_receiptNoteAmount(r.notes,'balance');
+    return {date:r.date,customer_name:r.customer_name||'Customer',mode:r.mode||'Cash',reference:r.reference||r.notes||'Customer receipt',payment_received:payment,bank_received:_payChannel(r.mode)==='cash'?0:payment,cash_received:_payChannel(r.mode)==='cash'?payment:0,sale_adjusted:saleAdjusted,amount:_num(r.amount),balance:balance,source:'Archive Customer Receipt'};
   }).sort((a,b)=>`${b.date}|${b.payment_received}`.localeCompare(`${a.date}|${a.payment_received}`));
   const byMaterial={};
   sales.forEach(s=>{const k=s.material||'Unknown';byMaterial[k]=byMaterial[k]||{material:k,qty_mt:0,amount:0,tickets:0};byMaterial[k].qty_mt+=_num(s.qty_mt);byMaterial[k].amount+=_num(s.amount);byMaterial[k].tickets+=1;});
