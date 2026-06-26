@@ -531,6 +531,7 @@ def build_control(sales, expenses, from_d, to_d,
                   boulders=None, debtors=None, creditors=None,
                   cash_balance=0.0, bank_net=0.0, repayments=None,
                   labour=None, parts=None, machines=None,
+                  vendor_payments=None,
                   bank_balance_book=0.0, cash_balance_office_book=0.0):
     days        = (to_d - from_d).days + 1
     total_sales = sum(_num(s["amount"]) for s in sales)
@@ -540,26 +541,13 @@ def build_control(sales, expenses, from_d, to_d,
     labour = labour or []
     parts = parts or []
     machines = machines or []
+    vendor_payments = vendor_payments or []
     expense_direct = sum(_num(e["amount"]) for e in expenses)
     labour_total = sum(_num(row.get("amount")) for row in labour)
     parts_total = sum(_num(row.get("total_amount")) for row in parts)
-    total_exp = expense_direct + labour_total + parts_total
-    operating_exp = sum(
-        _num(e["amount"])
-        for e in expenses
-        if not _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"))
-    )
-    operating_labour = sum(
-        _num(row.get("amount"))
-        for row in labour
-        if not _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"))
-    )
-    operating_parts = sum(
-        _num(row.get("total_amount"))
-        for row in parts
-        if not _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"))
-    )
-    operating_total_exp = operating_exp + operating_labour + operating_parts
+    vendor_payment_total = sum(_num(row.get("amount")) for row in vendor_payments)
+    total_exp = expense_direct + labour_total + parts_total + vendor_payment_total
+    operating_total_exp = total_exp
     profit = total_sales - operating_total_exp
 
     # material mix
@@ -581,6 +569,8 @@ def build_control(sales, expenses, from_d, to_d,
         by_expense["Labour"] = by_expense.get("Labour", 0.0) + labour_total
     if parts_total:
         by_expense["Parts"] = by_expense.get("Parts", 0.0) + parts_total
+    if vendor_payment_total:
+        by_expense["Vendor Payments"] = by_expense.get("Vendor Payments", 0.0) + vendor_payment_total
 
     # customer sales breakdown
     by_customer = {}
@@ -661,6 +651,16 @@ def build_control(sales, expenses, from_d, to_d,
             "payment_mode": "",
             "amount": round(_num(row.get("total_amount")), 2),
         })
+    for row in vendor_payments:
+        expense_rows.append({
+            "date": row.get("date"),
+            "type": "Vendor Payment",
+            "category": "Vendor Payment",
+            "description": f"Payment ({row.get('mode') or 'Payment'})" + (f" Ref: {row.get('reference')}" if row.get("reference") else ""),
+            "party": row.get("vendor_name") or "",
+            "payment_mode": row.get("mode") or "",
+            "amount": round(_num(row.get("amount")), 2),
+        })
     expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
 
     # trend
@@ -672,6 +672,7 @@ def build_control(sales, expenses, from_d, to_d,
             sum(_num(e["amount"]) for e in expenses if e["date"] == d)
             + sum(_num(row.get("amount")) for row in labour if row.get("date") == d)
             + sum(_num(row.get("total_amount")) for row in parts if row.get("date") == d)
+            + sum(_num(row.get("amount")) for row in vendor_payments if row.get("date") == d)
         )
         trend.append({
             "date": d, "sales": round(ds, 2), "expenses": round(de, 2),
@@ -856,7 +857,7 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
     rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
     return rows
 
-def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, local_seed):
+def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, vendor_payments, local_seed):
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     by_month = {}
     for section, rows in (
@@ -889,6 +890,34 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 f"sale_adjusted={row.get('sale_adjusted', 0.0)}"
             ),
         })
+
+    for row in vendor_payments or []:
+        day = str(row.get("date", ""))[:10]
+        month = day[:7]
+        if not month:
+            continue
+        expense_row = {
+            "id": row.get("reference") or f"vendor-payment-{day}-{row.get('vendor_name', '')}-{row.get('amount', 0.0)}",
+            "date": day,
+            "category": "Vendor Payment",
+            "description": f"Payment to {row.get('vendor_name') or 'Vendor'}" + (f" - {row.get('reference')}" if row.get("reference") else ""),
+            "amount": _num(row.get("amount")),
+            "payment_mode": row.get("mode") or "Cash",
+            "notes": row.get("notes") or "",
+            "vendor_id": None,
+            "erp_synced": True,
+        }
+        by_month.setdefault(month, {}).setdefault("expenses", []).append(expense_row)
+        if _payment_channel(row.get("mode") or "") != "cash":
+            by_month.setdefault(month, {}).setdefault("bank", []).append({
+                "id": f"vendor-payment-{row.get('reference') or day}",
+                "date": day,
+                "description": f"Vendor payment by bank/UPI - {row.get('vendor_name') or 'Vendor'}",
+                "credit": 0.0,
+                "debit": _num(row.get("amount")),
+                "bank_name": "UPI/Bank Vendor Payment",
+                "source": "Vendor Payment",
+            })
 
     for month, sections in by_month.items():
         path = ARCHIVE_DIR / f"{month}.json"
@@ -1000,6 +1029,7 @@ def build_ledger_view(
     expenses,
     labour_rows,
     parts_rows,
+    vendor_payments,
     boulder_rows,
     repayments,
     year,
@@ -1026,6 +1056,7 @@ def build_ledger_view(
     expenses_by_date = by_date(expenses)
     labour_by_date = by_date(labour_rows)
     parts_by_date = by_date(parts_rows)
+    vendor_payments_by_date = by_date(vendor_payments)
     boulders_by_date = by_date(boulder_rows)
     repayments_by_date = by_date(repayments)
 
@@ -1051,6 +1082,11 @@ def build_ledger_view(
                 cash_balance -= _num(expense.get("amount"))
             else:
                 bank_balance -= _num(expense.get("amount"))
+        for payment in vendor_payments_by_date.get(key, []):
+            if _payment_channel(payment.get("mode") or "Cash") == "cash":
+                cash_balance -= _num(payment.get("amount"))
+            else:
+                bank_balance -= _num(payment.get("amount"))
         current += timedelta(days=1)
     current = month_start
     while current <= display_end:
@@ -1072,12 +1108,18 @@ def build_ledger_view(
                     cash_balance -= _num(expense.get("amount"))
                 else:
                     bank_balance -= _num(expense.get("amount"))
+            for payment in vendor_payments_by_date.get(key, []):
+                if _payment_channel(payment.get("mode") or "Cash") == "cash":
+                    cash_balance -= _num(payment.get("amount"))
+                else:
+                    bank_balance -= _num(payment.get("amount"))
 
         if current >= month_start:
             day_sales = sales_by_date.get(key, [])
             day_expenses = expenses_by_date.get(key, [])
             day_labour = labour_by_date.get(key, [])
             day_parts = parts_by_date.get(key, [])
+            day_vendor_payments = vendor_payments_by_date.get(key, [])
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
             sale_amount = sum(_num(row.get("amount")) for row in day_sales)
@@ -1086,6 +1128,7 @@ def build_ledger_view(
                 sum(_num(row.get("amount")) for row in day_expenses)
                 + sum(_num(row.get("amount")) for row in day_labour)
                 + sum(_num(row.get("total_amount")) for row in day_parts)
+                + sum(_num(row.get("amount")) for row in day_vendor_payments)
             )
             rows.append({
                 "date": key,
@@ -1187,6 +1230,7 @@ def write_snapshot_bundle(
     vendors_full,
     vendors_payables,
     vendor_ledgers,
+    vendor_payments,
     local_seed,
     controls,
 ):
@@ -1210,6 +1254,7 @@ def write_snapshot_bundle(
     control_by_range = {
         (today, today): controls["today"],
         (yesterday, yesterday): controls["yesterday"],
+        (week_start, today): controls.get("week"),
         (month_start, today): controls["mtd"],
     }
 
@@ -1270,12 +1315,18 @@ def write_snapshot_bundle(
     for start, end in ranges:
         control = control_by_range.get((start, end))
         if control is None:
+            range_boulders = rows_between(boulder_rows, start, end)
             control = build_control(
                 rows_between(all_sales, start, end),
                 rows_between(all_expenses, start, end),
                 start,
                 end,
-                boulders={"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": []},
+                boulders={
+                    "total_tonnes": sum(_num(row.get("total_tonnes")) for row in range_boulders),
+                    "total_trips": sum(_num(row.get("trips")) for row in range_boulders),
+                    "materials": [],
+                    "suppliers": [],
+                },
                 debtors=[{"name": row["name"], "outstanding": row.get("outstanding", 0.0)} for row in customers_full],
                 creditors=[{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
                 cash_balance=cash_balance,
@@ -1283,6 +1334,7 @@ def write_snapshot_bundle(
                 labour=rows_between(labour_rows, start, end),
                 parts=rows_between(parts_rows, start, end),
                 machines=rows_between(machines_rows, start, end),
+                vendor_payments=rows_between(vendor_payments, start, end),
                 bank_balance_book=bank_balance_book,
                 cash_balance_office_book=cash_balance_office_book,
                 repayments=[],
@@ -1304,6 +1356,7 @@ def write_snapshot_bundle(
         all_expenses,
         labour_rows,
         parts_rows,
+        vendor_payments,
         boulder_rows,
         (controls.get("mtd") or {}).get("customer_repayments", []),
         today.year,
@@ -1351,6 +1404,7 @@ def main():
     today       = datetime.now(IST).date()
     yesterday   = today - timedelta(days=1)
     month_start = today.replace(day=1)
+    week_start  = today - timedelta(days=today.weekday())
     thirty_ago  = today - timedelta(days=30)
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
@@ -1400,12 +1454,14 @@ def main():
     print("  Fetching boulders...")
     boulders_today     = fetch_boulders(sess, today,       today)
     boulders_yesterday = fetch_boulders(sess, yesterday,   yesterday)
+    boulders_week      = fetch_boulders(sess, week_start,  today)
     boulders_mtd       = fetch_boulders(sess, month_start, today)
     print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
 
     write("boulders.json", {
         "today":     boulders_today,
         "yesterday": boulders_yesterday,
+        "week":      boulders_week,
         "mtd":       boulders_mtd,
     })
 
@@ -1518,6 +1574,48 @@ def main():
     print(f"  {len(creditors)} vendors")
     vendor_payments = fetch_vendor_payments(sess, creditors, month_start, today)
     print(f"  {len(vendor_payments)} vendor payments")
+    existing_bank_ids = {str(row.get("id")) for row in bank_rows}
+    for payment in vendor_payments:
+        if _payment_channel(payment.get("mode") or "") == "cash":
+            continue
+        row_id = f"vendor-payment-{payment.get('reference') or payment.get('date')}"
+        if row_id in existing_bank_ids:
+            continue
+        existing_bank_ids.add(row_id)
+        bank_rows.append({
+            "id": row_id,
+            "date": str(payment.get("date", ""))[:10],
+            "description": f"Vendor payment by bank/UPI - {payment.get('vendor_name') or 'Vendor'}",
+            "credit": 0.0,
+            "debit": _num(payment.get("amount")),
+            "bank_name": "UPI/Bank Vendor Payment",
+            "source": "Vendor Payment",
+        })
+    bank_rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
+    bank_net = round(
+        sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
+        2,
+    )
+    write("erp_ledger.json", {
+        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "cash":          cash_rows,
+        "bank":          bank_rows,
+        "cash_balance":  round(cash_balance, 2),
+        "bank_net":      bank_net,
+    })
+    for payment in vendor_payments:
+        try:
+            paid_on = datetime.fromisoformat(str(payment.get("date"))).date()
+        except Exception:
+            continue
+        if paid_on < movement_start or paid_on > today:
+            continue
+        if _payment_channel(payment.get("mode") or "Cash") == "cash":
+            operating_cash_balance -= _num(payment.get("amount"))
+        else:
+            operating_bank_balance -= _num(payment.get("amount"))
+    operating_bank_balance = round(operating_bank_balance, 2)
+    operating_cash_balance = round(operating_cash_balance, 2)
     control_debtors = [
         {"name": row.get("name"), "outstanding": row.get("balance", row.get("outstanding", 0.0))}
         for row in seed_endpoints.get("customers_outstanding", [])
@@ -1536,6 +1634,7 @@ def main():
         labour=seed_for(labour_rows, today, today),
         parts=seed_for(parts_rows, today, today),
         machines=seed_for(machines_rows, today, today),
+        vendor_payments=seed_for(vendor_payments, today, today),
         bank_balance_book=bank_balance_book,
         cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_today,
@@ -1547,9 +1646,22 @@ def main():
         labour=seed_for(labour_rows, yesterday, yesterday),
         parts=seed_for(parts_rows, yesterday, yesterday),
         machines=seed_for(machines_rows, yesterday, yesterday),
+        vendor_payments=seed_for(vendor_payments, yesterday, yesterday),
         bank_balance_book=bank_balance_book,
         cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_yesterday,
+    )
+    ctrl_week = build_control(
+        sales_for(week_start, today), exp_for(week_start, today), week_start, today,
+        boulders=boulders_week, debtors=control_debtors, creditors=control_creditors,
+        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        labour=seed_for(labour_rows, week_start, today),
+        parts=seed_for(parts_rows, week_start, today),
+        machines=seed_for(machines_rows, week_start, today),
+        vendor_payments=seed_for(vendor_payments, week_start, today),
+        bank_balance_book=bank_balance_book,
+        cash_balance_office_book=cash_balance_office_book,
+        repayments=seed_for(repayments_mtd, week_start, today),
     )
     ctrl_mtd = build_control(
         sales_for(month_start, today), exp_for(month_start, today), month_start, today,
@@ -1558,15 +1670,18 @@ def main():
         labour=seed_for(labour_rows, month_start, today),
         parts=seed_for(parts_rows, month_start, today),
         machines=seed_for(machines_rows, month_start, today),
+        vendor_payments=seed_for(vendor_payments, month_start, today),
         bank_balance_book=bank_balance_book,
         cash_balance_office_book=cash_balance_office_book,
         repayments=repayments_mtd,
     )
     ctrl_today = apply_seed_control_overrides(ctrl_today, local_seed, today, today)
     ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
+    ctrl_week = apply_seed_control_overrides(ctrl_week, local_seed, week_start, today)
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
     write("ctrl_today.json", ctrl_today)
     write("ctrl_yesterday.json", ctrl_yesterday)
+    write("ctrl_week.json", ctrl_week)
     write("ctrl_mtd.json", ctrl_mtd)
 
     # ── sales & expenses lists ─────────────────────────────────────────────────
@@ -1708,7 +1823,7 @@ def main():
     })
 
     print("  Updating monthly archive files...")
-    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments_mtd, local_seed)
+    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments_mtd, vendor_payments, local_seed)
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(
@@ -1732,8 +1847,9 @@ def main():
         vendors_full,
         vendors_payables,
         vendor_ledgers,
+        vendor_payments,
         local_seed,
-        {"today": ctrl_today, "yesterday": ctrl_yesterday, "mtd": ctrl_mtd},
+        {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
     )
 
     today_sales = sales_for(today, today)
