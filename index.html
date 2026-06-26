@@ -417,8 +417,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('dashboard','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('dashboard','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
-      <label>From:</label><input type="date" id="dash-from" onchange="clearPresetBtns('dashboard');loadDash()">
-      <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');loadDash()">
+      <label>From:</label><input type="date" id="dash-from" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
+      <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
     <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
@@ -815,11 +815,14 @@ async function _archiveControl(from,to){
   const sales=_rowsInRange(months,'sales',from,to);
   const expenses=_rowsInRange(months,'expenses',from,to);
   const receipts=_rowsInRange(months,'receipts',from,to);
+  const boulders=_rowsInRange(months,'boulders',from,to);
   const labour=_rowsInRange(months,'labour',from,to);
   const parts=_rowsInRange(months,'parts',from,to);
   const machines=_rowsInRange(months,'machines',from,to);
   const totalSales=sales.reduce((s,r)=>s+_num(r.amount),0);
   const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
+  const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
+  const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
   const cashCollected=sales.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
   const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes)).reduce((s,r)=>s+_num(r.amount),0);
   const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes)).reduce((s,r)=>s+_num(r.amount),0);
@@ -854,9 +857,9 @@ async function _archiveControl(from,to){
   }
   return {
     period:{from,to,days},
-    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:0,boulder_trips:0,recovery_pct:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:0,payables:0},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:0,payables:0},
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
-    input:{source:'Archive',materials:[],suppliers:[]},
+    input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
     customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
     customer_repayments:repayments,customer_repayments_total:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,customer_repayments_payment_total:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,customer_repayments_bank_total:Math.round(repayments.reduce((s,r)=>s+_num(r.bank_received),0)*100)/100,customer_repayments_cash_total:Math.round(repayments.reduce((s,r)=>s+_num(r.cash_received),0)*100)/100,
@@ -867,15 +870,18 @@ async function _archiveLedger(year,month){
   const ym=`${year}-${String(month).padStart(2,'0')}`;
   const payload=await _loadArchiveMonth(ym);
   if(!payload)return null;
-  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], cash=payload.cash||[], bank=payload.bank||[];
+  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
   for(let d=1;d<=days;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
-    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day);
+    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
     const saleAmount=ds.reduce((s,r)=>s+_num(r.amount),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
-    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_receiptPaymentAmount(r),0)*100)/100,expenses:Math.round(de.reduce((s,r)=>s+_num(r.amount),0)*100)/100,cash_balance_office:(cash.filter(r=>r.date<=day).slice(-1)[0]||{}).balance||0,bank_balance:bank.filter(r=>r.date<=day).reduce((s,r)=>s+_num(r.credit)-_num(r.debit),0),boulder_input_mt:0,boulder_trips:0});
+    const operating=await _archiveOperatingBalances(day);
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_receiptPaymentAmount(r),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
   }
   const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
+  totals.boulder_input_mt=Math.round(rows.reduce((s,r)=>s+r.boulder_input_mt,0)*100)/100;
+  totals.boulder_trips=Math.round(rows.reduce((s,r)=>s+r.boulder_trips,0)*100)/100;
   return {year,month,rows,totals};
 }
 async function archiveFetch(url){
@@ -886,6 +892,7 @@ async function archiveFetch(url){
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
@@ -918,10 +925,28 @@ const PAGE_SIZE=100;
 const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],iot:[],bankstmt:[]};
 let _currentCustLedger=null,_currentVendLedger=null;
 
+function _rangeDaysForKey(key){
+  const ids={
+    sales:['s-from','s-to'],expenses:['e-from','e-to'],boulders:['op-from','op-to'],
+    machines:['op-from','op-to'],labour:['op-from','op-to'],parts:['op-from','op-to'],
+    erpbank:['eb-from','eb-to'],erpcash:['ec-from','ec-to'],iot:['op-from','op-to']
+  }[key];
+  if(!ids)return null;
+  const from=document.getElementById(ids[0])?.value;
+  const to=document.getElementById(ids[1])?.value;
+  if(!from||!to)return null;
+  return Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
+}
+function pageSizeFor(key,total){
+  const days=_rangeDaysForKey(key);
+  return days!==null&&days<=2?Math.max(total,1):PAGE_SIZE;
+}
+
 function pagerHTML(key,total){
-  const pages=Math.ceil(total/PAGE_SIZE);
+  const size=pageSizeFor(key,total);
+  const pages=Math.ceil(total/size);
   if(pages<=1)return'';
-  const cur=_page[key],start=(cur-1)*PAGE_SIZE+1,end=Math.min(cur*PAGE_SIZE,total);
+  const cur=_page[key],start=(cur-1)*size+1,end=Math.min(cur*size,total);
   return`<div class="pager"><button ${cur<=1?'disabled':''} onclick="goPage('${key}',${cur-1})">◀ Prev</button><span class="pager-info">Showing ${start}–${end} of ${total} records &nbsp;|&nbsp; Page ${cur} of ${pages}</span><button ${cur>=pages?'disabled':''} onclick="goPage('${key}',${cur+1})">Next ▶</button></div>`;
 }
 const _renderCache={};
@@ -977,11 +1002,9 @@ function enforceLaunchLogin(){
     showStaticLogin();
     return;
   }
-  try{
-    if(sessionStorage.getItem('crusherops_unlocked')==='1')return;
-    fetch('/api/logout',{method:'POST',keepalive:true}).catch(()=>{});
-  }catch(e){}
-  window.location.replace('/login');
+  fetch('/api/me').then(r=>r.json()).then(d=>{
+    if(!d.authenticated){window.location.replace('/login');}
+  }).catch(()=>{window.location.replace('/login');});
 }
 document.getElementById('static-login-form')?.addEventListener('submit',unlockStaticLogin);
 enforceLaunchLogin();
@@ -1413,6 +1436,9 @@ function displayBankAccountName(a){
   return a.name||'Account';
 }
 
+let _dashDebounceTimer = null;
+function _debouncedLoadDash(){ clearTimeout(_dashDebounceTimer); _dashDebounceTimer = setTimeout(loadDash, 400); }
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDash(){
   const seq=++_dashLoadSeq;
@@ -1600,7 +1626,7 @@ async function loadSales(){
   }catch(e){flash(e.message,false);}
 }
 function renderSales(){
-  const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
   let tot=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=r.amount;totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
   let html='<table><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+thSort('sales','amount','Amount')+'<th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
@@ -1636,7 +1662,7 @@ async function loadExpenses(){
 }
 function renderExpenses(){
   const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'—'}).name:'—'};
-  const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,size=pageSizeFor('expenses',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
@@ -1973,7 +1999,7 @@ async function loadBoulders(){
   }catch(e){}
 }
 function renderBoulders(){
-  const rows=_allData.boulders,cur=_page.boulders,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=_allData.boulders,cur=_page.boulders,size=pageSizeFor('boulders',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_tonnes;});
   let html='<table><thead><tr><th>Date</th><th>Source</th><th>Trips</th><th>MT/Trip</th><th>Total MT</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.source}</td><td>${r.trips}</td><td>${r.tonnes_per_trip}</td><td><strong>${r.total_tonnes} MT</strong></td></tr>`;});
@@ -2000,7 +2026,7 @@ async function loadMachines(){
   }catch(e){}
 }
 function renderMachines(){
-  const rows=_allData.machines,cur=_page.machines,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=_allData.machines,cur=_page.machines,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Start Hrs</th><th>End Hrs</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.start_hours}</td><td>${r.end_hours}</td><td><strong>${r.running_hours}</strong></td><td>${r.production_mt}</td><td>${r.fuel_liters}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="8" class="empty">No readings</td></tr>';
@@ -2027,7 +2053,7 @@ async function loadLabour(){
   }catch(e){}
 }
 function renderLabour(){
-  const rows=_allData.labour,cur=_page.labour,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=_allData.labour,cur=_page.labour,size=pageSizeFor('labour',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr><th>Date</th><th>Worker</th><th>Type</th><th>Days</th><th>Rate</th><th>Amount</th><th>Status</th><th class="no-print">Action</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.worker_name}</td><td>${r.worker_type}</td><td>${r.days}</td><td>₹${r.daily_wage}</td><td>${fmtINR(r.amount)}</td><td><span class="badge ${r.paid?'b-paid':'b-unpaid'}">${r.paid?'Paid':'Pending'}</span></td><td class="no-print">${!r.paid?`<button class="btn btn-sm btn-ok" onclick="markPaid(${r.id})">Paid</button>`:''}</td></tr>`;});
@@ -2072,7 +2098,7 @@ async function loadParts(){
   }catch(e){}
 }
 function renderParts(){
-  const rows=_allData.parts,cur=_page.parts,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=_allData.parts,cur=_page.parts,size=pageSizeFor('parts',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_amount;});
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Part</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Supplier</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.part_name}</td><td>${r.quantity}</td><td>₹${r.unit_price}</td><td>${fmtINR(r.total_amount)}</td><td>${r.supplier||'—'}</td></tr>`;});
@@ -2173,7 +2199,7 @@ async function loadErpBank(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpBank(){
-  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totC=0,totD=0;_allData.erpbank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
   let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.bank_name||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.credit>0?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit>0?fmtINR(r.debit):'—'}</td></tr>`;});
@@ -2194,7 +2220,7 @@ async function loadErpCash(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpCash(){
-  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,size=pageSizeFor('erpcash',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totR=0,totP=0;_allData.erpcash.forEach(r=>{totR+=r.received;totP+=r.paid;});
   let html='<table><thead><tr>'+thSort('erpcash','date','Date')+thSort('erpcash','ledger','Ledger')+thSort('erpcash','description','Description')+thSort('erpcash','received','Received (In)')+thSort('erpcash','paid','Paid (Out)')+thSort('erpcash','balance','Balance')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.ledger||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.received>0?fmtINR(r.received):'—'}</td><td style="color:#c62828">${r.paid>0?fmtINR(r.paid):'—'}</td><td style="font-weight:600">${r.balance!=null?fmtINR(r.balance):'—'}</td></tr>`;});
@@ -2214,7 +2240,7 @@ async function loadIot(){
   }catch(e){}
 }
 function renderIot(){
-  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,size=pageSizeFor('iot',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr>'+thSort('iot','dt','Date/Time')+thSort('iot','linked','Type')+thSort('iot','ticket','Ticket')+thSort('iot','vehicle','Vehicle')+thSort('iot','material','Material')+thSort('iot','party','Party')+thSort('iot','qty','Qty')+thSort('iot','crusher','Crusher')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td style="white-space:nowrap">${r.dt}</td><td><span class="badge" style="background:#e3f2fd;color:#1565c0">${r.linked||'—'}</span></td><td>${r.ticket||'—'}</td><td>${r.vehicle||'—'}</td><td>${r.material||'—'}</td><td>${r.party||'—'}</td><td>${r.qty||'—'}</td><td>${r.crusher||'—'}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="8" class="empty">No IOT movements for this period</td></tr>';
