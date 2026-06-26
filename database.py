@@ -257,25 +257,40 @@ class IOTMovement(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    # Migrate existing tables for new columns
     from sqlalchemy import inspect, text
     with engine.connect() as conn:
         inspector = inspect(engine)
-        sale_cols = [c["name"] for c in inspector.get_columns("sales")]
+
+        # Column migrations
+        sale_cols = {c["name"] for c in inspector.get_columns("sales")}
         if "mdp_ton" not in sale_cols:
             conn.execute(text("ALTER TABLE sales ADD COLUMN mdp_ton FLOAT"))
         if "erp_synced" not in sale_cols:
             conn.execute(text("ALTER TABLE sales ADD COLUMN erp_synced BOOLEAN DEFAULT 0"))
-        expense_cols = [c["name"] for c in inspector.get_columns("expenses")]
+        expense_cols = {c["name"] for c in inspector.get_columns("expenses")}
         if "erp_synced" not in expense_cols:
             conn.execute(text("ALTER TABLE expenses ADD COLUMN erp_synced BOOLEAN DEFAULT 1"))
         if "erp_key" not in expense_cols:
             conn.execute(text("ALTER TABLE expenses ADD COLUMN erp_key VARCHAR(500)"))
-        customer_cols = [c["name"] for c in inspector.get_columns("customers")]
+        customer_cols = {c["name"] for c in inspector.get_columns("customers")}
         if "erp_debit_balance" not in customer_cols:
             conn.execute(text("ALTER TABLE customers ADD COLUMN erp_debit_balance FLOAT DEFAULT 0"))
         if "erp_credit_balance" not in customer_cols:
             conn.execute(text("ALTER TABLE customers ADD COLUMN erp_credit_balance FLOAT DEFAULT 0"))
         if "erp_balance_as_of" not in customer_cols:
             conn.execute(text("ALTER TABLE customers ADD COLUMN erp_balance_as_of DATE"))
+
+        # Performance indexes
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS idx_customer_active ON customers(active)",
+            "CREATE INDEX IF NOT EXISTS idx_vendor_active ON vendors(active)",
+            "CREATE INDEX IF NOT EXISTS idx_bank_account_active ON bank_accounts(active)",
+            "CREATE INDEX IF NOT EXISTS idx_worker_active ON workers(active)",
+            "CREATE INDEX IF NOT EXISTS idx_labour_date_worker ON labour(date, worker_name)",
+            "CREATE INDEX IF NOT EXISTS idx_part_date_machine ON parts(date, machine_name)",
+            "CREATE INDEX IF NOT EXISTS idx_machine_date_name ON machine_readings(date, machine_name)",
+            "CREATE INDEX IF NOT EXISTS idx_vendor_payment_ref ON vendor_payments(reference)",
+        ]:
+            conn.execute(text(sql))
+
         conn.commit()

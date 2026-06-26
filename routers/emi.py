@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, model_validator
 from database import get_db, EMIRecord
@@ -44,13 +44,16 @@ def list_emi(db: Session = Depends(get_db)):
 @router.get("/alerts")
 def emi_alerts(db: Session = Depends(get_db)):
     today = date.today()
-    all_emi = db.query(EMIRecord).filter(EMIRecord.status != "Paid").all()
-    overdue = [e for e in all_emi if e.due_date and e.due_date < today]
-    due_soon = [e for e in all_emi if e.due_date and today <= e.due_date <= date(today.year, today.month + 1 if today.month < 12 else 1, today.day)]
+    next_month_start = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    all_emi = db.query(EMIRecord).all()
+    unpaid = [e for e in all_emi if e.status != "Paid"]
+    overdue = [e for e in unpaid if e.due_date and e.due_date < today]
+    due_soon = [e for e in unpaid if e.due_date and today <= e.due_date < next_month_start]
+    cur_month = today.strftime("%Y-%m")
     return {
         "overdue": [{"id": e.id, "machine": e.machine_name, "month": e.emi_month, "amount": e.emi_amount, "due": str(e.due_date)} for e in overdue],
         "due_soon": [{"id": e.id, "machine": e.machine_name, "month": e.emi_month, "amount": e.emi_amount, "due": str(e.due_date)} for e in due_soon],
-        "total_monthly_emi": sum(e.emi_amount for e in db.query(EMIRecord).all() if e.emi_month == date.today().strftime("%Y-%m")),
+        "total_monthly_emi": sum(e.emi_amount for e in all_emi if e.emi_month == cur_month),
     }
 
 

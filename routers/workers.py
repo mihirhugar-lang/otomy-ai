@@ -82,11 +82,14 @@ def save_muster(muster_date: str, entries: List[MusterEntry], db: Session = Depe
     db.query(Labour).filter(Labour.date == d).delete()
     db.commit()
 
+    worker_ids = [e.worker_id for e in entries if e.present]
+    workers_map = {w.id: w for w in db.query(Worker).filter(Worker.id.in_(worker_ids)).all()}
+
     saved = []
     for entry in entries:
         if not entry.present:
             continue
-        w = db.query(Worker).filter(Worker.id == entry.worker_id).first()
+        w = workers_map.get(entry.worker_id)
         if not w:
             continue
         amount = round(entry.days * w.daily_wage, 2)

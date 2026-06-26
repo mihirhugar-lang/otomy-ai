@@ -1,7 +1,10 @@
+import logging
 import os
 import json
 from datetime import date
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -27,7 +30,8 @@ def _load_config() -> dict:
     try:
         with open(_CONFIG_PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        logger.warning("company_config.json load failed: %s", e)
         return dict(_DEFAULT_CONFIG)
 
 

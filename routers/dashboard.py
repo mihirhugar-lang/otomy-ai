@@ -1,6 +1,6 @@
 from calendar import monthrange
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -389,7 +389,6 @@ def _fetch_erp_credit_repayments(start: date, end: date, allow_live: bool = True
                     "source": "ERP Customer Ledger",
                 }
             )
-            time.sleep(0.05)
 
         repayments.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
         _ERP_REPAYMENT_CACHE[cache_key] = {"ts": time.time(), "data": repayments}
@@ -1026,9 +1025,13 @@ def control_room(
         .group_by(Expense.vendor_id).all()
     )
     _vend_pay_map: dict = {}
-    for _p in db.query(VendorPayment).all():
-        if not _is_erp_vendor_payment(_p):
-            _vend_pay_map[_p.vendor_id] = _vend_pay_map.get(_p.vendor_id, 0.0) + _amount(_p.amount)
+    for _p in db.query(VendorPayment).filter(
+        ~or_(
+            func.coalesce(VendorPayment.reference, "").like("ERP-SUP-%"),
+            func.coalesce(VendorPayment.notes, "").like("%ERP supplier_id=%"),
+        )
+    ).all():
+        _vend_pay_map[_p.vendor_id] = _vend_pay_map.get(_p.vendor_id, 0.0) + _amount(_p.amount)
     payables = []
     for vendor in db.query(Vendor).filter(Vendor.active == True).all():
         balance = (

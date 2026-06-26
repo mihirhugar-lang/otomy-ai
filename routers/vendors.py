@@ -98,7 +98,6 @@ def _matches_vendor_text(vendor_name: str, expense: Expense) -> bool:
     vendor_norm = _norm_text(vendor_name)
     if not vendor_norm:
         return False
-
     haystack = _norm_text(" ".join([
         expense.category or "",
         expense.description or "",
@@ -109,17 +108,39 @@ def _matches_vendor_text(vendor_name: str, expense: Expense) -> bool:
         return False
     if vendor_norm in haystack:
         return True
-
     vendor_tokens = [t for t in vendor_norm.split() if len(t) >= 4]
     if len(vendor_tokens) >= 2 and all(t in haystack for t in vendor_tokens):
         return True
-
     if category_norm and SequenceMatcher(None, vendor_norm, category_norm).ratio() >= 0.78:
         return True
     return False
 
 
-def _vendor_bill_rows(vendor: Vendor, db: Session, _unlinked=None, _linked_by_vendor=None) -> list:
+def _precompute_expense_norms(expenses: list) -> dict:
+    """Precompute normalized text for each expense to avoid repeated _norm_text calls."""
+    return {
+        e.id: (
+            _norm_text(" ".join([e.category or "", e.description or "", e.notes or ""])),
+            _norm_text(e.category or ""),
+        )
+        for e in expenses
+    }
+
+
+def _matches_vendor_norm(vendor_norm: str, haystack: str, category_norm: str) -> bool:
+    if not vendor_norm or not haystack:
+        return False
+    if vendor_norm in haystack:
+        return True
+    vendor_tokens = [t for t in vendor_norm.split() if len(t) >= 4]
+    if len(vendor_tokens) >= 2 and all(t in haystack for t in vendor_tokens):
+        return True
+    if category_norm and SequenceMatcher(None, vendor_norm, category_norm).ratio() >= 0.78:
+        return True
+    return False
+
+
+def _vendor_bill_rows(vendor: Vendor, db: Session, _unlinked=None, _linked_by_vendor=None, _expense_norms=None) -> list:
     if _linked_by_vendor is not None:
         linked = _linked_by_vendor.get(vendor.id, [])
     else:
@@ -127,7 +148,12 @@ def _vendor_bill_rows(vendor: Vendor, db: Session, _unlinked=None, _linked_by_ve
     seen = {e.id for e in linked}
     if _unlinked is None:
         _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
-    matched = [e for e in _unlinked if e.id not in seen and _matches_vendor_text(vendor.name, e)]
+    if _expense_norms is not None:
+        vendor_norm = _norm_text(vendor.name)
+        matched = [e for e in _unlinked if e.id not in seen and
+                   _matches_vendor_norm(vendor_norm, *_expense_norms.get(e.id, ("", "")))]
+    else:
+        matched = [e for e in _unlinked if e.id not in seen and _matches_vendor_text(vendor.name, e)]
     return sorted(linked + matched, key=lambda e: (e.date, e.id))
 
 
@@ -152,7 +178,7 @@ def _add_aging_bucket(aging: dict, entry_date: date, amount: float, as_of: date)
         aging["age_45_plus"] += amount
 
 
-def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _unlinked=None, _linked_by_vendor=None) -> dict:
+def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _unlinked=None, _linked_by_vendor=None, _expense_norms=None) -> dict:
     aging = _empty_aging()
     remaining = round(max(float(payable or 0), 0.0), 2)
     if remaining <= 0:
@@ -160,7 +186,7 @@ def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _un
 
     as_of = date.today()
     if _bills is None:
-        _bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+        _bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor, _expense_norms=_expense_norms)
     bills = sorted(_bills, key=lambda e: (e.date, e.id), reverse=True)
     for bill in bills:
         if remaining <= 0:
@@ -177,11 +203,11 @@ def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _un
 
 
 def _apply_vendor_totals(out: VendorOut, vendor: Vendor, db: Session,
-                         _unlinked=None, _linked_by_vendor=None, _payments_by_vendor=None) -> VendorOut:
+                         _unlinked=None, _linked_by_vendor=None, _payments_by_vendor=None, _expense_norms=None) -> VendorOut:
     linked_purchases = sum(e.amount or 0 for e in (_linked_by_vendor or {}).get(vendor.id, [])
                            ) if _linked_by_vendor is not None else float(
         db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(Expense.vendor_id == vendor.id).scalar() or 0)
-    bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+    bills = _vendor_bill_rows(vendor, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor, _expense_norms=_expense_norms)
     matched_purchases = sum(e.amount or 0 for e in bills)
     vendor_payments = (_payments_by_vendor or {}).get(vendor.id, []) if _payments_by_vendor is not None else \
         db.query(VendorPayment).filter(VendorPayment.vendor_id == vendor.id).all()
@@ -212,6 +238,7 @@ def list_vendors(active_only: bool = True, db: Session = Depends(get_db)):
 
     # Preload once — eliminates N×SQL queries
     _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
+    _expense_norms = _precompute_expense_norms(_unlinked)
     _linked_by_vendor: dict = {}
     for e in db.query(Expense).filter(Expense.vendor_id.isnot(None)).all():
         _linked_by_vendor.setdefault(e.vendor_id, []).append(e)
@@ -224,7 +251,8 @@ def list_vendors(active_only: bool = True, db: Session = Depends(get_db)):
         out = VendorOut.model_validate(v)
         _apply_vendor_totals(out, v, db, _unlinked=_unlinked,
                              _linked_by_vendor=_linked_by_vendor,
-                             _payments_by_vendor=_payments_by_vendor)
+                             _payments_by_vendor=_payments_by_vendor,
+                             _expense_norms=_expense_norms)
         result.append(out)
     return result
 
@@ -405,6 +433,7 @@ def list_payables(db: Session = Depends(get_db)):
 
     # Preload once
     _unlinked = db.query(Expense).filter(Expense.vendor_id.is_(None)).all()
+    _expense_norms = _precompute_expense_norms(_unlinked)
     _linked_by_vendor: dict = {}
     for e in db.query(Expense).filter(Expense.vendor_id.isnot(None)).all():
         _linked_by_vendor.setdefault(e.vendor_id, []).append(e)
@@ -421,7 +450,7 @@ def list_payables(db: Session = Depends(get_db)):
         manual_payments = sum(p.amount or 0 for p in vendor_payments if not _is_erp_vendor_payment(p))
         payable = float(v.opening_balance or 0) + float(linked_purchases) - float(manual_payments)
         if payable > 0:
-            bills = _vendor_bill_rows(v, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor)
+            bills = _vendor_bill_rows(v, db, _unlinked=_unlinked, _linked_by_vendor=_linked_by_vendor, _expense_norms=_expense_norms)
             matched_purchases = sum(e.amount or 0 for e in bills)
             aging = _payable_aging(v, payable, db, _bills=bills)
             result.append({
