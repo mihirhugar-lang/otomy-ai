@@ -419,7 +419,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <div class="preset-dates">
       <label>From:</label><input type="date" id="dash-from" onchange="clearPresetBtns('dashboard');loadDash()">
       <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');loadDash()">
-      <label>Day:</label><input type="date" id="dash-date" onchange="loadDash()">
+      <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
     <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
   </div>
@@ -556,22 +556,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 <div class="section" id="section-bank">
   <div class="page-header"><h2>Cash & Bank</h2></div>
   <div id="bank-summary-cards" class="kpi-row"></div>
-  <div class="card">
-    <h3>Bank Statement</h3>
-    <div class="preset-bar no-print">
-      <span class="preset-label">Period:</span>
-      <button class="pbtn act" onclick="preset('bank','today',this)">Today</button>
-      <button class="pbtn" onclick="preset('bank','yesterday',this)">Yesterday</button>
-      <button class="pbtn" onclick="preset('bank','week',this)">This Week</button>
-      <button class="pbtn" onclick="preset('bank','mtd',this)">Month Till Date</button>
-      <button class="pbtn" onclick="preset('bank','lastmonth',this)">Last Month</button>
-      <div class="preset-dates">
-        <label>Account:</label><select id="stmt-acct" onchange="loadStatement()"></select>
-      </div>
-      <button class="print-btn" onclick="printSection('Bank Statement','bank-stmt')">Print / PDF</button>
-    </div>
-    <div class="tbl-wrap" id="bank-stmt"></div>
-  </div>
 
   <!-- ERP Bank Ledger -->
   <div class="card" style="border-top:3px solid #1565c0">
@@ -975,7 +959,7 @@ function nav(name){
   if(name==='expenses'){_initDates('e-from','e-to');fillVendSelect('e-vendor');loadExpenses();}
   if(name==='customers'){loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){loadVendors();fillVendSelect('vp-vend');}
-  if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankAccounts();loadStatement();loadErpBank();loadErpCash();}
+  if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankSummary();loadErpBank();loadErpCash();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='reports'){}
 }
@@ -993,7 +977,6 @@ const PRESET_CFG={
   expenses:{from:'e-from',to:'e-to',reload:()=>loadExpenses()},
   customers:{from:'c-from',to:'c-to',reload:()=>loadCustomers()},
   vendors:{from:'v-from',to:'v-to',reload:()=>loadVendors()},
-  bank:{from:null,to:null,reload:()=>loadStatement()},
   erpbank:{from:'eb-from',to:'eb-to',reload:()=>loadErpBank()},
   erpcash:{from:'ec-from',to:'ec-to',reload:()=>loadErpCash()},
 };
@@ -1022,6 +1005,14 @@ function preset(section,p,btn){
   // Reset to page 1 on new date range
   if(_page[section]!==undefined)_page[section]=1;
   cfg.reload();
+}
+
+function setDashboardDay(d){
+  if(!d)return;
+  document.getElementById('dash-from').value=d;
+  document.getElementById('dash-to').value=d;
+  clearPresetBtns('dashboard');
+  loadDash();
 }
 
 function clearPresetBtns(section){
@@ -1188,7 +1179,7 @@ window.onload=async function(){
   }
   api('/api/customers/').then(d=>{_customers=d;fillCustSelect('s-customer');fillCustSelect('cr-cust');}).catch(()=>{});
   api('/api/vendors/').then(d=>{_vendors=d;fillVendSelect('e-vendor');fillVendSelect('vp-vend');}).catch(()=>{});
-  api('/api/bank/accounts').then(d=>{_bankAccounts=d;fillAcctSelect('bt-acct');fillAcctSelect('stmt-acct');}).catch(()=>{});
+  api('/api/bank/accounts').then(d=>{_bankAccounts=d;fillAcctSelect('bt-acct');}).catch(()=>{});
 };
 
 if('serviceWorker' in navigator){
@@ -1642,13 +1633,25 @@ async function loadBankAccounts(){
   try{
     const accts=await api('/api/bank/accounts');
     _bankAccounts=accts;
-    fillAcctSelect('bt-acct');fillAcctSelect('stmt-acct');
-    const sumDiv=document.getElementById('bank-summary-cards');
-    let totBal=accts.reduce((s,a)=>s+(a.current_balance||0),0);
-    let html=`<div class="kpi navy"><div class="kpi-label">Total Bank Balance</div><div class="kpi-value">${fmtINR(totBal)}</div></div>`;
-    accts.filter(a=>a.active).forEach(a=>{const color=(a.current_balance||0)<0?'red':'green';const name=displayBankAccountName(a);html+=`<div class="kpi ${color}"><div class="kpi-label">${esc(name)}</div><div class="kpi-value">${fmtINR(a.current_balance||0)}</div><div class="kpi-sub">${name==='CASH BALANCE IN OFFICE'?'':esc(a.bank_name||'')} ${a.account_no?'...'+esc(a.account_no.slice(-4)):''}</div></div>`;});
-    sumDiv.innerHTML=html;
+    fillAcctSelect('bt-acct');
   }catch(e){}
+}
+async function loadBankSummary(){
+  const from=document.getElementById('eb-from')?.value||document.getElementById('ec-from')?.value||today();
+  const to=document.getElementById('eb-to')?.value||document.getElementById('ec-to')?.value||from;
+  const sumDiv=document.getElementById('bank-summary-cards');
+  if(!sumDiv)return;
+  try{
+    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
+    const s=data.summary||{};
+    sumDiv.innerHTML=`
+      <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
+      <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
+      <div class="kpi blue"><div class="kpi-label">Credit Payment Received</div><div class="kpi-value">${fmtINR(s.credit_payment_received||0)}</div><div class="kpi-sub">Cash + UPI/Bank received</div></div>
+      <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
+  }catch(e){
+    sumDiv.innerHTML=`<div class="alert-banner alert-red"><strong>Cash & Bank summary error</strong><span>${esc(e.message)}</span></div>`;
+  }
 }
 async function addBankTxn(){
   const body={date:document.getElementById('bt-date').value,bank_account_id:parseInt(document.getElementById('bt-acct').value),txn_type:document.getElementById('bt-type').value,description:document.getElementById('bt-desc').value,amount:parseFloat(document.getElementById('bt-amt').value)||0,reference:document.getElementById('bt-ref').value};
@@ -1950,6 +1953,7 @@ async function loadErpBank(){
   try{
     const rows=await api(`/api/sync/erp/bank?from_date=${from}&to_date=${to}`);
     _allData.erpbank=rows;_page.erpbank=1;_renderCache.erpbank=()=>renderErpBank();renderErpBank();
+    loadBankSummary();
   }catch(e){flash(e.message,false);}
 }
 function renderErpBank(){
@@ -1970,6 +1974,7 @@ async function loadErpCash(){
   try{
     const rows=await api(`/api/sync/erp/cash?from_date=${from}&to_date=${to}`);
     _allData.erpcash=rows;_page.erpcash=1;_renderCache.erpcash=()=>renderErpCash();renderErpCash();
+    loadBankSummary();
   }catch(e){flash(e.message,false);}
 }
 function renderErpCash(){

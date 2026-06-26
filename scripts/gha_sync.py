@@ -975,10 +975,12 @@ def write_snapshot_bundle(
         (month_start, today),
         (last_month_start, last_month_end),
     ]
-    for day in range(1, today.day + 1):
-        start = today.replace(day=day)
-        if (start, today) not in ranges:
-            ranges.append((start, today))
+    for start_day in range(1, today.day + 1):
+        start = today.replace(day=start_day)
+        for end_day in range(start_day, today.day + 1):
+            end = today.replace(day=end_day)
+            if (start, end) not in ranges:
+                ranges.append((start, end))
 
     control_by_range = {
         (today, today): controls["today"],
