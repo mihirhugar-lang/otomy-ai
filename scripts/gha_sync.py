@@ -1525,7 +1525,8 @@ def main():
     control_creditors = [
         {"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))}
         for row in seed_endpoints.get("vendors_payables", [])
-    ] or creditors
+    ]
+    control_creditors = creditors or control_creditors
 
     # ── control room JSON ─────────────────────────────────────────────────────
     ctrl_today = build_control(
@@ -1693,9 +1694,6 @@ def main():
         if row.get("active", True) and _num(row.get("payable")) > 0
     ]
     vendors_payables.sort(key=lambda row: row.get("payable", 0.0), reverse=True)
-    if seed_endpoints.get("vendors_payables"):
-        vendors_payables = seed_endpoints["vendors_payables"]
-
     write("vendors_payables.json", vendors_payables)
     write("vendors.json",          vendors_full)
 
