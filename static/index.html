@@ -907,7 +907,7 @@ function pagerHTML(key,total){
 const _renderCache={};
 function goPage(key,p){_page[key]=p;_renderCache[key]&&_renderCache[key]();}
 const _dashCache={day:new Map(),control:new Map()};
-const DASH_CACHE_MS=0;
+const DASH_CACHE_MS=60000;
 let _dashLoadSeq=0;
 let _installPromptEvent=null;
 let _dashPrefetched=false;
@@ -1124,15 +1124,24 @@ function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
 function _initDates(fromId,toId,presetKey){
-  // Set MTD as default if dates are empty, highlight the MTD button
+  // Default every internal page to Today for fast initial loads.
   if(!document.getElementById(fromId).value){
-    const[f,t]=calcPreset('mtd');
+    const[f,t]=calcPreset('today');
     document.getElementById(fromId).value=f;
     document.getElementById(toId).value=t;
-    // highlight MTD button in this section's preset bar
     const el=document.getElementById(fromId);
-    if(el){const bar=el.closest('.preset-bar');if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btns=[...bar.querySelectorAll('.pbtn')];const mtdBtn=btns.find(b=>b.textContent.includes('Month Till'));if(mtdBtn)mtdBtn.classList.add('act');}}
+    if(el){const bar=el.closest('.preset-bar');if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btns=[...bar.querySelectorAll('.pbtn')];const todayBtn=btns.find(b=>b.textContent.trim()==='Today');if(todayBtn)todayBtn.classList.add('act');}}
   }
+}
+function resetRangeToToday(section){
+  const cfg=PRESET_CFG[section];
+  if(!cfg)return;
+  const[f,t]=calcPreset('today');
+  if(cfg.from)document.getElementById(cfg.from).value=f;
+  if(cfg.to)document.getElementById(cfg.to).value=t;
+  const anchor=document.getElementById(cfg.from||cfg.single);
+  const bar=anchor?.closest('.preset-bar');
+  if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btn=[...bar.querySelectorAll('.pbtn')].find(b=>b.textContent.trim()==='Today');if(btn)btn.classList.add('act');}
 }
 function nav(name){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1141,12 +1150,12 @@ function nav(name){
   document.getElementById('section-'+name).classList.add('active');
   document.getElementById('page-title').textContent=TITLES[name]||name;
   toggleMobileNav(false);
-  if(name==='dashboard')loadDash();
-  if(name==='sales'){_initDates('s-from','s-to');fillCustSelect('s-customer');loadSales();}
-  if(name==='expenses'){_initDates('e-from','e-to');fillVendSelect('e-vendor');loadExpenses();}
-  if(name==='customers'){loadCustomers();fillCustSelect('cr-cust');}
-  if(name==='vendors'){loadVendors();fillVendSelect('vp-vend');}
-  if(name==='bank'){_initDates('eb-from','eb-to');_initDates('ec-from','ec-to');loadBankSummary();loadErpBank();loadErpCash();}
+  if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
+  if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
+  if(name==='expenses'){resetRangeToToday('expenses');fillVendSelect('e-vendor');loadExpenses();}
+  if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
+  if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
+  if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='reports'){}
 }
@@ -1391,7 +1400,7 @@ async function loadDash(){
   const f=document.getElementById('dash-from').value||mtdStart();
   const t=document.getElementById('dash-to').value||today();
   try{
-    const controlData=await api(`/api/dashboard/control?from_date=${f}&to_date=${t}&_=${Date.now()}`);
+    const controlData=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     if(seq!==_dashLoadSeq)return;
     renderDashSummary(controlData,d);
     renderControlRoom(controlData);
@@ -1402,7 +1411,7 @@ async function loadControlRoom(){
   const f=document.getElementById('dash-from').value||mtdStart();
   const t=document.getElementById('dash-to').value||today();
   try{
-    const data=await api(`/api/dashboard/control?from_date=${f}&to_date=${t}&_=${Date.now()}`);
+    const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     renderControlRoom(data);
   }catch(e){
     const el=document.getElementById('control-room');
@@ -1562,7 +1571,7 @@ async function addSale(){
 }
 async function loadSales(){
   const from=document.getElementById('s-from').value,to=document.getElementById('s-to').value;
-  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('s-from').value=f;document.getElementById('s-to').value=t;return loadSales();}
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('s-from').value=f;document.getElementById('s-to').value=t;return loadSales();}
   try{
     const rows=await api(`/api/sales/?from_date=${from}&to_date=${to}`);
     _allData.sales=rows;_page.sales=_page.sales||1;
@@ -1597,7 +1606,7 @@ async function addExpense(){
 }
 async function loadExpenses(){
   const from=document.getElementById('e-from').value,to=document.getElementById('e-to').value;
-  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('e-from').value=f;document.getElementById('e-to').value=t;return loadExpenses();}
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('e-from').value=f;document.getElementById('e-to').value=t;return loadExpenses();}
   try{
     const rows=await api(`/api/expenses/?from_date=${from}&to_date=${to}`);
     _allData.expenses=rows;_page.expenses=_page.expenses||1;
@@ -1935,7 +1944,7 @@ async function addBoulder(){
 }
 async function loadBoulders(){
   const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  if(!f||!t){const[a,b]=calcPreset('mtd');document.getElementById('op-from').value=a;document.getElementById('op-to').value=b;return loadBoulders();}
+  if(!f||!t){const[a,b]=calcPreset('today');document.getElementById('op-from').value=a;document.getElementById('op-to').value=b;return loadBoulders();}
   try{
     const rows=await api(`/api/boulders/?from_date=${f}&to_date=${t}`);
     _allData.boulders=rows;_page.boulders=_page.boulders||1;
@@ -2136,7 +2145,7 @@ async function downloadGSTR1(){
 // ── ERP Bank Transactions ─────────────────────────────────────────────────────
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
-  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
   try{
     const rows=await api(`/api/sync/erp/bank?from_date=${from}&to_date=${to}`);
     _allData.erpbank=rows;_page.erpbank=1;_renderCache.erpbank=()=>renderErpBank();renderErpBank();
@@ -2157,7 +2166,7 @@ function renderErpBank(){
 // ── ERP Cash Ledger ───────────────────────────────────────────────────────────
 async function loadErpCash(){
   const from=document.getElementById('ec-from').value,to=document.getElementById('ec-to').value;
-  if(!from||!to){const[f,t]=calcPreset('mtd');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
   try{
     const rows=await api(`/api/sync/erp/cash?from_date=${from}&to_date=${to}`);
     _allData.erpcash=rows;_page.erpcash=1;_renderCache.erpcash=()=>renderErpCash();renderErpCash();
