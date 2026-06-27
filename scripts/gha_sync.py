@@ -409,7 +409,7 @@ def fetch_iot(sess, from_d, to_d):
             f"{ERP_BASE}/iot/ListIOTSaleLinkReport"
             f"?startDt={fs}&endDt={ts}&startTime=12:00:00 AM&endTime=11:59:59 PM"
             f"&crusherId=-1&type=1",
-            timeout=60, verify=True).text)
+            timeout=8, verify=True).text)
         for idx, row in enumerate(data.get("data", []), start=1):
             raw0 = htmllib.unescape(str(row[0])) if len(row) > 0 else ""
             dt_raw = re.split(r"<", raw0)[0].strip()
@@ -514,14 +514,15 @@ def fetch_creditors(sess, as_of=None):
     return creditors
 
 def fetch_vendor_payments(sess, creditors, from_d, to_d):
-    payments = []
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    for creditor in creditors:
+
+    def _fetch_one(creditor):
         supplier_id = creditor.get("erp_supplier_id")
         if not supplier_id:
-            continue
+            return []
+        rows = []
         try:
-            data = json.loads(sess.get(
+            data = json.loads(_clone_sess(sess).get(
                 f"{ERP_BASE}/crusher/ViewSupplierLedgerTransactions"
                 f"?start={fs}&end={ts}&supplierId={supplier_id}&materialId=-1&crusherId=-1&orderType=2&type=1",
                 timeout=45, verify=True).text)
@@ -538,7 +539,7 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
                     continue
                 paid_on = _parse_date(cells[0], to_d)
                 sequence += 1
-                payments.append({
+                rows.append({
                     "date": str(paid_on),
                     "vendor_name": creditor["name"],
                     "amount": amount,
@@ -548,6 +549,12 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
                 })
         except Exception as e:
             print(f"  vendor payment fetch error ({creditor.get('name')}): {e}")
+        return rows
+
+    payments = []
+    with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
+        for result in pool.map(_fetch_one, creditors):
+            payments.extend(result)
     return payments
 
 
@@ -606,91 +613,106 @@ def fetch_customer_ledger_rows(sess, from_d, to_d, erp_customer_id):
         print(f"  customer ledger {erp_customer_id}: {e}")
         return []
 
-def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debtors):
-    repayments = []
-    current_day = start
+def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debtors, debtors_cache=None):
+    # --- Phase 1: pre-fetch all intermediate days' debtors in parallel ---
+    inter_days = [start + timedelta(days=i) for i in range((end - start).days)]
+    need_fetch = [d for d in inter_days if not (debtors_cache and d in debtors_cache)]
+    pre = {}
+    if need_fetch:
+        with ThreadPoolExecutor(max_workers=min(len(need_fetch), 10)) as pool:
+            futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in need_fetch}
+            for d, f in futs.items():
+                pre[d] = f.result()
+
+    def _day_debtors(d):
+        if d == end:
+            return current_debtors
+        if debtors_cache and d in debtors_cache:
+            return debtors_cache[d]
+        return pre.get(d, [])
+
+    # --- Phase 2: traverse snapshot chain, collect (day, cid, current_row) tasks ---
     previous_snapshot = {
         row.get("erp_customer_id"): row
         for row in previous_debtors
         if row.get("erp_customer_id") is not None
     }
+    tasks = []
+    current_day = start
     while current_day <= end:
-        day_debtors = current_debtors if current_day == end else fetch_debtors(sess, current_day)
         current_snapshot = {
             row.get("erp_customer_id"): row
-            for row in day_debtors
+            for row in _day_debtors(current_day)
             if row.get("erp_customer_id") is not None
         }
-
-        for erp_customer_id, current in current_snapshot.items():
-            previous = previous_snapshot.get(erp_customer_id, {})
-            credit_delta = round(
-                _num(current.get("received")) - _num(previous.get("received")),
-                2,
-            )
-            balance_change = round(
-                abs(_num(current.get("outstanding")) - _num(previous.get("outstanding"))),
-                2,
-            )
-            if credit_delta <= 0 and balance_change <= 0:
-                continue
-
-            total_debit = 0.0
-            total_credit = 0.0
-            credit_by_channel = {"bank": 0.0, "cash": 0.0}
-            raw_modes = []
-            for row in fetch_customer_ledger_rows(sess, current_day, current_day, erp_customer_id):
-                cols = [_clean(col) for col in row]
-                if not cols or (cols[0] or "").upper() == "TOTAL":
-                    continue
-                debit = _num(cols[11]) if len(cols) > 11 else 0.0
-                credit = _num(cols[12]) if len(cols) > 12 else 0.0
-                mode = cols[13] if len(cols) > 13 else ""
-                if debit > 0:
-                    total_debit += debit
-                if credit > 0:
-                    total_credit += credit
-                    credit_by_channel[_payment_channel(mode)] += credit
-                    raw_modes.append(mode or "Payment")
-
-            if total_credit <= 0:
-                continue
-            cash_sale_adjusted = min(
-                round(credit_by_channel["cash"], 2),
-                round(total_debit * (credit_by_channel["cash"] / total_credit), 2),
-            )
-            bank_sale_adjusted = min(
-                round(credit_by_channel["bank"], 2),
-                round(total_debit * (credit_by_channel["bank"] / total_credit), 2),
-            )
-            cash_amount = round(max(credit_by_channel["cash"] - cash_sale_adjusted, 0.0), 2)
-            bank_amount = round(max(credit_by_channel["bank"] - bank_sale_adjusted, 0.0), 2)
-            mode_notes = ", ".join(dict.fromkeys([m for m in raw_modes if m]))[:120]
-            for mode, amount, payment_received, sale_adjusted in (
-                ("Cash", cash_amount, round(credit_by_channel["cash"], 2), cash_sale_adjusted),
-                ("Bank", bank_amount, round(credit_by_channel["bank"], 2), bank_sale_adjusted),
-            ):
-                if payment_received <= 0:
-                    continue
-                repayments.append({
-                    "date": str(current_day),
-                    "customer_name": current["name"],
-                    "mode": mode,
-                    "reference": f"ERP-CREDIT-{erp_customer_id}-{current_day.isoformat()}-{mode.upper()}",
-                    "payment_received": payment_received,
-                    "bank_received": payment_received if mode == "Bank" else 0.0,
-                    "cash_received": payment_received if mode == "Cash" else 0.0,
-                    "sale_adjusted": round(sale_adjusted, 2),
-                    "amount": amount,
-                    "balance": round(_num(current.get("outstanding")), 2),
-                    "source": "Customer Ledger",
-                    "erp_customer_id": erp_customer_id,
-                    "notes": f"ledger modes={mode_notes}",
-                })
-            time.sleep(0.03)
-
+        for cid, curr in current_snapshot.items():
+            prev = previous_snapshot.get(cid, {})
+            credit_delta = round(_num(curr.get("received")) - _num(prev.get("received")), 2)
+            balance_change = round(abs(_num(curr.get("outstanding")) - _num(prev.get("outstanding"))), 2)
+            if credit_delta > 0 or balance_change > 0:
+                tasks.append((current_day, cid, curr))
         previous_snapshot = current_snapshot
         current_day += timedelta(days=1)
+
+    # --- Phase 3: parallel fetch all customer ledger rows ---
+    def _process_one(task):
+        day, cid, curr = task
+        rows = fetch_customer_ledger_rows(_clone_sess(sess), day, day, cid)
+        total_debit = 0.0
+        total_credit = 0.0
+        credit_by_channel = {"bank": 0.0, "cash": 0.0}
+        raw_modes = []
+        for row in rows:
+            cols = [_clean(col) for col in row]
+            if not cols or (cols[0] or "").upper() == "TOTAL":
+                continue
+            debit  = _num(cols[11]) if len(cols) > 11 else 0.0
+            credit = _num(cols[12]) if len(cols) > 12 else 0.0
+            mode   = cols[13]       if len(cols) > 13 else ""
+            if debit  > 0: total_debit += debit
+            if credit > 0:
+                total_credit += credit
+                credit_by_channel[_payment_channel(mode)] += credit
+                raw_modes.append(mode or "Payment")
+        if total_credit <= 0:
+            return []
+        safe_tc = total_credit or 1
+        cash_sa = min(round(credit_by_channel["cash"], 2),
+                      round(total_debit * (credit_by_channel["cash"] / safe_tc), 2))
+        bank_sa = min(round(credit_by_channel["bank"], 2),
+                      round(total_debit * (credit_by_channel["bank"] / safe_tc), 2))
+        cash_amt = round(max(credit_by_channel["cash"] - cash_sa, 0.0), 2)
+        bank_amt = round(max(credit_by_channel["bank"] - bank_sa, 0.0), 2)
+        mode_notes = ", ".join(dict.fromkeys([m for m in raw_modes if m]))[:120]
+        result = []
+        for mode, amount, payment_received, sale_adjusted in (
+            ("Cash", cash_amt, round(credit_by_channel["cash"], 2), cash_sa),
+            ("Bank", bank_amt, round(credit_by_channel["bank"], 2), bank_sa),
+        ):
+            if payment_received <= 0:
+                continue
+            result.append({
+                "date": str(day),
+                "customer_name": curr["name"],
+                "mode": mode,
+                "reference": f"ERP-CREDIT-{cid}-{day.isoformat()}-{mode.upper()}",
+                "payment_received": payment_received,
+                "bank_received": payment_received if mode == "Bank" else 0.0,
+                "cash_received": payment_received if mode == "Cash" else 0.0,
+                "sale_adjusted": round(sale_adjusted, 2),
+                "amount": amount,
+                "balance": round(_num(curr.get("outstanding")), 2),
+                "source": "Customer Ledger",
+                "erp_customer_id": cid,
+                "notes": f"ledger modes={mode_notes}",
+            })
+        return result
+
+    repayments = []
+    if tasks:
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            for result in pool.map(_process_one, tasks):
+                repayments.extend(result)
 
     repayments.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
     return repayments
@@ -1799,27 +1821,47 @@ def main():
     need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd, repayments_last_month))
     debtors_yesterday = _debtors_yest_pre  # already fetched in parallel above
     if need_repayment_fetch:
+        # Pre-fetch boundary debtors + all intermediate days in one parallel batch
+        mtd_inter   = [month_start      + timedelta(days=i) for i in range((today         - month_start).days)]
+        lm_inter    = [last_month_start  + timedelta(days=i) for i in range((last_month_end - last_month_start).days)]
+        boundary_dates = {
+            yesterday - timedelta(days=1),
+            month_start - timedelta(days=1),
+            last_month_start - timedelta(days=1),
+            last_month_end,
+        }
+        already_have = {today: debtors_today, yesterday: _debtors_yest_pre}
+        all_prefetch_dates = (boundary_dates | set(mtd_inter) | set(lm_inter)) - set(already_have)
+        debtors_cache = dict(already_have)
+        with ThreadPoolExecutor(max_workers=min(len(all_prefetch_dates), 15)) as pool:
+            futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in all_prefetch_dates}
+            for d, f in futs.items():
+                debtors_cache[d] = f.result()
+
+        debtors_day_before_yesterday = debtors_cache.get(yesterday - timedelta(days=1), [])
+        debtors_before_mtd           = debtors_cache.get(month_start - timedelta(days=1), [])
+        debtors_before_last_month    = debtors_cache.get(last_month_start - timedelta(days=1), [])
+        debtors_last_month_end       = debtors_cache.get(last_month_end, [])
+
+        # Run all 4 repayment computations in parallel — each uses cached debtors, no HTTP for snapshots
+        def _rt(): return compute_repayments_from_erp(_clone_sess(sess), today, today,
+                       debtors_yesterday, debtors_today, debtors_cache)
+        def _ry(): return compute_repayments_from_erp(_clone_sess(sess), yesterday, yesterday,
+                       debtors_day_before_yesterday, debtors_yesterday, debtors_cache)
+        def _rm(): return compute_repayments_from_erp(_clone_sess(sess), month_start, today,
+                       debtors_before_mtd, debtors_today, debtors_cache)
+        def _rl(): return compute_repayments_from_erp(_clone_sess(sess), last_month_start, last_month_end,
+                       debtors_before_last_month, debtors_last_month_end, debtors_cache)
+
         with ThreadPoolExecutor(max_workers=4) as pool:
-            f_dby    = pool.submit(fetch_debtors, _clone_sess(sess), yesterday - timedelta(days=1))
-            f_bmtd   = pool.submit(fetch_debtors, _clone_sess(sess), month_start - timedelta(days=1))
-            f_blm    = pool.submit(fetch_debtors, _clone_sess(sess), last_month_start - timedelta(days=1))
-            f_lme    = pool.submit(fetch_debtors, _clone_sess(sess), last_month_end)
-            debtors_day_before_yesterday = f_dby.result()
-            debtors_before_mtd           = f_bmtd.result()
-            debtors_before_last_month    = f_blm.result()
-            debtors_last_month_end       = f_lme.result()
-        if repayments_today is None:
-            repayments_today = compute_repayments_from_erp(sess, today, today, debtors_yesterday, debtors_today)
-        if repayments_yesterday is None:
-            repayments_yesterday = compute_repayments_from_erp(
-                sess, yesterday, yesterday, debtors_day_before_yesterday, debtors_yesterday
-            )
-        if repayments_mtd is None:
-            repayments_mtd = compute_repayments_from_erp(sess, month_start, today, debtors_before_mtd, debtors_today)
-        if repayments_last_month is None:
-            repayments_last_month = compute_repayments_from_erp(
-                sess, last_month_start, last_month_end, debtors_before_last_month, debtors_last_month_end
-            )
+            f_rt = pool.submit(_rt) if repayments_today        is None else None
+            f_ry = pool.submit(_ry) if repayments_yesterday    is None else None
+            f_rm = pool.submit(_rm) if repayments_mtd          is None else None
+            f_rl = pool.submit(_rl) if repayments_last_month   is None else None
+            if f_rt: repayments_today        = f_rt.result()
+            if f_ry: repayments_yesterday    = f_ry.result()
+            if f_rm: repayments_mtd          = f_rm.result()
+            if f_rl: repayments_last_month   = f_rl.result()
     repayments_today = repayments_today or []
     repayments_yesterday = repayments_yesterday or []
     repayments_mtd = repayments_mtd or []
