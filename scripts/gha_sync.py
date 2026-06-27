@@ -737,8 +737,7 @@ def build_control(sales, expenses, from_d, to_d,
     expense_direct = sum(_num(e["amount"]) for e in expenses)
     labour_total = sum(_num(row.get("amount")) for row in labour)
     parts_total = sum(_num(row.get("total_amount")) for row in parts)
-    vendor_payment_total = sum(_num(row.get("amount")) for row in vendor_payments)
-    total_exp = expense_direct + labour_total + parts_total + vendor_payment_total
+    total_exp = expense_direct + labour_total + parts_total
     director_expense_total = (
         sum(
             _num(e.get("amount"))
@@ -754,11 +753,6 @@ def build_control(sales, expenses, from_d, to_d,
             _num(row.get("total_amount"))
             for row in parts
             if _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"))
-        )
-        + sum(
-            _num(row.get("amount"))
-            for row in vendor_payments
-            if _is_director_payment(row.get("vendor_name"), row.get("mode"), row.get("reference"), row.get("notes"))
         )
     )
     operating_total_exp = total_exp - director_expense_total
@@ -783,8 +777,6 @@ def build_control(sales, expenses, from_d, to_d,
         by_expense["Labour"] = by_expense.get("Labour", 0.0) + labour_total
     if parts_total:
         by_expense["Parts"] = by_expense.get("Parts", 0.0) + parts_total
-    if vendor_payment_total:
-        by_expense["Vendor Payments"] = by_expense.get("Vendor Payments", 0.0) + vendor_payment_total
 
     # customer sales breakdown
     by_customer = {}
@@ -865,16 +857,6 @@ def build_control(sales, expenses, from_d, to_d,
             "payment_mode": "",
             "amount": round(_num(row.get("total_amount")), 2),
         })
-    for row in vendor_payments:
-        expense_rows.append({
-            "date": row.get("date"),
-            "type": "Vendor Payment",
-            "category": "Vendor Payment",
-            "description": f"Payment ({row.get('mode') or 'Payment'})" + (f" Ref: {row.get('reference')}" if row.get("reference") else ""),
-            "party": row.get("vendor_name") or "",
-            "payment_mode": row.get("mode") or "",
-            "amount": round(_num(row.get("amount")), 2),
-        })
     expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
 
     # trend
@@ -886,7 +868,6 @@ def build_control(sales, expenses, from_d, to_d,
             sum(_num(e["amount"]) for e in expenses if e["date"] == d)
             + sum(_num(row.get("amount")) for row in labour if row.get("date") == d)
             + sum(_num(row.get("total_amount")) for row in parts if row.get("date") == d)
-            + sum(_num(row.get("amount")) for row in vendor_payments if row.get("date") == d)
         )
         trend.append({
             "date": d, "sales": round(ds, 2), "expenses": round(de, 2),
@@ -1159,18 +1140,6 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         month = day[:7]
         if not month:
             continue
-        expense_row = {
-            "id": row.get("reference") or f"vendor-payment-{day}-{row.get('vendor_name', '')}-{row.get('amount', 0.0)}",
-            "date": day,
-            "category": "Vendor Payment",
-            "description": f"Payment to {row.get('vendor_name') or 'Vendor'}" + (f" - {row.get('reference')}" if row.get("reference") else ""),
-            "amount": _num(row.get("amount")),
-            "payment_mode": row.get("mode") or "Cash",
-            "notes": row.get("notes") or "",
-            "vendor_id": None,
-            "erp_synced": True,
-        }
-        by_month.setdefault(month, {}).setdefault("expenses", []).append(expense_row)
         if _payment_channel(row.get("mode") or "") != "cash":
             by_month.setdefault(month, {}).setdefault("bank", []).append({
                 "id": f"vendor-payment-{row.get('reference') or day}",
@@ -1413,7 +1382,6 @@ def build_ledger_view(
             day_expenses = expenses_by_date.get(key, [])
             day_labour = labour_by_date.get(key, [])
             day_parts = parts_by_date.get(key, [])
-            day_vendor_payments = vendor_payments_by_date.get(key, [])
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
             sale_amount = sum(_sale_total(row) for row in day_sales)
@@ -1422,7 +1390,6 @@ def build_ledger_view(
                 sum(_num(row.get("amount")) for row in day_expenses)
                 + sum(_num(row.get("amount")) for row in day_labour)
                 + sum(_num(row.get("total_amount")) for row in day_parts)
-                + sum(_num(row.get("amount")) for row in day_vendor_payments)
             )
             rows.append({
                 "date": key,
