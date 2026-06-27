@@ -1732,7 +1732,7 @@ def main():
         f_b_week   = pool.submit(fetch_boulders,     _clone_sess(sess), week_start, today)
         f_b_mtd    = pool.submit(fetch_boulders,     _clone_sess(sess), month_start, today)
         f_b_rows   = pool.submit(fetch_boulder_rows, _clone_sess(sess), sync_start, today)
-        f_iot      = pool.submit(fetch_iot,          _clone_sess(sess), sync_start, today)
+        # IOT removed — endpoint not used
         f_cash     = pool.submit(fetch_cash_ledger,  _clone_sess(sess), sync_start, today)
         f_bank     = pool.submit(fetch_bank_entries, _clone_sess(sess), sync_start, today)
         f_debtors  = pool.submit(fetch_debtors,      _clone_sess(sess), today)
@@ -1746,7 +1746,7 @@ def main():
         boulders_week     = f_b_week.result()
         boulders_mtd      = f_b_mtd.result()
         fresh_b_rows      = f_b_rows.result()
-        iot_rows          = f_iot.result()
+        iot_rows          = []
         fresh_cash        = f_cash.result()
         fresh_bank        = f_bank.result()
         debtors_today     = f_debtors.result()
@@ -1763,7 +1763,7 @@ def main():
         "boulders",
     )
     print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
-    print(f"  {len(iot_rows)} IOT rows")
+
 
     def sales_for(f, t):
         fs, ts = str(f), str(t)
