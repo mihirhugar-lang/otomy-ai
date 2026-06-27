@@ -1106,16 +1106,28 @@ def _prefer_archive_row(section, existing, incoming):
         return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
     return incoming
 
+def _historical_existing_dates(rows):
+    today = datetime.now(IST).date().isoformat()
+    return {
+        str(row.get("date", ""))[:10]
+        for row in rows or []
+        if str(row.get("date", ""))[:10] and str(row.get("date", ""))[:10] < today
+    }
+
 def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
+    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
     merged = {}
     for row in existing:
         key = _archive_key(section, row)
         merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     for row in incoming:
         key = _archive_key(section, row)
+        row_date = str(row.get("date", ""))[:10]
+        if row_date in protected_dates and key not in merged:
+            continue
         merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
 
