@@ -396,7 +396,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
   <div class="nav-section">Operations</div>
-  <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations / IOT</span></div>
+  <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations</span></div>
   <div class="nav-section">Ledger</div>
   <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Ledger View</span></div>
   <div class="nav-section">Reports</div>
@@ -608,9 +608,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
 </div>
 
-<!-- OPERATIONS / IOT -->
+<!-- OPERATIONS -->
 <div class="section" id="section-ops">
-  <div class="page-header"><h2>Operations / IOT</h2></div>
+  <div class="page-header"><h2>Operations</h2></div>
   <div class="preset-bar" id="ops-preset-bar">
     <span class="preset-label">View:</span>
     <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
@@ -622,12 +622,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
       <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
     </div>
-  </div>
-
-  <div class="card">
-    <h3>IOT Movements</h3>
-    <div class="tbl-wrap" id="iot-tbl"></div>
-    <div id="iot-pager" class="no-print"></div>
   </div>
 
   <div class="card">
@@ -945,7 +939,6 @@ async function archiveFetch(url){
     if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
-    if(u.pathname==='/api/sync/erp/iot')return _rowsInRange(months,'iot',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
@@ -956,7 +949,7 @@ async function archiveFetch(url){
 }
 let _customers=[], _vendors=[], _bankAccounts=[], _musterWorkers=[];
 // Pagination state — keyed by section
-const _page={sales:1,expenses:1,boulders:1,machines:1,labour:1,parts:1,erpbank:1,erpcash:1,iot:1};
+const _page={sales:1,expenses:1,boulders:1,machines:1,labour:1,parts:1,erpbank:1,erpcash:1};
 const _sort={
   sales:{key:'amount',dir:'desc'},
   expenses:{key:'amount',dir:'desc'},
@@ -965,7 +958,6 @@ const _sort={
   erpbank:{key:'max_amount',dir:'desc'},
   erpcash:{key:'max_amount',dir:'desc'},
   bankstmt:{key:'max_amount',dir:'desc'},
-  iot:{key:'dt',dir:'desc'},
   custSales:{key:'amount',dir:'desc'},
   custLedger:{key:'date',dir:'desc'},
   vendBills:{key:'amount',dir:'desc'},
@@ -973,14 +965,14 @@ const _sort={
   vendLedger:{key:'date',dir:'desc'},
 };
 const PAGE_SIZE=100;
-const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],iot:[],bankstmt:[]};
+const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],bankstmt:[]};
 let _currentCustLedger=null,_currentVendLedger=null;
 
 function _rangeDaysForKey(key){
   const ids={
     sales:['s-from','s-to'],expenses:['e-from','e-to'],boulders:['op-from','op-to'],
     machines:['op-from','op-to'],labour:['op-from','op-to'],parts:['op-from','op-to'],
-    erpbank:['eb-from','eb-to'],erpcash:['ec-from','ec-to'],iot:['op-from','op-to']
+    erpbank:['eb-from','eb-to'],erpcash:['ec-from','ec-to']
   }[key];
   if(!ids)return null;
   const from=document.getElementById(ids[0])?.value;
@@ -1219,7 +1211,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations / IOT',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1327,12 +1319,12 @@ function opsPreset(p,btn){
   document.getElementById('op-to').value=t;
   document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
   // Reset pages for all ops sections
-  ['boulders','machines','iot'].forEach(k=>{_page[k]=1;});
+  ['boulders','machines'].forEach(k=>{_page[k]=1;});
   btn.classList.add('act');
   opsReload();
 }
 function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
-function opsReload(){loadBoulders();loadMachines();loadIot();}
+function opsReload(){loadBoulders();loadMachines();}
 
 // Report preset helpers
 function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
@@ -2036,7 +2028,7 @@ function renderLedgerView(data){
 }
 
 // ── Operations ─────────────────────────────────────────────────────────────
-function loadOpsDefaults(){loadBoulders();loadMachines();loadIot();loadEMI();loadWorkers();}
+function loadOpsDefaults(){loadBoulders();loadMachines();loadEMI();loadWorkers();}
 function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
 function calcRunHrs(){document.getElementById('m-run').value=(Math.max(0,(parseFloat(document.getElementById('m-end').value)||0)-(parseFloat(document.getElementById('m-start').value)||0))).toFixed(1);}
 function calcLabour(){document.getElementById('l-amt').value=((parseFloat(document.getElementById('l-days').value)||0)*(parseFloat(document.getElementById('l-wage').value)||0)).toFixed(0);}
@@ -2296,25 +2288,6 @@ function renderErpCash(){
   document.getElementById('erp-cash-pager').innerHTML=pagerHTML('erpcash',_allData.erpcash.length);
 }
 
-// ── IOT Movements ─────────────────────────────────────────────────────────────
-async function loadIot(){
-  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  if(!f||!t)return;
-  try{
-    const rows=await api(`/api/sync/erp/iot?from_date=${f}&to_date=${t}`);
-    _allData.iot=rows;_page.iot=1;_renderCache.iot=()=>renderIot();renderIot();
-  }catch(e){}
-}
-function renderIot(){
-  applyTableRangeMode('iot','iot-tbl');
-  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,size=pageSizeFor('iot',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let html='<table><thead><tr>'+thSort('iot','dt','Date/Time')+thSort('iot','linked','Type')+thSort('iot','ticket','Ticket')+thSort('iot','vehicle','Vehicle')+thSort('iot','material','Material')+thSort('iot','party','Party')+thSort('iot','qty','Qty')+thSort('iot','crusher','Crusher')+'</tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td style="white-space:nowrap">${r.dt}</td><td><span class="badge" style="background:#e3f2fd;color:#1565c0">${r.linked||'—'}</span></td><td>${r.ticket||'—'}</td><td>${r.vehicle||'—'}</td><td>${r.material||'—'}</td><td>${r.party||'—'}</td><td>${r.qty||'—'}</td><td>${r.crusher||'—'}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="8" class="empty">No IOT movements for this period</td></tr>';
-  html+='</tbody></table>';
-  document.getElementById('iot-tbl').innerHTML=html;
-  document.getElementById('iot-pager').innerHTML=pagerHTML('iot',_allData.iot.length);
-}
 
 </script>
 </body>
