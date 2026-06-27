@@ -275,6 +275,73 @@ def fetch_boulders(sess, from_d, to_d):
     return result
 
 
+def fetch_boulder_rows(sess, from_d, to_d):
+    rows = []
+    current = from_d
+    row_id = 1
+    while current <= to_d:
+        summary = fetch_boulders(sess, current, current)
+        trips = _num(summary.get("total_trips"))
+        tonnes = _num(summary.get("total_tonnes"))
+        if trips or tonnes:
+            rows.append({
+                "id": row_id,
+                "date": str(current),
+                "trips": int(round(trips)),
+                "tonnes_per_trip": round(tonnes / trips, 2) if trips else 0.0,
+                "total_tonnes": round(tonnes, 2),
+                "source": "ERP Input - BOULDERS",
+                "notes": "Loctell input summary",
+            })
+            row_id += 1
+        current += timedelta(days=1)
+    return rows
+
+
+def fetch_iot(sess, from_d, to_d):
+    movements = []
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        data = json.loads(sess.get(
+            f"{ERP_BASE}/iot/ListIOTSaleLinkReport"
+            f"?startDt={fs}&endDt={ts}&startTime=12:00:00 AM&endTime=11:59:59 PM"
+            f"&crusherId=-1&type=1",
+            timeout=60, verify=True).text)
+        for idx, row in enumerate(data.get("data", []), start=1):
+            raw0 = htmllib.unescape(str(row[0])) if len(row) > 0 else ""
+            dt_raw = re.split(r"<", raw0)[0].strip()
+            lbl_m = re.search(r">\s*([^<]+?)\s*</a>", raw0)
+            linked = lbl_m.group(1).strip() if lbl_m else "PLANT ENTRY"
+            mv_dt = None
+            for fmt in ("%d-%m-%Y %I:%M:%S %p", "%d-%m-%Y %I:%M %p",
+                        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"):
+                try:
+                    mv_dt = datetime.strptime(re.sub(r"\s+", " ", dt_raw).strip(), fmt)
+                    break
+                except Exception:
+                    pass
+            if not mv_dt:
+                continue
+            img_html = htmllib.unescape(str(row[8])) if len(row) > 8 else ""
+            img_urls = re.findall(r"https?://[^\s\"'<>]+\.(?:png|jpg|jpeg)", img_html)
+            movements.append({
+                "id": idx,
+                "date": mv_dt.date().isoformat(),
+                "dt": mv_dt.strftime("%d-%m-%Y %I:%M %p"),
+                "linked": linked[:50],
+                "ticket": (_clean(row[1]) if len(row) > 1 else "")[:30],
+                "vehicle": (_clean(row[2]) if len(row) > 2 else "")[:30],
+                "material": (_clean(row[3]) if len(row) > 3 else "")[:50],
+                "party": (_clean(row[4]) if len(row) > 4 else "")[:200],
+                "qty": (_clean(row[5]) if len(row) > 5 else "")[:20],
+                "crusher": (_clean(row[6]) if len(row) > 6 else "")[:100],
+                "img_url": (img_urls[0] if img_urls else "")[:500],
+            })
+    except Exception as e:
+        print(f"  iot fetch error: {e}")
+    return movements
+
+
 def fetch_debtors(sess, as_of=None):
     """Fetch customer outstanding balances from ERP for a given date."""
     debtors = []
@@ -1241,6 +1308,7 @@ def write_snapshot_bundle(
     parts_rows,
     machines_rows,
     boulder_rows,
+    iot_rows,
     cash_rows,
     bank_rows,
     cash_balance,
@@ -1253,6 +1321,7 @@ def write_snapshot_bundle(
     vendors_payables,
     vendor_ledgers,
     vendor_payments,
+    repayments,
     local_seed,
     controls,
     balance_snapshots,
@@ -1368,7 +1437,7 @@ def write_snapshot_bundle(
                 vendor_payments=rows_between(vendor_payments, start, end),
                 bank_balance_book=bank_balance_book,
                 cash_balance_office_book=cash_balance_office_book,
-                repayments=[],
+                repayments=rows_between(repayments, start, end),
             )
         control = apply_seed_control_overrides(control, local_seed, start, end)
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
@@ -1380,7 +1449,7 @@ def write_snapshot_bundle(
         write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", rows_between(parts_rows, start, end))
         write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
         write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
-        write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", [])
+        write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", rows_between(iot_rows, start, end))
 
     ledger_current = build_ledger_view(
         all_sales,
@@ -1437,12 +1506,14 @@ def main():
     month_start = today.replace(day=1)
     week_start  = today - timedelta(days=today.weekday())
     thirty_ago  = today - timedelta(days=30)
+    last_month_end = month_start - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    sync_start = min(thirty_ago, last_month_start)
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
     labour_rows = seed_endpoints.get("labour_30d", [])
     parts_rows = seed_endpoints.get("parts_30d", [])
     machines_rows = seed_endpoints.get("machines_30d", [])
-    boulder_rows = seed_endpoints.get("boulders_30d", [])
     seed_config = seed_endpoints.get("exports_config", {})
     seed_bank_accounts = seed_endpoints.get("bank_accounts", [])
 
@@ -1460,13 +1531,13 @@ def main():
         2,
     )
 
-    # ── sales & expenses (30-day window) ──────────────────────────────────────
+    # ── sales & expenses (full last month + current window) ───────────────────
     print("  Fetching sales...")
-    all_sales = fetch_sales(sess, thirty_ago, today)
+    all_sales = fetch_sales(sess, sync_start, today)
     print(f"  {len(all_sales)} sales tickets")
 
     print("  Fetching expenses...")
-    all_expenses = fetch_expenses(sess, thirty_ago, today)
+    all_expenses = fetch_expenses(sess, sync_start, today)
     print(f"  {len(all_expenses)} expenses")
 
     def sales_for(f, t):
@@ -1487,7 +1558,14 @@ def main():
     boulders_yesterday = fetch_boulders(sess, yesterday,   yesterday)
     boulders_week      = fetch_boulders(sess, week_start,  today)
     boulders_mtd       = fetch_boulders(sess, month_start, today)
+    boulder_rows = fetch_boulder_rows(sess, sync_start, today)
+    if not boulder_rows:
+        boulder_rows = seed_endpoints.get("boulders_30d", [])
     print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
+
+    print("  Fetching IOT movements...")
+    iot_rows = fetch_iot(sess, sync_start, today)
+    print(f"  {len(iot_rows)} IOT rows")
 
     write("boulders.json", {
         "today":     boulders_today,
@@ -1498,10 +1576,10 @@ def main():
 
     # ── cash ledger & bank transactions ───────────────────────────────────────
     print("  Fetching cash ledger...")
-    cash_rows = fetch_cash_ledger(sess, thirty_ago, today)
+    cash_rows = fetch_cash_ledger(sess, sync_start, today)
 
     print("  Fetching bank transactions...")
-    bank_rows = fetch_bank_entries(sess, thirty_ago, today)
+    bank_rows = fetch_bank_entries(sess, sync_start, today)
 
     # absolute cash balance = last row's running balance from ERP cash ledger
     cash_balance = 0.0
@@ -1515,7 +1593,7 @@ def main():
     )
 
     write("erp_ledger.json", {
-        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "opening":       {"date": str(sync_start), "cash": 0.0, "bank": 0.0},
         "cash":          cash_rows,
         "bank":          bank_rows,
         "cash_balance":  round(cash_balance, 2),
@@ -1535,12 +1613,15 @@ def main():
     repayments_today = seeded_repayments(today, today)
     repayments_yesterday = seeded_repayments(yesterday, yesterday)
     repayments_mtd = seeded_repayments(month_start, today)
-    need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd))
+    repayments_last_month = seeded_repayments(last_month_start, last_month_end)
+    need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd, repayments_last_month))
     debtors_yesterday = debtors_today
     if need_repayment_fetch:
         debtors_yesterday = fetch_debtors(sess, yesterday)
         debtors_day_before_yesterday = fetch_debtors(sess, yesterday - timedelta(days=1))
         debtors_before_mtd = fetch_debtors(sess, month_start - timedelta(days=1))
+        debtors_before_last_month = fetch_debtors(sess, last_month_start - timedelta(days=1))
+        debtors_last_month_end = fetch_debtors(sess, last_month_end)
         if repayments_today is None:
             repayments_today = compute_repayments_from_erp(sess, today, today, debtors_yesterday, debtors_today)
         if repayments_yesterday is None:
@@ -1549,16 +1630,26 @@ def main():
             )
         if repayments_mtd is None:
             repayments_mtd = compute_repayments_from_erp(sess, month_start, today, debtors_before_mtd, debtors_today)
+        if repayments_last_month is None:
+            repayments_last_month = compute_repayments_from_erp(
+                sess, last_month_start, last_month_end, debtors_before_last_month, debtors_last_month_end
+            )
     repayments_today = repayments_today or []
     repayments_yesterday = repayments_yesterday or []
     repayments_mtd = repayments_mtd or []
-    bank_rows = derive_bank_transactions(all_sales, all_expenses, repayments_mtd, bank_rows)
+    repayments_last_month = repayments_last_month or []
+    all_repayments = sorted(
+        repayments_last_month + repayments_mtd,
+        key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
+        reverse=True,
+    )
+    bank_rows = derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
         2,
     )
     write("erp_ledger.json", {
-        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "opening":       {"date": str(sync_start), "cash": 0.0, "bank": 0.0},
         "cash":          cash_rows,
         "bank":          bank_rows,
         "cash_balance":  round(cash_balance, 2),
@@ -1603,7 +1694,7 @@ def main():
     print("  Fetching creditors...")
     creditors = fetch_creditors(sess, today)
     print(f"  {len(creditors)} vendors")
-    vendor_payments = fetch_vendor_payments(sess, creditors, month_start, today)
+    vendor_payments = fetch_vendor_payments(sess, creditors, sync_start, today)
     print(f"  {len(vendor_payments)} vendor payments")
     existing_bank_ids = {str(row.get("id")) for row in bank_rows}
     for payment in vendor_payments:
@@ -1628,7 +1719,7 @@ def main():
         2,
     )
     write("erp_ledger.json", {
-        "opening":       {"date": str(thirty_ago), "cash": 0.0, "bank": 0.0},
+        "opening":       {"date": str(sync_start), "cash": 0.0, "bank": 0.0},
         "cash":          cash_rows,
         "bank":          bank_rows,
         "cash_balance":  round(cash_balance, 2),
@@ -1658,6 +1749,8 @@ def main():
     debtor_cache = {today: debtors_today}
     if debtors_yesterday is not debtors_today:
         debtor_cache[yesterday] = debtors_yesterday
+    if "debtors_last_month_end" in locals():
+        debtor_cache[last_month_end] = debtors_last_month_end
     creditor_cache = {today: creditors}
 
     def debtors_for(as_of):
@@ -1723,7 +1816,6 @@ def main():
     ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
     ctrl_week = apply_seed_control_overrides(ctrl_week, local_seed, week_start, today)
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
-    last_month_end = month_start - timedelta(days=1)
     for day_number in range(1, today.day + 1):
         debtors_for(today.replace(day=day_number))
         creditors_for(today.replace(day=day_number))
@@ -1880,7 +1972,7 @@ def main():
     })
 
     print("  Updating monthly archive files...")
-    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments_mtd, vendor_payments, local_seed)
+    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, all_repayments, vendor_payments, local_seed)
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(
@@ -1893,6 +1985,7 @@ def main():
         parts_rows,
         machines_rows,
         boulder_rows,
+        iot_rows,
         cash_rows,
         bank_rows,
         operating_cash_balance,
@@ -1905,6 +1998,7 @@ def main():
         vendors_payables,
         vendor_ledgers,
         vendor_payments,
+        all_repayments,
         local_seed,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
         balance_snapshots,

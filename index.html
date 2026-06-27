@@ -734,14 +734,6 @@ function fiveMinuteCacheBust(){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  if(u.pathname==='/api/dashboard/control'){
-    const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
-    const currentMonthStart=mtdStart();
-    if(from && to && to<currentMonthStart){
-      const archived=await archiveFetch(url);
-      if(archived!==null)return archived;
-    }
-  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
     const archived=await archiveFetch(url);
