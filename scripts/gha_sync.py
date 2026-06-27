@@ -45,6 +45,11 @@ def _pay_channel(p):
 def _payment_channel(raw):
     return "cash" if "CASH" in (raw or "").upper() else "bank"
 
+
+def _sale_total(row):
+    return _num(row.get("amount")) + _num(row.get("transport_charge"))
+
+
 def _is_director_payment(*values):
     text = " ".join(str(value or "") for value in values).upper()
     return "PRASHANT" in text or "KUMAR" in text
@@ -200,9 +205,11 @@ def fetch_sales(sess, from_d, to_d):
                 if len(cols) < 10: continue
                 if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
                 if not re.match(r"\d+:\d+\s*[AP]M", cols[3]):   continue
-                if cols[9].upper().strip() not in _PAY:           continue
+                pay_idx = next((i for i in range(9, len(cols)) if cols[i].upper().strip() in _PAY), None)
+                if pay_idx is None:                              continue
                 qty = _num(cols[7])
                 if qty == 0: continue
+                transport_charge = sum(_num(col) for col in cols[9:pay_idx])
                 dd, mm, yyyy = cols[2].split("-")
                 tickets.append({
                     "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
@@ -212,7 +219,8 @@ def fetch_sales(sess, from_d, to_d):
                     "rate_per_mt": _num(cols[6]),
                     "qty_mt": qty, "mdp_ton": qty,
                     "amount": _num(cols[8]),
-                    "payment_mode": _norm_pay(cols[9]),
+                    "transport_charge": transport_charge,
+                    "payment_mode": _norm_pay(cols[pay_idx]),
                     "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
                 })
     except Exception as e:
@@ -673,9 +681,9 @@ def build_control(sales, expenses, from_d, to_d,
                   vendor_payments=None,
                   bank_balance_book=0.0, cash_balance_office_book=0.0):
     days        = (to_d - from_d).days + 1
-    total_sales = sum(_num(s["amount"]) for s in sales)
+    total_sales = sum(_sale_total(s) for s in sales)
     total_qty   = sum(_num(s["qty_mt"]) for s in sales)
-    cash_collected = sum(_num(s["amount"]) for s in sales if s["payment_mode"] != "Credit")
+    cash_collected = sum(_sale_total(s) for s in sales if s["payment_mode"] != "Credit")
     credit_sales   = total_sales - cash_collected
     labour = labour or []
     parts = parts or []
@@ -718,7 +726,7 @@ def build_control(sales, expenses, from_d, to_d,
         if k not in by_material:
             by_material[k] = {"material": k, "qty_mt": 0.0, "amount": 0.0, "tickets": 0}
         by_material[k]["qty_mt"]  += _num(s["qty_mt"])
-        by_material[k]["amount"]  += _num(s["amount"])
+        by_material[k]["amount"]  += _sale_total(s)
         by_material[k]["tickets"] += 1
 
     # expense mix
@@ -745,7 +753,7 @@ def build_control(sales, expenses, from_d, to_d,
             "bank_received": 0.0, "cash_received": 0.0,
             "paid_against_sale": 0.0, "credit_sale_amount": 0.0, "tickets": [],
         })
-        amt = _num(s["amount"])
+        amt = _sale_total(s)
         pm  = s["payment_mode"]
         g["ticket_count"] += 1
         g["qty_mt"]        += _num(s["qty_mt"])
@@ -828,7 +836,7 @@ def build_control(sales, expenses, from_d, to_d,
     trend = []
     for i in range(days):
         d  = str(from_d + timedelta(days=i))
-        ds = sum(_num(s["amount"]) for s in sales    if s["date"] == d)
+        ds = sum(_sale_total(s) for s in sales if s["date"] == d)
         de = (
             sum(_num(e["amount"]) for e in expenses if e["date"] == d)
             + sum(_num(row.get("amount")) for row in labour if row.get("date") == d)
@@ -1032,7 +1040,7 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
                 f"Sale received by bank/UPI - {sale.get('customer_name') or 'Customer'}"
                 f" - Ticket {sale.get('ticket_no') or '-'} - {sale.get('vehicle_no') or '-'}"
             ),
-            "credit": _num(sale.get("amount")),
+            "credit": _sale_total(sale),
             "debit": 0.0,
             "bank_name": "UPI/Bank Sale",
             "source": "Sale",
@@ -1284,9 +1292,9 @@ def build_ledger_view(
             if mode.lower() == "credit":
                 continue
             if _payment_channel(mode) == "cash":
-                cash_balance += _num(sale.get("amount"))
+                cash_balance += _sale_total(sale)
             else:
-                bank_balance += _num(sale.get("amount"))
+                bank_balance += _sale_total(sale)
         for receipt in repayments_by_date.get(key, []):
             cash_balance += _num(receipt.get("cash_received"))
             bank_balance += _num(receipt.get("bank_received"))
@@ -1310,9 +1318,9 @@ def build_ledger_view(
                 if mode.lower() == "credit":
                     continue
                 if _payment_channel(mode) == "cash":
-                    cash_balance += _num(sale.get("amount"))
+                    cash_balance += _sale_total(sale)
                 else:
-                    bank_balance += _num(sale.get("amount"))
+                    bank_balance += _sale_total(sale)
             for receipt in repayments_by_date.get(key, []):
                 cash_balance += _num(receipt.get("cash_received"))
                 bank_balance += _num(receipt.get("bank_received"))
@@ -1335,8 +1343,8 @@ def build_ledger_view(
             day_vendor_payments = vendor_payments_by_date.get(key, [])
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
-            sale_amount = sum(_num(row.get("amount")) for row in day_sales)
-            spot_sale_amount = sum(_num(row.get("amount")) for row in day_sales if (row.get("payment_mode") or "").lower() != "credit")
+            sale_amount = sum(_sale_total(row) for row in day_sales)
+            spot_sale_amount = sum(_sale_total(row) for row in day_sales if (row.get("payment_mode") or "").lower() != "credit")
             expense_total = (
                 sum(_num(row.get("amount")) for row in day_expenses)
                 + sum(_num(row.get("amount")) for row in day_labour)
@@ -1842,9 +1850,9 @@ def main():
             if mode.lower() == "credit":
                 continue
             if _payment_channel(mode) == "cash":
-                operating_cash_balance += _num(sale.get("amount"))
+                operating_cash_balance += _sale_total(sale)
             else:
-                operating_bank_balance += _num(sale.get("amount"))
+                operating_bank_balance += _sale_total(sale)
         for receipt in repayments_movement:
             operating_cash_balance += _num(receipt.get("cash_received"))
             operating_bank_balance += _num(receipt.get("bank_received"))
@@ -2008,9 +2016,9 @@ def main():
     for s in all_sales:
         c = s["customer_name"]
         g = sales_by_cust.setdefault(c, {"total_sales": 0.0, "total_receipts": 0.0})
-        g["total_sales"] += _num(s["amount"])
+        g["total_sales"] += _sale_total(s)
         if s["payment_mode"] != "Credit":
-            g["total_receipts"] += _num(s["amount"])
+            g["total_receipts"] += _sale_total(s)
 
     seed_customers = seed_endpoints.get("customers_all", [])
     debtors_by_name = {d["name"]: d for d in debtors_today}
@@ -2172,7 +2180,7 @@ def main():
     )
 
     today_sales = sales_for(today, today)
-    print(f"  Done. Today: ₹{sum(_num(s['amount']) for s in today_sales):,.0f} "
+    print(f"  Done. Today: ₹{sum(_sale_total(s) for s in today_sales):,.0f} "
           f"| {len(today_sales)} tickets | Cash: ₹{operating_cash_balance:,.0f}")
 
 if __name__ == "__main__":
