@@ -92,6 +92,76 @@ def load_local_seed():
     except Exception:
         return {}
 
+def _date_months(from_d, to_d):
+    months = []
+    cur = from_d.replace(day=1)
+    end = to_d.replace(day=1)
+    while cur <= end:
+        months.append(cur.strftime("%Y-%m"))
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year + 1, month=1)
+        else:
+            cur = cur.replace(month=cur.month + 1)
+    return months
+
+def load_archive_window(from_d, to_d):
+    out = {
+        "sales": [],
+        "expenses": [],
+        "receipts": [],
+        "cash": [],
+        "bank": [],
+        "boulders": [],
+        "labour": [],
+        "parts": [],
+        "machines": [],
+    }
+    fs, ts = str(from_d), str(to_d)
+    for month in _date_months(from_d, to_d):
+        path = ARCHIVE_DIR / f"{month}.json"
+        if not path.exists():
+            continue
+        try:
+            with open(path, "r") as f:
+                payload = json.load(f)
+        except Exception as e:
+            print(f"  archive read error ({month}): {e}")
+            continue
+        for section in out:
+            out[section].extend([
+                row for row in payload.get(section, [])
+                if fs <= str(row.get("date", ""))[:10] <= ts
+            ])
+    return out
+
+def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
+    merged = {_archive_key(section, row): row for row in archive_rows or []}
+    for row in fresh_rows or []:
+        merged[_archive_key(section, row)] = row
+    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
+
+def archive_receipts_to_repayments(receipts):
+    rows = []
+    for receipt in receipts or []:
+        amount = _num(receipt.get("payment_received", receipt.get("amount")))
+        if amount <= 0:
+            amount = _num(receipt.get("amount"))
+        mode = receipt.get("mode") or "Cash"
+        rows.append({
+            "date": str(receipt.get("date", ""))[:10],
+            "customer_name": receipt.get("customer_name") or "Customer",
+            "mode": mode,
+            "reference": receipt.get("reference", ""),
+            "payment_received": round(amount, 2),
+            "bank_received": 0.0 if _payment_channel(mode) == "cash" else round(amount, 2),
+            "cash_received": round(amount, 2) if _payment_channel(mode) == "cash" else 0.0,
+            "sale_adjusted": _num(receipt.get("sale_adjusted")),
+            "amount": _num(receipt.get("amount", amount)),
+            "balance": _num(receipt.get("balance")),
+            "source": "Archive Customer Receipt",
+        })
+    return rows
+
 # ─── auth ────────────────────────────────────────────────────────────────────
 
 def erp_auth():
@@ -1511,9 +1581,10 @@ def main():
     sync_start = min(thirty_ago, last_month_start)
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
-    labour_rows = seed_endpoints.get("labour_30d", [])
-    parts_rows = seed_endpoints.get("parts_30d", [])
-    machines_rows = seed_endpoints.get("machines_30d", [])
+    archive_rows = load_archive_window(sync_start, today)
+    labour_rows = merge_rows_by_archive_key(archive_rows.get("labour"), seed_endpoints.get("labour_30d", []), "labour")
+    parts_rows = merge_rows_by_archive_key(archive_rows.get("parts"), seed_endpoints.get("parts_30d", []), "parts")
+    machines_rows = merge_rows_by_archive_key(archive_rows.get("machines"), seed_endpoints.get("machines_30d", []), "machines")
     seed_config = seed_endpoints.get("exports_config", {})
     seed_bank_accounts = seed_endpoints.get("bank_accounts", [])
 
@@ -1533,11 +1604,19 @@ def main():
 
     # ── sales & expenses (full last month + current window) ───────────────────
     print("  Fetching sales...")
-    all_sales = fetch_sales(sess, sync_start, today)
+    all_sales = merge_rows_by_archive_key(
+        archive_rows.get("sales"),
+        fetch_sales(sess, sync_start, today),
+        "sales",
+    )
     print(f"  {len(all_sales)} sales tickets")
 
     print("  Fetching expenses...")
-    all_expenses = fetch_expenses(sess, sync_start, today)
+    all_expenses = merge_rows_by_archive_key(
+        archive_rows.get("expenses"),
+        fetch_expenses(sess, sync_start, today),
+        "expenses",
+    )
     print(f"  {len(all_expenses)} expenses")
 
     def sales_for(f, t):
@@ -1558,9 +1637,11 @@ def main():
     boulders_yesterday = fetch_boulders(sess, yesterday,   yesterday)
     boulders_week      = fetch_boulders(sess, week_start,  today)
     boulders_mtd       = fetch_boulders(sess, month_start, today)
-    boulder_rows = fetch_boulder_rows(sess, sync_start, today)
-    if not boulder_rows:
-        boulder_rows = seed_endpoints.get("boulders_30d", [])
+    boulder_rows = merge_rows_by_archive_key(
+        archive_rows.get("boulders"),
+        fetch_boulder_rows(sess, sync_start, today) or seed_endpoints.get("boulders_30d", []),
+        "boulders",
+    )
     print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
 
     print("  Fetching IOT movements...")
@@ -1576,10 +1657,18 @@ def main():
 
     # ── cash ledger & bank transactions ───────────────────────────────────────
     print("  Fetching cash ledger...")
-    cash_rows = fetch_cash_ledger(sess, sync_start, today)
+    cash_rows = merge_rows_by_archive_key(
+        archive_rows.get("cash"),
+        fetch_cash_ledger(sess, sync_start, today),
+        "cash",
+    )
 
     print("  Fetching bank transactions...")
-    bank_rows = fetch_bank_entries(sess, sync_start, today)
+    bank_rows = merge_rows_by_archive_key(
+        archive_rows.get("bank"),
+        fetch_bank_entries(sess, sync_start, today),
+        "bank",
+    )
 
     # absolute cash balance = last row's running balance from ERP cash ledger
     cash_balance = 0.0
@@ -1638,8 +1727,18 @@ def main():
     repayments_yesterday = repayments_yesterday or []
     repayments_mtd = repayments_mtd or []
     repayments_last_month = repayments_last_month or []
+    archive_repayments = archive_receipts_to_repayments(archive_rows.get("receipts"))
+    repayment_map = {}
+    for row in archive_repayments + repayments_last_month + repayments_mtd:
+        key = (
+            row.get("date", ""),
+            row.get("customer_name", ""),
+            row.get("reference", ""),
+            round(_num(row.get("payment_received", row.get("amount"))), 2),
+        )
+        repayment_map[key] = row
     all_repayments = sorted(
-        repayments_last_month + repayments_mtd,
+        repayment_map.values(),
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
