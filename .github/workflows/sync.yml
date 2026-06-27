@@ -19,7 +19,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: pip install uv && uv pip install --system requests
+        run: python3 -m pip install --quiet requests
 
       - name: Fetch from ERP and generate JSON
         env:
