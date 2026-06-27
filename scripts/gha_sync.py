@@ -112,9 +112,11 @@ def load_archive_window(from_d, to_d):
         "cash": [],
         "bank": [],
         "boulders": [],
+        "iot": [],
         "labour": [],
         "parts": [],
         "machines": [],
+        "balances": [],
     }
     fs, ts = str(from_d), str(to_d)
     for month in _date_months(from_d, to_d):
@@ -1140,9 +1142,12 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 "receipts": [],
                 "bank": [],
                 "cash": [],
+                "boulders": [],
+                "iot": [],
                 "labour": [],
                 "parts": [],
                 "machines": [],
+                "balances": [],
             }
         for section, rows in sections.items():
             payload[section] = _merge_archive_rows(payload.get(section, []), rows, section)
@@ -1444,6 +1449,7 @@ def write_snapshot_bundle(
     local_seed,
     controls,
     balance_snapshots,
+    archive_balances,
 ):
     week_start = today - timedelta(days=today.weekday())
     last_month_end = month_start - timedelta(days=1)
@@ -1559,6 +1565,13 @@ def write_snapshot_bundle(
                 repayments=rows_between(repayments, start, end),
             )
         control = apply_seed_control_overrides(control, local_seed, start, end)
+        archive_balance = archive_balances.get(str(end)) if isinstance(archive_balances, dict) else None
+        if archive_balance:
+            summary = control.setdefault("summary", {})
+            summary["receivables"] = round(_num(archive_balance.get("receivables")), 2)
+            summary["payables"] = round(_num(archive_balance.get("payables")), 2)
+            control["top_receivables"] = archive_balance.get("top_receivables", [])
+            control["top_payables"] = archive_balance.get("top_payables", [])
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
@@ -1631,6 +1644,11 @@ def main():
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
     archive_rows = load_archive_window(sync_start, today)
+    archive_balances = {
+        str(row.get("date", ""))[:10]: row
+        for row in archive_rows.get("balances", [])
+        if row.get("date")
+    }
     labour_rows = merge_rows_by_archive_key(archive_rows.get("labour"), seed_endpoints.get("labour_30d", []), "labour")
     parts_rows = merge_rows_by_archive_key(archive_rows.get("parts"), seed_endpoints.get("parts_30d", []), "parts")
     machines_rows = merge_rows_by_archive_key(archive_rows.get("machines"), seed_endpoints.get("machines_30d", []), "machines")
@@ -2150,6 +2168,7 @@ def main():
         local_seed,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
         balance_snapshots,
+        archive_balances,
     )
 
     today_sales = sales_for(today, today)
