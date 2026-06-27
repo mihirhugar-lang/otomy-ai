@@ -205,11 +205,12 @@ def fetch_sales(sess, from_d, to_d):
                 if len(cols) < 10: continue
                 if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
                 if not re.match(r"\d+:\d+\s*[AP]M", cols[3]):   continue
-                pay_idx = next((i for i in range(9, len(cols)) if cols[i].upper().strip() in _PAY), None)
-                if pay_idx is None:                              continue
+                if cols[9].upper().strip() not in _PAY:           continue
                 qty = _num(cols[7])
                 if qty == 0: continue
-                transport_charge = sum(_num(col) for col in cols[9:pay_idx])
+                material_amount = _num(cols[8])
+                net_amount = _num(cols[13] if len(cols) > 13 else (cols[10] if len(cols) > 10 else cols[8]))
+                transport_charge = max(net_amount - material_amount, 0.0)
                 dd, mm, yyyy = cols[2].split("-")
                 tickets.append({
                     "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
@@ -218,9 +219,9 @@ def fetch_sales(sess, from_d, to_d):
                     "material": _norm_material(cols[5]),
                     "rate_per_mt": _num(cols[6]),
                     "qty_mt": qty, "mdp_ton": qty,
-                    "amount": _num(cols[8]),
+                    "amount": material_amount,
                     "transport_charge": transport_charge,
-                    "payment_mode": _norm_pay(cols[pay_idx]),
+                    "payment_mode": _norm_pay(cols[9]),
                     "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
                 })
     except Exception as e:
