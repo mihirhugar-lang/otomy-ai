@@ -1187,6 +1187,8 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         month = day[:7]
         if not month:
             continue
+        if not snapshot.get("debtors") or not snapshot.get("creditors"):
+            continue
         receivables = [
             {"name": row.get("name"), "balance": round(_num(row.get("outstanding", row.get("balance", 0.0))), 2)}
             for row in (snapshot.get("debtors") or [])
