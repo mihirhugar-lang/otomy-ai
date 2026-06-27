@@ -987,9 +987,14 @@ def write(filename, data):
 
 def _archive_key(section, row):
     if section == "sales":
+        ticket_no = str(row.get("ticket_no") or "").strip()
+        if ticket_no:
+            return "sales-ticket:" + "|".join(str(part) for part in (
+                row.get("date", ""),
+                ticket_no,
+            ))
         return "sales:" + "|".join(str(part) for part in (
             row.get("date", ""),
-            row.get("ticket_no", ""),
             row.get("vehicle_no", ""),
             row.get("customer_name", ""),
             row.get("material", ""),
@@ -1005,6 +1010,13 @@ def _archive_key(section, row):
             row.get("payment_mode", ""),
         ))
     if section == "receipts":
+        reference = str(row.get("reference") or "").strip()
+        if reference:
+            return "receipts-ref:" + "|".join(str(part) for part in (
+                row.get("date", ""),
+                row.get("mode", ""),
+                reference,
+            ))
         return "receipts:" + "|".join(str(part) for part in (
             row.get("date", ""),
             row.get("customer_id", row.get("customer_name", "")),
@@ -1012,6 +1024,8 @@ def _archive_key(section, row):
             row.get("payment_received", ""),
             row.get("reference", ""),
         ))
+    if section == "balances":
+        return "balances:" + str(row.get("date", ""))
     if section == "boulders":
         return "boulders:" + "|".join(str(part) for part in (
             row.get("date", ""),
@@ -1047,10 +1061,62 @@ def _archive_key(section, row):
     ]
     return f"{section}:" + "|".join(str(part) for part in parts)
 
+def _is_vendor_payment_expense(row):
+    text = " ".join(str(row.get(key, "")) for key in ("id", "category", "description", "notes")).upper()
+    return row.get("category") == "Vendor Payment" or "VENDOR PAYMENT" in text or "ERP-SUP-" in text
+
+def _row_quality(section, row):
+    if section == "sales":
+        score = 0
+        if str(row.get("id") or "") not in ("", "0"):
+            score += 10
+        if row.get("customer_id"):
+            score += 4
+        if row.get("material") and row.get("material") != "6mm":
+            score += 2
+        return score
+    if section == "receipts":
+        score = 0
+        if str(row.get("id") or "") not in ("", "0"):
+            score += 10
+        if row.get("customer_id"):
+            score += 4
+        if row.get("customer_name"):
+            score += 2
+        if row.get("payment_received") is not None:
+            score += 2
+        if row.get("balance") is not None:
+            score += 1
+        return score
+    if section == "balances":
+        score = 0
+        sample_receivable = (row.get("receivables_rows") or row.get("top_receivables") or [{}])[0] if isinstance(row, dict) else {}
+        sample_payable = (row.get("payables_rows") or row.get("top_payables") or [{}])[0] if isinstance(row, dict) else {}
+        if isinstance(sample_receivable, dict) and sample_receivable.get("id") is not None:
+            score += 5
+        if isinstance(sample_payable, dict) and sample_payable.get("id") is not None:
+            score += 5
+        score += min(len(row.get("receivables_rows") or []), 100) / 100
+        score += min(len(row.get("payables_rows") or []), 100) / 100
+        return score
+    return 0
+
+def _prefer_archive_row(section, existing, incoming):
+    if section in {"sales", "receipts", "balances"}:
+        return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
+    return incoming
+
 def _merge_archive_rows(existing, incoming, section):
-    merged = {_archive_key(section, row): row for row in existing}
+    if section == "expenses":
+        existing = [row for row in existing if not _is_vendor_payment_expense(row)]
+        incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
+    merged = {}
+    for row in existing:
+        key = _archive_key(section, row)
+        merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     for row in incoming:
-        merged[_archive_key(section, row)] = row
+        key = _archive_key(section, row)
+        merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
 
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
