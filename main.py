@@ -12,6 +12,9 @@ from routers import customers, vendors, bank, exports, erp_sync as erp_sync_rout
 
 AUTH_FILE = os.path.join(os.path.dirname(__file__), "data", "access_auth.json")
 _AUTH_CACHE: dict = {}
+_LOGIN_ATTEMPTS: dict = {}  # ip -> [timestamp, ...]
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECONDS = 60
 
 
 def _load_access_auth():
@@ -310,6 +313,11 @@ async def login(request: Request):
     cfg = _load_access_auth()
     if not cfg:
         return JSONResponse({"ok": True})
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        return JSONResponse({"ok": False, "error": "Too many attempts"}, status_code=429)
     try:
         body = await request.json()
     except Exception:
@@ -317,6 +325,8 @@ async def login(request: Request):
     username = body.get("username", "")
     user = _verify_user(cfg, username, body.get("password", ""))
     if not user:
+        attempts.append(now)
+        _LOGIN_ATTEMPTS[ip] = attempts
         return JSONResponse({"ok": False}, status_code=401)
     response = JSONResponse({"ok": True})
     response.set_cookie(

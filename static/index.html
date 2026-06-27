@@ -84,6 +84,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 
 /* ── Tables ── */
 .tbl-wrap{overflow-x:auto}
+.tbl-wrap.no-side-scroll{overflow-x:visible}
+.tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
+.tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
@@ -252,7 +255,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .subtabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .subtab{padding:10px 13px}
   .tbl-wrap,.report-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl-wrap.no-side-scroll{overflow-x:visible}
   table,.report-table{min-width:760px;font-size:12px}
+  .tbl-wrap.no-side-scroll table{min-width:0;font-size:11px}
   thead th,.report-table thead th{padding:8px 9px;font-size:10px}
   tbody td,tfoot td,.report-table tbody td,.report-table tfoot td{padding:8px 9px}
   .bar-row{grid-template-columns:86px 1fr 74px;gap:8px}
@@ -267,6 +272,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .kpi-value{font-size:19px}
   .preset-dates input{min-width:120px}
   table,.report-table{min-width:700px}
+  .tbl-wrap.no-side-scroll table{min-width:0;font-size:10px}
 }
 
 /* ── PRINT ── */
@@ -389,6 +395,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
+  <div class="nav-section">Operations</div>
+  <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations / IOT</span></div>
   <div class="nav-section">Ledger</div>
   <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Ledger View</span></div>
   <div class="nav-section">Reports</div>
@@ -600,6 +608,42 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
 </div>
 
+<!-- OPERATIONS / IOT -->
+<div class="section" id="section-ops">
+  <div class="page-header"><h2>Operations / IOT</h2></div>
+  <div class="preset-bar" id="ops-preset-bar">
+    <span class="preset-label">View:</span>
+    <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
+    <button class="pbtn" onclick="opsPreset('yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="opsPreset('week',this)">This Week</button>
+    <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
+    <div class="preset-dates">
+      <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
+      <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>IOT Movements</h3>
+    <div class="tbl-wrap" id="iot-tbl"></div>
+    <div id="iot-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Boulder Input</h3>
+    <div class="tbl-wrap" id="boulders-tbl"></div>
+    <div id="boulders-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Machine Readings</h3>
+    <div class="tbl-wrap" id="machines-tbl"></div>
+    <div id="machines-pager" class="no-print"></div>
+  </div>
+
+</div>
+
 <!-- LEDGER VIEW -->
 <div class="section" id="section-ledger">
   <div class="page-header"><h2>Ledger View</h2></div>
@@ -690,14 +734,6 @@ function fiveMinuteCacheBust(){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  if(u.pathname==='/api/dashboard/control'){
-    const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
-    const currentMonthStart=mtdStart();
-    if(from && to && to<currentMonthStart){
-      const archived=await archiveFetch(url);
-      if(archived!==null)return archived;
-    }
-  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
     const archived=await archiveFetch(url);
@@ -809,17 +845,30 @@ function _archiveCustomerSales(sales){
     credit_sale_amount:Math.round(g.credit_sale_amount*100)/100,
   })).sort((a,b)=>b.amount-a.amount);
 }
+function _archiveBalanceAsOf(months,to){
+  let latest=null;
+  months.forEach(m=>{
+    (m.balances||[]).forEach(row=>{
+      if(row.date<=to && (!latest || row.date>latest.date))latest=row;
+    });
+  });
+  return latest||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
+}
 async function _archiveControl(from,to){
   const months=await _loadArchiveRange(from,to);
   if(!months.length)return null;
   const sales=_rowsInRange(months,'sales',from,to);
   const expenses=_rowsInRange(months,'expenses',from,to);
   const receipts=_rowsInRange(months,'receipts',from,to);
+  const boulders=_rowsInRange(months,'boulders',from,to);
   const labour=_rowsInRange(months,'labour',from,to);
   const parts=_rowsInRange(months,'parts',from,to);
   const machines=_rowsInRange(months,'machines',from,to);
+  const balances=_archiveBalanceAsOf(months,to);
   const totalSales=sales.reduce((s,r)=>s+_num(r.amount),0);
   const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
+  const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
+  const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
   const cashCollected=sales.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
   const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes)).reduce((s,r)=>s+_num(r.amount),0);
   const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes)).reduce((s,r)=>s+_num(r.amount),0);
@@ -828,7 +877,9 @@ async function _archiveControl(from,to){
   const expensesRaw=expenses.reduce((s,r)=>s+_num(r.amount),0)+labour.reduce((s,r)=>s+_num(r.amount),0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
   const repayments=receipts.map(r=>{
     const payment=_receiptPaymentAmount(r);
-    return {date:r.date,customer_name:'Customer',mode:r.mode||'Cash',reference:r.reference||r.notes||'Customer receipt',payment_received:payment,bank_received:_payChannel(r.mode)==='cash'?0:payment,cash_received:_payChannel(r.mode)==='cash'?payment:0,sale_adjusted:_receiptNoteAmount(r.notes,'sale_adjusted')||0,amount:_num(r.amount),source:'Archive Customer Receipt'};
+    const saleAdjusted=r.sale_adjusted!=null?_num(r.sale_adjusted):(_receiptNoteAmount(r.notes,'sale_adjusted')||0);
+    const balance=r.balance!=null?_num(r.balance):_receiptNoteAmount(r.notes,'balance');
+    return {date:r.date,customer_name:r.customer_name||'Customer',mode:r.mode||'Cash',reference:r.reference||r.notes||'Customer receipt',payment_received:payment,bank_received:_payChannel(r.mode)==='cash'?0:payment,cash_received:_payChannel(r.mode)==='cash'?payment:0,sale_adjusted:saleAdjusted,amount:_num(r.amount),balance:balance,source:'Archive Customer Receipt'};
   }).sort((a,b)=>`${b.date}|${b.payment_received}`.localeCompare(`${a.date}|${a.payment_received}`));
   const byMaterial={};
   sales.forEach(s=>{const k=s.material||'Unknown';byMaterial[k]=byMaterial[k]||{material:k,qty_mt:0,amount:0,tickets:0};byMaterial[k].qty_mt+=_num(s.qty_mt);byMaterial[k].amount+=_num(s.amount);byMaterial[k].tickets+=1;});
@@ -854,28 +905,31 @@ async function _archiveControl(from,to){
   }
   return {
     period:{from,to,days},
-    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:0,boulder_trips:0,recovery_pct:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:0,payables:0},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
-    input:{source:'Archive',materials:[],suppliers:[]},
+    input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
     customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
     customer_repayments:repayments,customer_repayments_total:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,customer_repayments_payment_total:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,customer_repayments_bank_total:Math.round(repayments.reduce((s,r)=>s+_num(r.bank_received),0)*100)/100,customer_repayments_cash_total:Math.round(repayments.reduce((s,r)=>s+_num(r.cash_received),0)*100)/100,
-    machine_summary:[],expense_rows:expenseRows,trend,top_receivables:[],top_payables:[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
+    machine_summary:[],expense_rows:expenseRows,trend,top_receivables:balances.top_receivables||[],top_payables:balances.top_payables||[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
   };
 }
 async function _archiveLedger(year,month){
   const ym=`${year}-${String(month).padStart(2,'0')}`;
   const payload=await _loadArchiveMonth(ym);
   if(!payload)return null;
-  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], cash=payload.cash||[], bank=payload.bank||[];
+  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
   for(let d=1;d<=days;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
-    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day);
+    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
     const saleAmount=ds.reduce((s,r)=>s+_num(r.amount),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_num(r.amount),0);
-    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_receiptPaymentAmount(r),0)*100)/100,expenses:Math.round(de.reduce((s,r)=>s+_num(r.amount),0)*100)/100,cash_balance_office:(cash.filter(r=>r.date<=day).slice(-1)[0]||{}).balance||0,bank_balance:bank.filter(r=>r.date<=day).reduce((s,r)=>s+_num(r.credit)-_num(r.debit),0),boulder_input_mt:0,boulder_trips:0});
+    const operating=await _archiveOperatingBalances(day);
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_receiptPaymentAmount(r),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
   }
   const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
+  totals.boulder_input_mt=Math.round(rows.reduce((s,r)=>s+r.boulder_input_mt,0)*100)/100;
+  totals.boulder_trips=Math.round(rows.reduce((s,r)=>s+r.boulder_trips,0)*100)/100;
   return {year,month,rows,totals};
 }
 async function archiveFetch(url){
@@ -886,8 +940,11 @@ async function archiveFetch(url){
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/sync/erp/iot')return _rowsInRange(months,'iot',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
@@ -918,10 +975,34 @@ const PAGE_SIZE=100;
 const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],iot:[],bankstmt:[]};
 let _currentCustLedger=null,_currentVendLedger=null;
 
+function _rangeDaysForKey(key){
+  const ids={
+    sales:['s-from','s-to'],expenses:['e-from','e-to'],boulders:['op-from','op-to'],
+    machines:['op-from','op-to'],labour:['op-from','op-to'],parts:['op-from','op-to'],
+    erpbank:['eb-from','eb-to'],erpcash:['ec-from','ec-to'],iot:['op-from','op-to']
+  }[key];
+  if(!ids)return null;
+  const from=document.getElementById(ids[0])?.value;
+  const to=document.getElementById(ids[1])?.value;
+  if(!from||!to)return null;
+  return Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
+}
+function pageSizeFor(key,total){
+  const days=_rangeDaysForKey(key);
+  return days!==null&&days<=2?Math.max(total,1):PAGE_SIZE;
+}
+function applyTableRangeMode(key,wrapId){
+  const el=document.getElementById(wrapId);
+  if(!el)return;
+  const days=_rangeDaysForKey(key);
+  el.classList.toggle('no-side-scroll',days!==null&&days<=2);
+}
+
 function pagerHTML(key,total){
-  const pages=Math.ceil(total/PAGE_SIZE);
+  const size=pageSizeFor(key,total);
+  const pages=Math.ceil(total/size);
   if(pages<=1)return'';
-  const cur=_page[key],start=(cur-1)*PAGE_SIZE+1,end=Math.min(cur*PAGE_SIZE,total);
+  const cur=_page[key],start=(cur-1)*size+1,end=Math.min(cur*size,total);
   return`<div class="pager"><button ${cur<=1?'disabled':''} onclick="goPage('${key}',${cur-1})">◀ Prev</button><span class="pager-info">Showing ${start}–${end} of ${total} records &nbsp;|&nbsp; Page ${cur} of ${pages}</span><button ${cur>=pages?'disabled':''} onclick="goPage('${key}',${cur+1})">Next ▶</button></div>`;
 }
 const _renderCache={};
@@ -1137,7 +1218,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations / IOT',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1174,6 +1255,7 @@ function nav(name){
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
+  if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='reports'){}
 }
@@ -1244,12 +1326,12 @@ function opsPreset(p,btn){
   document.getElementById('op-to').value=t;
   document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
   // Reset pages for all ops sections
-  ['boulders','machines','labour','parts'].forEach(k=>{_page[k]=1;});
+  ['boulders','machines','iot'].forEach(k=>{_page[k]=1;});
   btn.classList.add('act');
   opsReload();
 }
 function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
-function opsReload(){loadBoulders();loadMachines();loadLabour();loadParts();loadIot();}
+function opsReload(){loadBoulders();loadMachines();loadIot();}
 
 // Report preset helpers
 function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
@@ -1402,9 +1484,9 @@ if('serviceWorker' in navigator){
   });
 }
 
-function fillCustSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_customers.filter(c=>c.active).forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`);sel.value=cur;}
-function fillVendSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_vendors.filter(v=>v.active).forEach(v=>sel.innerHTML+=`<option value="${v.id}">${v.name}</option>`);sel.value=cur;}
-function fillAcctSelect(id){const sel=document.getElementById(id);if(!sel)return;sel.innerHTML='<option value="">-- Select Account --</option>';_bankAccounts.filter(a=>a.active).forEach(a=>sel.innerHTML+=`<option value="${a.id}">${a.name}</option>`);}
+function fillCustSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_customers.filter(c=>c.active).forEach(c=>sel.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);sel.value=cur;}
+function fillVendSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_vendors.filter(v=>v.active).forEach(v=>sel.innerHTML+=`<option value="${v.id}">${esc(v.name)}</option>`);sel.value=cur;}
+function fillAcctSelect(id){const sel=document.getElementById(id);if(!sel)return;sel.innerHTML='<option value="">-- Select Account --</option>';_bankAccounts.filter(a=>a.active).forEach(a=>sel.innerHTML+=`<option value="${a.id}">${esc(a.name)}</option>`);}
 function displayBankAccountName(a){
   const text=`${a.name||''} ${a.bank_name||''}`.toUpperCase();
   if(text.includes('HDFC'))return 'CASH BALANCE IN OFFICE';
@@ -1601,7 +1683,8 @@ async function loadSales(){
   }catch(e){flash(e.message,false);}
 }
 function renderSales(){
-  const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  applyTableRangeMode('sales','sales-tbl');
+  const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
   let tot=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=r.amount;totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
   let html='<table><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+thSort('sales','amount','Amount')+'<th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
@@ -1636,8 +1719,9 @@ async function loadExpenses(){
   }catch(e){flash(e.message,false);}
 }
 function renderExpenses(){
+  applyTableRangeMode('expenses','exp-tbl');
   const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'—'}).name:'—'};
-  const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,start=(cur-1)*PAGE_SIZE,end=start+PAGE_SIZE,slice=rows.slice(start,end);
+  const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,size=pageSizeFor('expenses',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
@@ -1951,7 +2035,7 @@ function renderLedgerView(data){
 }
 
 // ── Operations ─────────────────────────────────────────────────────────────
-function loadOpsDefaults(){loadBoulders();loadMachines();loadLabour();loadParts();loadEMI();loadWorkers();}
+function loadOpsDefaults(){loadBoulders();loadMachines();loadIot();loadEMI();loadWorkers();}
 function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
 function calcRunHrs(){document.getElementById('m-run').value=(Math.max(0,(parseFloat(document.getElementById('m-end').value)||0)-(parseFloat(document.getElementById('m-start').value)||0))).toFixed(1);}
 function calcLabour(){document.getElementById('l-amt').value=((parseFloat(document.getElementById('l-days').value)||0)*(parseFloat(document.getElementById('l-wage').value)||0)).toFixed(0);}
@@ -1974,7 +2058,8 @@ async function loadBoulders(){
   }catch(e){}
 }
 function renderBoulders(){
-  const rows=_allData.boulders,cur=_page.boulders,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('boulders','boulders-tbl');
+  const rows=_allData.boulders,cur=_page.boulders,size=pageSizeFor('boulders',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_tonnes;});
   let html='<table><thead><tr><th>Date</th><th>Source</th><th>Trips</th><th>MT/Trip</th><th>Total MT</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.source}</td><td>${r.trips}</td><td>${r.tonnes_per_trip}</td><td><strong>${r.total_tonnes} MT</strong></td></tr>`;});
@@ -2001,7 +2086,8 @@ async function loadMachines(){
   }catch(e){}
 }
 function renderMachines(){
-  const rows=_allData.machines,cur=_page.machines,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('machines','machines-tbl');
+  const rows=_allData.machines,cur=_page.machines,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Start Hrs</th><th>End Hrs</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.start_hours}</td><td>${r.end_hours}</td><td><strong>${r.running_hours}</strong></td><td>${r.production_mt}</td><td>${r.fuel_liters}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="8" class="empty">No readings</td></tr>';
@@ -2028,7 +2114,8 @@ async function loadLabour(){
   }catch(e){}
 }
 function renderLabour(){
-  const rows=_allData.labour,cur=_page.labour,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('labour','labour-tbl');
+  const rows=_allData.labour,cur=_page.labour,size=pageSizeFor('labour',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr><th>Date</th><th>Worker</th><th>Type</th><th>Days</th><th>Rate</th><th>Amount</th><th>Status</th><th class="no-print">Action</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.worker_name}</td><td>${r.worker_type}</td><td>${r.days}</td><td>₹${r.daily_wage}</td><td>${fmtINR(r.amount)}</td><td><span class="badge ${r.paid?'b-paid':'b-unpaid'}">${r.paid?'Paid':'Pending'}</span></td><td class="no-print">${!r.paid?`<button class="btn btn-sm btn-ok" onclick="markPaid(${r.id})">Paid</button>`:''}</td></tr>`;});
@@ -2073,7 +2160,8 @@ async function loadParts(){
   }catch(e){}
 }
 function renderParts(){
-  const rows=_allData.parts,cur=_page.parts,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('parts','parts-tbl');
+  const rows=_allData.parts,cur=_page.parts,size=pageSizeFor('parts',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_amount;});
   let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Part</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Supplier</th></tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.part_name}</td><td>${r.quantity}</td><td>₹${r.unit_price}</td><td>${fmtINR(r.total_amount)}</td><td>${r.supplier||'—'}</td></tr>`;});
@@ -2174,7 +2262,8 @@ async function loadErpBank(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpBank(){
-  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('erpbank','erp-bank-tbl');
+  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totC=0,totD=0;_allData.erpbank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
   let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.bank_name||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.credit>0?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit>0?fmtINR(r.debit):'—'}</td></tr>`;});
@@ -2195,7 +2284,8 @@ async function loadErpCash(){
   }catch(e){flash(e.message,false);}
 }
 function renderErpCash(){
-  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('erpcash','erp-cash-tbl');
+  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,size=pageSizeFor('erpcash',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let totR=0,totP=0;_allData.erpcash.forEach(r=>{totR+=r.received;totP+=r.paid;});
   let html='<table><thead><tr>'+thSort('erpcash','date','Date')+thSort('erpcash','ledger','Ledger')+thSort('erpcash','description','Description')+thSort('erpcash','received','Received (In)')+thSort('erpcash','paid','Paid (Out)')+thSort('erpcash','balance','Balance')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.ledger||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.received>0?fmtINR(r.received):'—'}</td><td style="color:#c62828">${r.paid>0?fmtINR(r.paid):'—'}</td><td style="font-weight:600">${r.balance!=null?fmtINR(r.balance):'—'}</td></tr>`;});
@@ -2215,7 +2305,8 @@ async function loadIot(){
   }catch(e){}
 }
 function renderIot(){
-  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,slice=rows.slice((cur-1)*PAGE_SIZE,cur*PAGE_SIZE);
+  applyTableRangeMode('iot','iot-tbl');
+  const rows=sortedRows(_allData.iot,'iot'),cur=_page.iot,size=pageSizeFor('iot',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let html='<table><thead><tr>'+thSort('iot','dt','Date/Time')+thSort('iot','linked','Type')+thSort('iot','ticket','Ticket')+thSort('iot','vehicle','Vehicle')+thSort('iot','material','Material')+thSort('iot','party','Party')+thSort('iot','qty','Qty')+thSort('iot','crusher','Crusher')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td style="white-space:nowrap">${r.dt}</td><td><span class="badge" style="background:#e3f2fd;color:#1565c0">${r.linked||'—'}</span></td><td>${r.ticket||'—'}</td><td>${r.vehicle||'—'}</td><td>${r.material||'—'}</td><td>${r.party||'—'}</td><td>${r.qty||'—'}</td><td>${r.crusher||'—'}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="8" class="empty">No IOT movements for this period</td></tr>';

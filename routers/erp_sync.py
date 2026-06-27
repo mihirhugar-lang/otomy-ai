@@ -16,7 +16,7 @@ from typing import Optional
 import base64, json, re, html as htmllib, time, os
 
 from database import (get_db, Sale, Expense, Customer, CustomerReceipt, Vendor, VendorPayment,
-                      ERPBankEntry, CashLedgerEntry, IOTMovement)
+                      BoulderInput, ERPBankEntry, CashLedgerEntry, IOTMovement)
 
 router = APIRouter(prefix="/api/sync", tags=["erp_sync"])
 
@@ -294,6 +294,106 @@ def fetch_iot(sess, erp_base: str, from_d: date, to_d: date) -> list:
     except Exception as e:
         print(f"[erp_sync] iot: {e}")
     return movements
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5B. BOULDER / INPUT SUMMARY
+# ─────────────────────────────────────────────────────────────────────────────
+def _extract_input_table_rows(html: str, table_id: str, label_key: str) -> dict:
+    table_match = re.search(
+        rf"<table[^>]*id=['\"]{re.escape(table_id)}['\"][^>]*>(.*?)</table>",
+        html,
+        re.DOTALL | re.IGNORECASE,
+    )
+    rows = []
+    total_trips = 0.0
+    total_tonnes = 0.0
+    if not table_match:
+        return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
+
+    for tr in _TR.finditer(table_match.group(1)):
+        cols = [_clean(c) for c in _TD.findall(tr.group(1))]
+        if len(cols) < 3:
+            continue
+        label = cols[0].strip()
+        if not label:
+            continue
+        if label.lower() == "total":
+            total_trips = _num(cols[1])
+            total_tonnes = _num(cols[2])
+            continue
+        rows.append({
+            label_key: label,
+            "trips": _num(cols[1]),
+            "tonnes": _num(cols[2]),
+        })
+
+    if not total_trips:
+        total_trips = sum(row["trips"] for row in rows)
+    if not total_tonnes:
+        total_tonnes = sum(row["tonnes"] for row in rows)
+    return {"rows": rows, "total_trips": total_trips, "total_tonnes": total_tonnes}
+
+
+def fetch_input_summary(sess, erp_base: str, from_d: date, to_d: date) -> Optional[dict]:
+    try:
+        response = sess.get(
+            f"{erp_base}/crusher/listInput",
+            params={"startDt": from_d.strftime("%d-%m-%Y"), "end": to_d.strftime("%d-%m-%Y")},
+            timeout=35,
+            verify=True,
+        )
+        html = response.text
+        materials = _extract_input_table_rows(html, "itemTable", "material")
+        suppliers = _extract_input_table_rows(html, "itemTable1", "supplier")
+        return {
+            "total_tonnes": materials["total_tonnes"] or suppliers["total_tonnes"],
+            "total_trips": materials["total_trips"] or suppliers["total_trips"],
+            "materials": materials["rows"],
+            "suppliers": suppliers["rows"],
+        }
+    except Exception as e:
+        print(f"[erp_sync] input {from_d} to {to_d}: {e}")
+        return None
+
+
+def import_boulder_inputs(sess, erp_base: str, from_d: date, to_d: date, db: Session) -> int:
+    imported = 0
+    current = from_d
+    while current <= to_d:
+        summary = fetch_input_summary(sess, erp_base, current, current)
+        db.query(BoulderInput).filter(
+            BoulderInput.date == current,
+            BoulderInput.notes.like("ERP Input;%"),
+        ).delete(synchronize_session=False)
+
+        if summary and (summary.get("total_tonnes") or summary.get("total_trips")):
+            material_rows = summary.get("materials") or []
+            rows = material_rows or [{
+                "material": "ERP Input",
+                "trips": summary.get("total_trips") or 0,
+                "tonnes": summary.get("total_tonnes") or 0,
+            }]
+            for row in rows:
+                trips_float = float(row.get("trips") or 0)
+                tonnes = round(float(row.get("tonnes") or 0), 2)
+                trips = int(round(trips_float))
+                tonnes_per_trip = round(tonnes / trips_float, 3) if trips_float else 0.0
+                label = (row.get("material") or row.get("supplier") or "ERP Input").strip()
+                if tonnes <= 0 and trips <= 0:
+                    continue
+                db.add(BoulderInput(
+                    date=current,
+                    trips=trips,
+                    tonnes_per_trip=tonnes_per_trip,
+                    total_tonnes=tonnes,
+                    source=f"ERP Input - {label}"[:100],
+                    notes=f"ERP Input; material={label}; source=Loctell listInput",
+                ))
+                imported += 1
+        db.commit()
+        current += timedelta(days=1)
+        time.sleep(0.05)
+    return imported
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. CUSTOMER DEBTORS
@@ -605,7 +705,7 @@ def _get_or_create_customer(db: Session, name: str, result: dict) -> Optional[in
 # ─────────────────────────────────────────────────────────────────────────────
 def run_sync(sess, erp_base: str, from_d: date, to_d: date,
              do_sales=True, do_expenses=True, do_bank=True,
-             do_cash=True, do_iot=True, do_debtors=True, do_creditors=True,
+             do_cash=True, do_iot=True, do_boulders=True, do_debtors=True, do_creditors=True,
              receipt_from_d: Optional[date] = None,
              db: Session = None) -> dict:
 
@@ -613,7 +713,7 @@ def run_sync(sess, erp_base: str, from_d: date, to_d: date,
         "sales_imported": 0,    "sales_updated": 0,    "sales_deleted": 0,    "sales_skipped": 0,
         "expenses_imported": 0, "expenses_skipped": 0,
         "bank_imported": 0,     "cash_imported": 0,
-        "iot_imported": 0,
+        "iot_imported": 0,      "boulders_imported": 0,
         "customer_receipts_imported": 0,
         "customer_receipts_updated": 0,
         "customers_created": 0, "customers_updated": 0,
@@ -791,6 +891,13 @@ def run_sync(sess, erp_base: str, from_d: date, to_d: date,
         except Exception as e:
             result["errors"].append(f"IOT: {e}")
 
+    # 5B. Boulder/input summary
+    if do_boulders:
+        try:
+            result["boulders_imported"] = import_boulder_inputs(sess, erp_base, from_d, to_d, db)
+        except Exception as e:
+            result["errors"].append(f"Boulders: {e}")
+
     # 6. Debtors
     if do_debtors:
         try:
@@ -870,10 +977,10 @@ def run_sync(sess, erp_base: str, from_d: date, to_d: date,
 def get_erp_config():
     cfg = load_config()
     return {
-        "erp_base":     cfg.get("erp_base", ERP_BASE),
-        "erp_org":      cfg.get("erp_org", ""),
-        "erp_username": cfg.get("erp_username", ""),
-        "erp_password": cfg.get("erp_password", ""),
+        "erp_base":         cfg.get("erp_base", ERP_BASE),
+        "erp_org":          cfg.get("erp_org", ""),
+        "erp_username":     cfg.get("erp_username", ""),
+        "erp_password_set": bool(cfg.get("erp_password", "")),  # never expose the password
     }
 
 @router.post("/erp/config")
@@ -902,7 +1009,7 @@ def sync_erp(
     from_date: date, to_date: date,
     sync_sales: bool = True, sync_expenses: bool = True,
     sync_bank: bool = True,  sync_cash: bool = True,
-    sync_iot: bool = True,   sync_debtors: bool = True,
+    sync_iot: bool = True,   sync_boulders: bool = True, sync_debtors: bool = True,
     sync_creditors: bool = True,
     db: Session = Depends(get_db)
 ):
@@ -920,6 +1027,7 @@ def sync_erp(
     return run_sync(sess, erp_base, from_date, to_date,
                     do_sales=sync_sales, do_expenses=sync_expenses,
                     do_bank=sync_bank, do_cash=sync_cash, do_iot=sync_iot,
+                    do_boulders=sync_boulders,
                     do_debtors=sync_debtors, do_creditors=sync_creditors, db=db)
 
 # ─────────────────────────────────────────────────────────────────────────────
