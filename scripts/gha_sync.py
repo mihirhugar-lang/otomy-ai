@@ -5,6 +5,7 @@ and generates JSON files for otomy.ai. Runs every 5 min on GitHub servers.
 No Mac or local database required.
 """
 import base64, json, re, html as htmllib, os, time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -185,6 +186,13 @@ def erp_auth():
               timeout=25, verify=True)
     return sess
 
+def _clone_sess(sess):
+    """Return a new session with the same cookies — safe to use in a thread."""
+    s = requests.Session()
+    s.headers.update(dict(sess.headers))
+    s.cookies.update(dict(sess.cookies))
+    return s
+
 # ─── fetchers ────────────────────────────────────────────────────────────────
 
 def fetch_sales(sess, from_d, to_d):
@@ -230,16 +238,16 @@ def fetch_sales(sess, from_d, to_d):
 
 
 def fetch_expenses(sess, from_d, to_d):
-    entries = []
-    cur = from_d
-    seq = 0
-    while cur <= to_d:
-        ds = cur.strftime("%d-%m-%Y")
+    days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
+
+    def _fetch_day(d):
+        ds = d.strftime("%d-%m-%Y")
+        rows = []
         try:
             url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
                    f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
                    f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
-            data = json.loads(sess.get(url, timeout=25, verify=True).text)
+            data = json.loads(_clone_sess(sess).get(url, timeout=25, verify=True).text)
             for row in data.get("data", []):
                 cells = [_clean(c) for c in row]
                 if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
@@ -250,16 +258,23 @@ def fetch_expenses(sess, from_d, to_d):
                 remarks  = cells[7].strip() if len(cells) > 7 else ""
                 if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
                 pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
-                seq += 1
-                entries.append({
-                    "id": seq, "date": str(cur), "category": category[:50],
+                rows.append({
+                    "id": 0, "date": str(d), "category": category[:50],
                     "description": desc[:300], "amount": amt,
                     "payment_mode": pay_mode, "notes": remarks[:200],
                     "vendor_id": None, "erp_synced": True,
                 })
         except Exception as e:
             print(f"  expenses fetch error {ds}: {e}")
-        cur += timedelta(days=1)
+        return rows
+
+    entries = []
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for day_rows in pool.map(_fetch_day, days):
+            entries.extend(day_rows)
+    entries.sort(key=lambda e: e["date"])
+    for i, e in enumerate(entries, 1):
+        e["id"] = i
     return entries
 
 
@@ -357,25 +372,31 @@ def fetch_boulders(sess, from_d, to_d):
 
 
 def fetch_boulder_rows(sess, from_d, to_d):
-    rows = []
-    current = from_d
-    row_id = 1
-    while current <= to_d:
-        summary = fetch_boulders(sess, current, current)
+    days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
+
+    def _fetch_day(d):
+        summary = fetch_boulders(_clone_sess(sess), d, d)
         trips = _num(summary.get("total_trips"))
         tonnes = _num(summary.get("total_tonnes"))
         if trips or tonnes:
-            rows.append({
-                "id": row_id,
-                "date": str(current),
+            return {
+                "id": 0, "date": str(d),
                 "trips": int(round(trips)),
                 "tonnes_per_trip": round(tonnes / trips, 2) if trips else 0.0,
                 "total_tonnes": round(tonnes, 2),
                 "source": "ERP Input - BOULDERS",
                 "notes": "Loctell input summary",
-            })
-            row_id += 1
-        current += timedelta(days=1)
+            }
+        return None
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for result in pool.map(_fetch_day, days):
+            if result:
+                rows.append(result)
+    rows.sort(key=lambda r: r["date"])
+    for i, r in enumerate(rows, 1):
+        r["id"] = i
     return rows
 
 
@@ -1678,22 +1699,48 @@ def main():
         2,
     )
 
-    # ── sales & expenses (full last month + current window) ───────────────────
-    print("  Fetching sales...")
-    all_sales = merge_rows_by_archive_key(
-        archive_rows.get("sales"),
-        fetch_sales(sess, sync_start, today),
-        "sales",
-    )
-    print(f"  {len(all_sales)} sales tickets")
+    # ── parallel fetch all independent ERP streams ────────────────────────────
+    print("  Fetching all ERP streams in parallel...")
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        f_sales    = pool.submit(fetch_sales,        _clone_sess(sess), sync_start, today)
+        f_expenses = pool.submit(fetch_expenses,     _clone_sess(sess), sync_start, today)
+        f_b_today  = pool.submit(fetch_boulders,     _clone_sess(sess), today,      today)
+        f_b_yest   = pool.submit(fetch_boulders,     _clone_sess(sess), yesterday,  yesterday)
+        f_b_week   = pool.submit(fetch_boulders,     _clone_sess(sess), week_start, today)
+        f_b_mtd    = pool.submit(fetch_boulders,     _clone_sess(sess), month_start, today)
+        f_b_rows   = pool.submit(fetch_boulder_rows, _clone_sess(sess), sync_start, today)
+        f_iot      = pool.submit(fetch_iot,          _clone_sess(sess), sync_start, today)
+        f_cash     = pool.submit(fetch_cash_ledger,  _clone_sess(sess), sync_start, today)
+        f_bank     = pool.submit(fetch_bank_entries, _clone_sess(sess), sync_start, today)
+        f_debtors  = pool.submit(fetch_debtors,      _clone_sess(sess), today)
+        f_debtors_yest = pool.submit(fetch_debtors,  _clone_sess(sess), yesterday)
+        f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
 
-    print("  Fetching expenses...")
-    all_expenses = merge_rows_by_archive_key(
-        archive_rows.get("expenses"),
-        fetch_expenses(sess, sync_start, today),
-        "expenses",
-    )
+        fresh_sales       = f_sales.result()
+        fresh_expenses    = f_expenses.result()
+        boulders_today    = f_b_today.result()
+        boulders_yesterday = f_b_yest.result()
+        boulders_week     = f_b_week.result()
+        boulders_mtd      = f_b_mtd.result()
+        fresh_b_rows      = f_b_rows.result()
+        iot_rows          = f_iot.result()
+        fresh_cash        = f_cash.result()
+        fresh_bank        = f_bank.result()
+        debtors_today     = f_debtors.result()
+        _debtors_yest_pre = f_debtors_yest.result()
+        creditors         = f_creditors.result()
+
+    all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
+    print(f"  {len(all_sales)} sales tickets")
+    all_expenses = merge_rows_by_archive_key(archive_rows.get("expenses"), fresh_expenses, "expenses")
     print(f"  {len(all_expenses)} expenses")
+    boulder_rows = merge_rows_by_archive_key(
+        archive_rows.get("boulders"),
+        fresh_b_rows or seed_endpoints.get("boulders_30d", []),
+        "boulders",
+    )
+    print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
+    print(f"  {len(iot_rows)} IOT rows")
 
     def sales_for(f, t):
         fs, ts = str(f), str(t)
@@ -1707,23 +1754,6 @@ def main():
         fs, ts = str(f), str(t)
         return [row for row in rows if fs <= row.get("date", "") <= ts]
 
-    # ── boulders ──────────────────────────────────────────────────────────────
-    print("  Fetching boulders...")
-    boulders_today     = fetch_boulders(sess, today,       today)
-    boulders_yesterday = fetch_boulders(sess, yesterday,   yesterday)
-    boulders_week      = fetch_boulders(sess, week_start,  today)
-    boulders_mtd       = fetch_boulders(sess, month_start, today)
-    boulder_rows = merge_rows_by_archive_key(
-        archive_rows.get("boulders"),
-        fetch_boulder_rows(sess, sync_start, today) or seed_endpoints.get("boulders_30d", []),
-        "boulders",
-    )
-    print(f"  Boulders today: {boulders_today['total_trips']} trips, {boulders_today['total_tonnes']} t")
-
-    print("  Fetching IOT movements...")
-    iot_rows = fetch_iot(sess, sync_start, today)
-    print(f"  {len(iot_rows)} IOT rows")
-
     write("boulders.json", {
         "today":     boulders_today,
         "yesterday": boulders_yesterday,
@@ -1731,20 +1761,8 @@ def main():
         "mtd":       boulders_mtd,
     })
 
-    # ── cash ledger & bank transactions ───────────────────────────────────────
-    print("  Fetching cash ledger...")
-    cash_rows = merge_rows_by_archive_key(
-        archive_rows.get("cash"),
-        fetch_cash_ledger(sess, sync_start, today),
-        "cash",
-    )
-
-    print("  Fetching bank transactions...")
-    bank_rows = merge_rows_by_archive_key(
-        archive_rows.get("bank"),
-        fetch_bank_entries(sess, sync_start, today),
-        "bank",
-    )
+    cash_rows = merge_rows_by_archive_key(archive_rows.get("cash"), fresh_cash, "cash")
+    bank_rows = merge_rows_by_archive_key(archive_rows.get("bank"), fresh_bank, "bank")
 
     # absolute cash balance = last row's running balance from ERP cash ledger
     cash_balance = 0.0
@@ -1766,8 +1784,6 @@ def main():
     })
 
     # ── debtors and ERP credit repayments ─────────────────────────────────────
-    print("  Fetching debtors (today/yesterday/month)...")
-    debtors_today = fetch_debtors(sess, today)
     print(f"  {len(debtors_today)} customers")
     seed_controls = local_seed.get("controls") or {}
 
@@ -1780,13 +1796,17 @@ def main():
     repayments_mtd = seeded_repayments(month_start, today)
     repayments_last_month = seeded_repayments(last_month_start, last_month_end)
     need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd, repayments_last_month))
-    debtors_yesterday = debtors_today
+    debtors_yesterday = _debtors_yest_pre  # already fetched in parallel above
     if need_repayment_fetch:
-        debtors_yesterday = fetch_debtors(sess, yesterday)
-        debtors_day_before_yesterday = fetch_debtors(sess, yesterday - timedelta(days=1))
-        debtors_before_mtd = fetch_debtors(sess, month_start - timedelta(days=1))
-        debtors_before_last_month = fetch_debtors(sess, last_month_start - timedelta(days=1))
-        debtors_last_month_end = fetch_debtors(sess, last_month_end)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            f_dby    = pool.submit(fetch_debtors, _clone_sess(sess), yesterday - timedelta(days=1))
+            f_bmtd   = pool.submit(fetch_debtors, _clone_sess(sess), month_start - timedelta(days=1))
+            f_blm    = pool.submit(fetch_debtors, _clone_sess(sess), last_month_start - timedelta(days=1))
+            f_lme    = pool.submit(fetch_debtors, _clone_sess(sess), last_month_end)
+            debtors_day_before_yesterday = f_dby.result()
+            debtors_before_mtd           = f_bmtd.result()
+            debtors_before_last_month    = f_blm.result()
+            debtors_last_month_end       = f_lme.result()
         if repayments_today is None:
             repayments_today = compute_repayments_from_erp(sess, today, today, debtors_yesterday, debtors_today)
         if repayments_yesterday is None:
@@ -1865,9 +1885,7 @@ def main():
     operating_bank_balance = round(operating_bank_balance, 2)
     operating_cash_balance = round(operating_cash_balance, 2)
 
-    # ── creditors ─────────────────────────────────────────────────────────────
-    print("  Fetching creditors...")
-    creditors = fetch_creditors(sess, today)
+    # ── creditors (already fetched in parallel above) ─────────────────────────
     print(f"  {len(creditors)} vendors")
     vendor_payments = fetch_vendor_payments(sess, creditors, sync_start, today)
     print(f"  {len(vendor_payments)} vendor payments")
@@ -1991,11 +2009,19 @@ def main():
     ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
     ctrl_week = apply_seed_control_overrides(ctrl_week, local_seed, week_start, today)
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
-    for day_number in range(1, today.day + 1):
-        debtors_for(today.replace(day=day_number))
-        creditors_for(today.replace(day=day_number))
-    debtors_for(last_month_end)
-    creditors_for(last_month_end)
+    # Fetch all per-day balance snapshots in parallel
+    all_snap_dates = sorted(
+        {today.replace(day=d) for d in range(1, today.day + 1)} | {last_month_end}
+    )
+    needed_d = [d for d in all_snap_dates if d not in debtor_cache]
+    needed_c = [d for d in all_snap_dates if d not in creditor_cache]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        d_futures = {d: pool.submit(fetch_debtors,   _clone_sess(sess), d) for d in needed_d}
+        c_futures = {d: pool.submit(fetch_creditors,  _clone_sess(sess), d) for d in needed_c}
+        for d, f in d_futures.items():
+            debtor_cache[d]   = f.result() or seed_debtors
+        for d, f in c_futures.items():
+            creditor_cache[d] = f.result() or seed_creditors
     balance_snapshots = {
         str(as_of): {
             "debtors": debtor_cache.get(as_of) or seed_debtors,
