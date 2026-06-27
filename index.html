@@ -734,6 +734,14 @@ function fiveMinuteCacheBust(){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
+  if(u.pathname==='/api/dashboard/control'){
+    const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
+    const currentMonthStart=mtdStart();
+    if(from && to && to<currentMonthStart){
+      const archived=await archiveFetch(url);
+      if(archived!==null)return archived;
+    }
+  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
     const archived=await archiveFetch(url);
@@ -845,15 +853,6 @@ function _archiveCustomerSales(sales){
     credit_sale_amount:Math.round(g.credit_sale_amount*100)/100,
   })).sort((a,b)=>b.amount-a.amount);
 }
-function _archiveBalanceAsOf(months,to){
-  let latest=null;
-  months.forEach(m=>{
-    (m.balances||[]).forEach(row=>{
-      if(row.date<=to && (!latest || row.date>latest.date))latest=row;
-    });
-  });
-  return latest||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
-}
 async function _archiveControl(from,to){
   const months=await _loadArchiveRange(from,to);
   if(!months.length)return null;
@@ -864,7 +863,6 @@ async function _archiveControl(from,to){
   const labour=_rowsInRange(months,'labour',from,to);
   const parts=_rowsInRange(months,'parts',from,to);
   const machines=_rowsInRange(months,'machines',from,to);
-  const balances=_archiveBalanceAsOf(months,to);
   const totalSales=sales.reduce((s,r)=>s+_num(r.amount),0);
   const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
   const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
@@ -905,13 +903,13 @@ async function _archiveControl(from,to){
   }
   return {
     period:{from,to,days},
-    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:0,payables:0},
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
     input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
     customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
     customer_repayments:repayments,customer_repayments_total:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,customer_repayments_payment_total:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,customer_repayments_bank_total:Math.round(repayments.reduce((s,r)=>s+_num(r.bank_received),0)*100)/100,customer_repayments_cash_total:Math.round(repayments.reduce((s,r)=>s+_num(r.cash_received),0)*100)/100,
-    machine_summary:[],expense_rows:expenseRows,trend,top_receivables:balances.top_receivables||[],top_payables:balances.top_payables||[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
+    machine_summary:[],expense_rows:expenseRows,trend,top_receivables:[],top_payables:[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
   };
 }
 async function _archiveLedger(year,month){
@@ -941,10 +939,8 @@ async function archiveFetch(url){
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
-    if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
-    if(u.pathname==='/api/sync/erp/iot')return _rowsInRange(months,'iot',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
