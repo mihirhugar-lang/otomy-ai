@@ -849,6 +849,51 @@ function _archiveBalanceAsOf(months,to){
   });
   return latest||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
 }
+async function _archiveBalanceForDate(asOf){
+  const payload=await _loadArchiveMonth(asOf.substring(0,7));
+  if(!payload)return null;
+  return _archiveBalanceAsOf([payload],asOf);
+}
+function _archiveCustomerRows(balance){
+  const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
+  return rows.map((row,idx)=>({
+    id:row.id||`archive-customer-${idx}`,
+    name:row.name||'Customer',
+    gstin:'',
+    phone:'',
+    opening_balance:0,
+    active:true,
+    balance:_num(row.balance),
+    outstanding:_num(row.balance),
+    total_sales:0,
+    total_receipts:0,
+    manual_receipts:0,
+    erp_received:0,
+    received:0,
+    age_0_15:0,
+    age_16_30:0,
+    age_31_45:0,
+    age_45_plus:_num(row.balance),
+  }));
+}
+function _archiveVendorRows(balance){
+  const rows=(balance?.payables_rows||balance?.top_payables||[]);
+  return rows.map((row,idx)=>({
+    id:row.id||`archive-vendor-${idx}`,
+    name:row.name||'Vendor',
+    gstin:'',
+    phone:'',
+    opening_balance:0,
+    active:true,
+    payable:_num(row.balance),
+    total_purchases:0,
+    total_payments:0,
+    age_0_15:0,
+    age_16_30:0,
+    age_31_45:0,
+    age_45_plus:_num(row.balance),
+  }));
+}
 async function _archiveControl(from,to){
   const months=await _loadArchiveRange(from,to);
   if(!months.length)return null;
@@ -930,6 +975,15 @@ async function _archiveLedger(year,month){
 async function archiveFetch(url){
   const u=new URL(url, window.location.origin);
   const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
+  const asOf=u.searchParams.get('as_of');
+  if(asOf && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
+    const balance=await _archiveBalanceForDate(asOf);
+    if(balance)return _archiveCustomerRows(balance);
+  }
+  if(asOf && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
+    const balance=await _archiveBalanceForDate(asOf);
+    if(balance)return _archiveVendorRows(balance);
+  }
   if(from&&to){
     const months=await _loadArchiveRange(from,to);
     if(!months.length)return null;
@@ -1734,9 +1788,10 @@ async function addCustomer(){
 }
 async function loadCustomers(){
   try{
-    const rows=await api('/api/customers/?active_only=false');
+    const asOf=document.getElementById('c-to')?.value||today();
+    const rows=await api(`/api/customers/?active_only=false&as_of=${asOf}`);
     _customers=rows;
-    const out=await api('/api/customers/outstanding');
+    const out=await api(`/api/customers/outstanding?as_of=${asOf}`);
     let totOut=out.reduce((s,r)=>s+r.outstanding,0);
     document.getElementById('c-total').textContent=rows.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
@@ -1758,7 +1813,8 @@ async function loadCustomers(){
       const ob=out.find(o=>o.id===r.id)||{};
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
-      html+=`<tr><td><a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
+      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
@@ -1828,9 +1884,10 @@ async function addVendor(){
 }
 async function loadVendors(){
   try{
-    const rows=await api('/api/vendors/?active_only=false');
+    const asOf=document.getElementById('v-to')?.value||today();
+    const rows=await api(`/api/vendors/?active_only=false&as_of=${asOf}`);
     _vendors=rows;
-    const pay=await api('/api/vendors/payables');
+    const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
     document.getElementById('v-total-pay').textContent=fmtINR(totPay);
@@ -1850,7 +1907,8 @@ async function loadVendors(){
       const pb=pay.find(p=>p.id===r.id)||{};
       const payable=derived.payable(r);
       const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
-      html+=`<tr><td><a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
+      const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
+      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No vendors</td></tr>';
     html+='</tbody></table>';

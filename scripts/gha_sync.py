@@ -1120,7 +1120,7 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
     rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
     return rows
 
-def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, vendor_payments, local_seed):
+def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, vendor_payments, local_seed, balance_snapshots=None):
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     by_month = {}
     for section, rows in (
@@ -1182,6 +1182,33 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 "source": "Vendor Payment",
             })
 
+    for as_of, snapshot in (balance_snapshots or {}).items():
+        day = str(as_of)[:10]
+        month = day[:7]
+        if not month:
+            continue
+        receivables = [
+            {"name": row.get("name"), "balance": round(_num(row.get("outstanding", row.get("balance", 0.0))), 2)}
+            for row in (snapshot.get("debtors") or [])
+            if _num(row.get("outstanding", row.get("balance", 0.0))) > 0
+        ]
+        payables = [
+            {"name": row.get("name"), "balance": round(_num(row.get("payable", row.get("balance", 0.0))), 2)}
+            for row in (snapshot.get("creditors") or [])
+            if _num(row.get("payable", row.get("balance", 0.0))) > 0
+        ]
+        receivables.sort(key=lambda row: row["balance"], reverse=True)
+        payables.sort(key=lambda row: row["balance"], reverse=True)
+        by_month.setdefault(month, {}).setdefault("balances", []).append({
+            "date": day,
+            "receivables": round(sum(row["balance"] for row in receivables), 2),
+            "payables": round(sum(row["balance"] for row in payables), 2),
+            "receivables_rows": receivables,
+            "payables_rows": payables,
+            "top_receivables": receivables[:5],
+            "top_payables": payables[:5],
+        })
+
     for month, sections in by_month.items():
         path = ARCHIVE_DIR / f"{month}.json"
         if path.exists():
@@ -1196,7 +1223,6 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 "bank": [],
                 "cash": [],
                 "boulders": [],
-                "iot": [],
                 "labour": [],
                 "parts": [],
                 "machines": [],
@@ -1634,7 +1660,6 @@ def write_snapshot_bundle(
         write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", rows_between(parts_rows, start, end))
         write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
         write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
-        write_snapshot(f"/api/sync/erp/iot?from_date={start}&to_date={end}", rows_between(iot_rows, start, end))
 
     ledger_current = build_ledger_view(
         all_sales,
@@ -2054,7 +2079,8 @@ def main():
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
     # Fetch all per-day balance snapshots in parallel
     all_snap_dates = sorted(
-        {today.replace(day=d) for d in range(1, today.day + 1)} | {last_month_end}
+        {today.replace(day=d) for d in range(1, today.day + 1)}
+        | {last_month_start + timedelta(days=d) for d in range((last_month_end - last_month_start).days + 1)}
     )
     needed_d = [d for d in all_snap_dates if d not in debtor_cache]
     needed_c = [d for d in all_snap_dates if d not in creditor_cache]
@@ -2216,7 +2242,7 @@ def main():
     })
 
     print("  Updating monthly archive files...")
-    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, all_repayments, vendor_payments, local_seed)
+    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, all_repayments, vendor_payments, local_seed, balance_snapshots)
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(
