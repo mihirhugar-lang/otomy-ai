@@ -2088,13 +2088,17 @@ def main():
         d_futures = {d: pool.submit(fetch_debtors,   _clone_sess(sess), d) for d in needed_d}
         c_futures = {d: pool.submit(fetch_creditors,  _clone_sess(sess), d) for d in needed_c}
         for d, f in d_futures.items():
-            debtor_cache[d]   = f.result() or seed_debtors
+            rows = f.result()
+            if rows:
+                debtor_cache[d] = rows
         for d, f in c_futures.items():
-            creditor_cache[d] = f.result() or seed_creditors
+            rows = f.result()
+            if rows:
+                creditor_cache[d] = rows
     balance_snapshots = {
         str(as_of): {
-            "debtors": debtor_cache.get(as_of) or seed_debtors,
-            "creditors": creditor_cache.get(as_of) or seed_creditors,
+            "debtors": debtor_cache.get(as_of) or [],
+            "creditors": creditor_cache.get(as_of) or [],
         }
         for as_of in sorted(set(debtor_cache.keys()) | set(creditor_cache.keys()))
     }
