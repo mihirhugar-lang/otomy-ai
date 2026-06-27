@@ -950,8 +950,57 @@ def write(filename, data):
     print(f"  {filename}")
 
 def _archive_key(section, row):
+    if section == "sales":
+        return "sales:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("ticket_no", ""),
+            row.get("vehicle_no", ""),
+            row.get("customer_name", ""),
+            row.get("material", ""),
+            row.get("amount", ""),
+        ))
+    if section == "expenses":
+        return "expenses:" + "|".join(str(part) for part in (
+            row.get("erp_key", ""),
+            row.get("date", ""),
+            row.get("category", ""),
+            row.get("description", ""),
+            row.get("amount", ""),
+            row.get("payment_mode", ""),
+        ))
+    if section == "receipts":
+        return "receipts:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("customer_id", row.get("customer_name", "")),
+            row.get("amount", ""),
+            row.get("payment_received", ""),
+            row.get("reference", ""),
+        ))
+    if section == "boulders":
+        return "boulders:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("source", ""),
+            row.get("trips", ""),
+            row.get("total_tonnes", ""),
+        ))
+    if section == "bank":
+        return "bank:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("description", ""),
+            row.get("credit", ""),
+            row.get("debit", ""),
+            row.get("bank_name", ""),
+        ))
+    if section == "cash":
+        return "cash:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("ledger", ""),
+            row.get("description", ""),
+            row.get("received", ""),
+            row.get("paid", ""),
+        ))
     if row.get("id"):
-        return f"id:{row['id']}"
+        return f"{section}:id:{row['id']}"
     parts = [
         row.get("date", ""),
         row.get("ticket_no", ""),
