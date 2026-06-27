@@ -190,7 +190,8 @@ def _clone_sess(sess):
     """Return a new session with the same cookies — safe to use in a thread."""
     s = requests.Session()
     s.headers.update(dict(sess.headers))
-    s.cookies.update(dict(sess.cookies))
+    for cookie in sess.cookies:
+        s.cookies.set(cookie.name, cookie.value, domain=cookie.domain, path=cookie.path)
     return s
 
 # ─── fetchers ────────────────────────────────────────────────────────────────
