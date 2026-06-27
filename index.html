@@ -87,7 +87,6 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .tbl-wrap.no-side-scroll{overflow-x:visible}
 .tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
 .tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
-.mobile-sale-list{display:none}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
@@ -259,18 +258,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .tbl-wrap.no-side-scroll{overflow-x:visible}
   table,.report-table{min-width:760px;font-size:12px}
   .tbl-wrap.no-side-scroll table{min-width:0;font-size:11px}
-  #sales-tbl{overflow-x:visible}
-  #sales-tbl table{display:none}
-  #sales-tbl .mobile-sale-list{display:grid;grid-template-columns:1fr;gap:10px}
-  .mobile-sale-card{background:#fff;border:1px solid #eadfce;border-radius:14px;padding:12px;box-shadow:0 8px 22px rgba(17,24,39,.07)}
-  .mobile-sale-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px}
-  .mobile-sale-title{min-width:0}.mobile-sale-title strong{display:block;font-size:14px;line-height:1.2;color:#17202a;word-break:break-word}.mobile-sale-title span{display:block;font-size:12px;color:#7c4a03;margin-top:3px}
-  .mobile-sale-date{font-size:11px;color:#667085;white-space:nowrap}
-  .mobile-sale-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .mobile-sale-field{background:#fff8ee;border-radius:10px;padding:8px;min-width:0}.mobile-sale-field span{display:block;font:700 9px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#8a6b46;text-transform:uppercase;letter-spacing:.45px;margin-bottom:3px}.mobile-sale-field strong{display:block;font-size:13px;color:#111827;line-height:1.2;word-break:break-word}
-  .mobile-sale-field.total{background:#e8f5e9}.mobile-sale-field.total span{color:#2e7d32}.mobile-sale-field.total strong{color:#14532d;font-size:15px}
-  .mobile-sale-foot{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;font-size:12px;color:#667085}
-  .mobile-sale-empty{background:#fff;border:1px dashed #e0d3c2;border-radius:12px;padding:18px;text-align:center;color:#8a6b46}
   thead th,.report-table thead th{padding:8px 9px;font-size:10px}
   tbody td,tfoot td,.report-table tbody td,.report-table tfoot td{padding:8px 9px}
   .bar-row{grid-template-columns:86px 1fr 74px;gap:8px}
@@ -1709,27 +1696,6 @@ function renderSales(){
   });
   if(!slice.length)html+='<tr><td colspan="13" class="empty">No sales for this period</td></tr>';
   html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td></td><td></td><td></td><td></td></tr></tfoot></table>`;
-  html+='<div class="mobile-sale-list">';
-  if(slice.length){
-    slice.forEach(r=>{
-      const mode=(r.payment_mode||'—');
-      html+=`<div class="mobile-sale-card">
-        <div class="mobile-sale-head"><div class="mobile-sale-title"><strong>${esc(r.customer_name||'—')}</strong><span>${esc(r.material||'—')} · Ticket ${esc(r.ticket_no||'—')}</span></div><div class="mobile-sale-date">${esc(r.date||'—')}</div></div>
-        <div class="mobile-sale-grid">
-          <div class="mobile-sale-field"><span>Qty MT</span><strong>${fmtNum(r.qty_mt||0,2)}</strong></div>
-          <div class="mobile-sale-field"><span>Rate</span><strong>${fmtINR(r.rate_per_mt||0)}</strong></div>
-          <div class="mobile-sale-field"><span>Material</span><strong>${fmtINR(r.amount||0)}</strong></div>
-          <div class="mobile-sale-field"><span>Transport</span><strong>${fmtINR(r.transport_charge||0)}</strong></div>
-          <div class="mobile-sale-field total"><span>Total</span><strong>${fmtINR(_saleTotal(r))}</strong></div>
-          <div class="mobile-sale-field"><span>Mode</span><strong>${esc(mode)}</strong></div>
-        </div>
-        <div class="mobile-sale-foot"><span>${esc(r.vehicle_no||'No vehicle')}</span><span>${r.erp_synced?'ERP synced':'Local'}</span></div>
-      </div>`;
-    });
-  }else{
-    html+='<div class="mobile-sale-empty">No sales for this period</div>';
-  }
-  html+='</div>';
   document.getElementById('sales-tbl').innerHTML=html;
   document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
 }
