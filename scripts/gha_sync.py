@@ -1255,6 +1255,7 @@ def write_snapshot_bundle(
     vendor_payments,
     local_seed,
     controls,
+    balance_snapshots,
 ):
     week_start = today - timedelta(days=today.weekday())
     last_month_end = month_start - timedelta(days=1)
@@ -1283,6 +1284,14 @@ def write_snapshot_bundle(
     def rows_between(rows, start, end):
         fs, ts = str(start), str(end)
         return [row for row in rows if fs <= row.get("date", "") <= ts]
+
+    def debtors_as_of(as_of):
+        rows = balance_snapshots.get(str(as_of), {}).get("debtors") or []
+        return [{"name": row.get("name"), "outstanding": row.get("outstanding", row.get("balance", 0.0))} for row in rows]
+
+    def creditors_as_of(as_of):
+        rows = balance_snapshots.get(str(as_of), {}).get("creditors") or []
+        return [{"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))} for row in rows]
 
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
     seed_customer_ledgers = local_seed.get("customer_ledgers", {}) if isinstance(local_seed, dict) else {}
@@ -1349,8 +1358,8 @@ def write_snapshot_bundle(
                     "materials": [],
                     "suppliers": [],
                 },
-                debtors=[{"name": row["name"], "outstanding": row.get("outstanding", 0.0)} for row in customers_full],
-                creditors=[{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
+                debtors=debtors_as_of(end) or [{"name": row["name"], "outstanding": row.get("outstanding", 0.0)} for row in customers_full],
+                creditors=creditors_as_of(end) or [{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
                 cash_balance=cash_balance,
                 bank_net=bank_net,
                 labour=rows_between(labour_rows, start, end),
@@ -1638,20 +1647,33 @@ def main():
             operating_bank_balance -= _num(payment.get("amount"))
     operating_bank_balance = round(operating_bank_balance, 2)
     operating_cash_balance = round(operating_cash_balance, 2)
-    control_debtors = [
+    seed_debtors = [
         {"name": row.get("name"), "outstanding": row.get("balance", row.get("outstanding", 0.0))}
         for row in seed_endpoints.get("customers_outstanding", [])
-    ] or debtors_today
-    control_creditors = [
+    ]
+    seed_creditors = [
         {"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))}
         for row in seed_endpoints.get("vendors_payables", [])
     ]
-    control_creditors = creditors or control_creditors
+    debtor_cache = {today: debtors_today}
+    if debtors_yesterday is not debtors_today:
+        debtor_cache[yesterday] = debtors_yesterday
+    creditor_cache = {today: creditors}
+
+    def debtors_for(as_of):
+        if as_of not in debtor_cache:
+            debtor_cache[as_of] = fetch_debtors(sess, as_of)
+        return debtor_cache.get(as_of) or seed_debtors
+
+    def creditors_for(as_of):
+        if as_of not in creditor_cache:
+            creditor_cache[as_of] = fetch_creditors(sess, as_of)
+        return creditor_cache.get(as_of) or seed_creditors
 
     # ── control room JSON ─────────────────────────────────────────────────────
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
-        boulders=boulders_today, debtors=control_debtors, creditors=control_creditors,
+        boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
         cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
         labour=seed_for(labour_rows, today, today),
         parts=seed_for(parts_rows, today, today),
@@ -1663,7 +1685,7 @@ def main():
     )
     ctrl_yesterday = build_control(
         sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday, yesterday,
-        boulders=boulders_yesterday, debtors=control_debtors, creditors=control_creditors,
+        boulders=boulders_yesterday, debtors=debtors_for(yesterday), creditors=creditors_for(yesterday),
         cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
         labour=seed_for(labour_rows, yesterday, yesterday),
         parts=seed_for(parts_rows, yesterday, yesterday),
@@ -1675,7 +1697,7 @@ def main():
     )
     ctrl_week = build_control(
         sales_for(week_start, today), exp_for(week_start, today), week_start, today,
-        boulders=boulders_week, debtors=control_debtors, creditors=control_creditors,
+        boulders=boulders_week, debtors=debtors_for(today), creditors=creditors_for(today),
         cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
         labour=seed_for(labour_rows, week_start, today),
         parts=seed_for(parts_rows, week_start, today),
@@ -1687,7 +1709,7 @@ def main():
     )
     ctrl_mtd = build_control(
         sales_for(month_start, today), exp_for(month_start, today), month_start, today,
-        boulders=boulders_mtd, debtors=control_debtors, creditors=control_creditors,
+        boulders=boulders_mtd, debtors=debtors_for(today), creditors=creditors_for(today),
         cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
         labour=seed_for(labour_rows, month_start, today),
         parts=seed_for(parts_rows, month_start, today),
@@ -1701,6 +1723,19 @@ def main():
     ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
     ctrl_week = apply_seed_control_overrides(ctrl_week, local_seed, week_start, today)
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
+    last_month_end = month_start - timedelta(days=1)
+    for day_number in range(1, today.day + 1):
+        debtors_for(today.replace(day=day_number))
+        creditors_for(today.replace(day=day_number))
+    debtors_for(last_month_end)
+    creditors_for(last_month_end)
+    balance_snapshots = {
+        str(as_of): {
+            "debtors": debtor_cache.get(as_of) or seed_debtors,
+            "creditors": creditor_cache.get(as_of) or seed_creditors,
+        }
+        for as_of in sorted(set(debtor_cache.keys()) | set(creditor_cache.keys()))
+    }
     write("ctrl_today.json", ctrl_today)
     write("ctrl_yesterday.json", ctrl_yesterday)
     write("ctrl_week.json", ctrl_week)
@@ -1872,6 +1907,7 @@ def main():
         vendor_payments,
         local_seed,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
+        balance_snapshots,
     )
 
     today_sales = sales_for(today, today)

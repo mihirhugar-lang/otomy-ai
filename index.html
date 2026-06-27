@@ -642,17 +642,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <div id="machines-pager" class="no-print"></div>
   </div>
 
-  <div class="card">
-    <h3>Labour</h3>
-    <div class="tbl-wrap" id="labour-tbl"></div>
-    <div id="labour-pager" class="no-print"></div>
-  </div>
-
-  <div class="card">
-    <h3>Parts</h3>
-    <div class="tbl-wrap" id="parts-tbl"></div>
-    <div id="parts-pager" class="no-print"></div>
-  </div>
 </div>
 
 <!-- LEDGER VIEW -->
@@ -1333,12 +1322,12 @@ function opsPreset(p,btn){
   document.getElementById('op-to').value=t;
   document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
   // Reset pages for all ops sections
-  ['boulders','machines','labour','parts','iot'].forEach(k=>{_page[k]=1;});
+  ['boulders','machines','iot'].forEach(k=>{_page[k]=1;});
   btn.classList.add('act');
   opsReload();
 }
 function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
-function opsReload(){loadBoulders();loadMachines();loadLabour();loadParts();loadIot();}
+function opsReload(){loadBoulders();loadMachines();loadIot();}
 
 // Report preset helpers
 function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
@@ -2042,7 +2031,7 @@ function renderLedgerView(data){
 }
 
 // ── Operations ─────────────────────────────────────────────────────────────
-function loadOpsDefaults(){loadBoulders();loadMachines();loadLabour();loadParts();loadEMI();loadWorkers();}
+function loadOpsDefaults(){loadBoulders();loadMachines();loadIot();loadEMI();loadWorkers();}
 function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
 function calcRunHrs(){document.getElementById('m-run').value=(Math.max(0,(parseFloat(document.getElementById('m-end').value)||0)-(parseFloat(document.getElementById('m-start').value)||0))).toFixed(1);}
 function calcLabour(){document.getElementById('l-amt').value=((parseFloat(document.getElementById('l-days').value)||0)*(parseFloat(document.getElementById('l-wage').value)||0)).toFixed(0);}
