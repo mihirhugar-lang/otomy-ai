@@ -1484,9 +1484,9 @@ if('serviceWorker' in navigator){
   });
 }
 
-function fillCustSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_customers.filter(c=>c.active).forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`);sel.value=cur;}
-function fillVendSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_vendors.filter(v=>v.active).forEach(v=>sel.innerHTML+=`<option value="${v.id}">${v.name}</option>`);sel.value=cur;}
-function fillAcctSelect(id){const sel=document.getElementById(id);if(!sel)return;sel.innerHTML='<option value="">-- Select Account --</option>';_bankAccounts.filter(a=>a.active).forEach(a=>sel.innerHTML+=`<option value="${a.id}">${a.name}</option>`);}
+function fillCustSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_customers.filter(c=>c.active).forEach(c=>sel.innerHTML+=`<option value="${c.id}">${esc(c.name)}</option>`);sel.value=cur;}
+function fillVendSelect(id){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">-- None --</option>';_vendors.filter(v=>v.active).forEach(v=>sel.innerHTML+=`<option value="${v.id}">${esc(v.name)}</option>`);sel.value=cur;}
+function fillAcctSelect(id){const sel=document.getElementById(id);if(!sel)return;sel.innerHTML='<option value="">-- Select Account --</option>';_bankAccounts.filter(a=>a.active).forEach(a=>sel.innerHTML+=`<option value="${a.id}">${esc(a.name)}</option>`);}
 function displayBankAccountName(a){
   const text=`${a.name||''} ${a.bank_name||''}`.toUpperCase();
   if(text.includes('HDFC'))return 'CASH BALANCE IN OFFICE';
