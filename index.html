@@ -728,6 +728,10 @@ function snapshotKey(url){
 function fiveMinuteCacheBust(){
   return Math.floor(Date.now()/300000);
 }
+function _archiveAllowedForRange(from,to){
+  if(!to)return false;
+  return String(to).substring(0,7)<today().substring(0,7);
+}
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
@@ -740,7 +744,7 @@ async function snapshotFetch(url){
   const data=await r.json();
   if(u.pathname==='/api/dashboard/control' && data && data.summary){
     const to=u.searchParams.get('to_date');
-    if(to){
+    if(to && _archiveAllowedForRange(null,to)){
       const operating=await _archiveOperatingBalances(to);
       data.summary.bank_balance=operating.bank_balance;
       data.summary.cash_balance_office=operating.cash_balance_office;
@@ -986,15 +990,16 @@ async function archiveFetch(url){
   const u=new URL(url, window.location.origin);
   const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
   const asOf=u.searchParams.get('as_of');
-  if(asOf && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
+  if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance)return _archiveCustomerRows(balance);
   }
-  if(asOf && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
+  if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance)return _archiveVendorRows(balance);
   }
   if(from&&to){
+    if(!_archiveAllowedForRange(from,to))return null;
     const months=await _loadArchiveRange(from,to);
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
@@ -1007,6 +1012,7 @@ async function archiveFetch(url){
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
+    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;
