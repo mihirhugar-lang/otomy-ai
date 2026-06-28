@@ -1068,12 +1068,13 @@ def _archive_key(section, row):
         ))
     if section == "expenses":
         return "expenses:" + "|".join(str(part) for part in (
-            row.get("erp_key", ""),
+            row.get("erp_key") or row.get("id") or "",
             row.get("date", ""),
             row.get("category", ""),
             row.get("description", ""),
             row.get("amount", ""),
             row.get("payment_mode", ""),
+            row.get("notes", ""),
         ))
     if section == "receipts":
         reference = str(row.get("reference") or "").strip()
@@ -1769,7 +1770,7 @@ def write_snapshot_bundle(
                 repayments=rows_between(repayments, start, end),
             )
         control = apply_seed_control_overrides(control, local_seed, start, end)
-        archive_balance = archive_balances.get(str(end)) if isinstance(archive_balances, dict) else None
+        archive_balance = archive_balances.get(str(end)) if end < today and isinstance(archive_balances, dict) else None
         if archive_balance:
             summary = control.setdefault("summary", {})
             summary["receivables"] = round(_num(archive_balance.get("receivables")), 2)
