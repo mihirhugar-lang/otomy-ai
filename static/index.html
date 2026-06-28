@@ -88,6 +88,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
 .tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
+.sales-table{min-width:1120px}
+.sales-table th,.sales-table td{white-space:nowrap}
+.sales-table td:nth-child(2){min-width:150px;white-space:normal}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th.sortable:hover{background:#3b3b3b}
@@ -725,23 +728,34 @@ function snapshotKey(url){
 function fiveMinuteCacheBust(){
   return Math.floor(Date.now()/300000);
 }
+function _archiveAllowedForRange(from,to){
+  if(!to)return false;
+  return String(to)<today();
+}
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
+  const archived=await archiveFetch(url);
+  if(archived!==null)return archived;
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
-    const archived=await archiveFetch(url);
-    if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
   const data=await r.json();
   if(u.pathname==='/api/dashboard/control' && data && data.summary){
     const to=u.searchParams.get('to_date');
-    if(to){
+    if(to && _archiveAllowedForRange(null,to)){
       const operating=await _archiveOperatingBalances(to);
       data.summary.bank_balance=operating.bank_balance;
       data.summary.cash_balance_office=operating.cash_balance_office;
       data.summary.operating_balance_from=operating.operating_balance_from;
+      const balance=await _archiveBalanceForDate(to);
+      if(balance){
+        data.summary.receivables=Math.round(_num(balance.receivables)*100)/100;
+        data.summary.payables=Math.round(_num(balance.payables)*100)/100;
+        data.top_receivables=balance.top_receivables||balance.receivables_rows||[];
+        data.top_payables=balance.top_payables||balance.payables_rows||[];
+      }
     }
   }
   return data;
@@ -849,6 +863,51 @@ function _archiveBalanceAsOf(months,to){
   });
   return latest||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
 }
+async function _archiveBalanceForDate(asOf){
+  const payload=await _loadArchiveMonth(asOf.substring(0,7));
+  if(!payload)return null;
+  return _archiveBalanceAsOf([payload],asOf);
+}
+function _archiveCustomerRows(balance){
+  const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
+  return rows.map((row,idx)=>({
+    id:row.id||`archive-customer-${idx}`,
+    name:row.name||'Customer',
+    gstin:'',
+    phone:'',
+    opening_balance:0,
+    active:true,
+    balance:_num(row.balance),
+    outstanding:_num(row.balance),
+    total_sales:0,
+    total_receipts:0,
+    manual_receipts:0,
+    erp_received:0,
+    received:0,
+    age_0_15:0,
+    age_16_30:0,
+    age_31_45:0,
+    age_45_plus:_num(row.balance),
+  }));
+}
+function _archiveVendorRows(balance){
+  const rows=(balance?.payables_rows||balance?.top_payables||[]);
+  return rows.map((row,idx)=>({
+    id:row.id||`archive-vendor-${idx}`,
+    name:row.name||'Vendor',
+    gstin:'',
+    phone:'',
+    opening_balance:0,
+    active:true,
+    payable:_num(row.balance),
+    total_purchases:0,
+    total_payments:0,
+    age_0_15:0,
+    age_16_30:0,
+    age_31_45:0,
+    age_45_plus:_num(row.balance),
+  }));
+}
 async function _archiveControl(from,to){
   const months=await _loadArchiveRange(from,to);
   if(!months.length)return null;
@@ -930,7 +989,17 @@ async function _archiveLedger(year,month){
 async function archiveFetch(url){
   const u=new URL(url, window.location.origin);
   const from=u.searchParams.get('from_date'), to=u.searchParams.get('to_date');
+  const asOf=u.searchParams.get('as_of');
+  if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
+    const balance=await _archiveBalanceForDate(asOf);
+    if(balance)return _archiveCustomerRows(balance);
+  }
+  if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
+    const balance=await _archiveBalanceForDate(asOf);
+    if(balance)return _archiveVendorRows(balance);
+  }
   if(from&&to){
+    if(!_archiveAllowedForRange(from,to))return null;
     const months=await _loadArchiveRange(from,to);
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
@@ -943,6 +1012,7 @@ async function archiveFetch(url){
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
+    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;
@@ -988,7 +1058,7 @@ function applyTableRangeMode(key,wrapId){
   const el=document.getElementById(wrapId);
   if(!el)return;
   const days=_rangeDaysForKey(key);
-  el.classList.toggle('no-side-scroll',days!==null&&days<=2);
+  el.classList.toggle('no-side-scroll',key!=='sales'&&days!==null&&days<=2);
 }
 
 function pagerHTML(key,total){
@@ -1177,6 +1247,66 @@ async function api(url,opts={}){
   if(ct.includes('json'))return r.json();
   return r;
 }
+let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
+function _clearReadCaches(){
+  Object.values(_dashCache).forEach(cache=>cache?.clear?.());
+  _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+}
+function _activeSectionName(){
+  const active=document.querySelector('.section.active');
+  return active?.id?.replace('section-','')||'dashboard';
+}
+async function _reloadActiveSectionAfterSync(){
+  _clearReadCaches();
+  const section=_activeSectionName();
+  if(section==='dashboard')return loadDash();
+  if(section==='sales')return loadSales();
+  if(section==='expenses')return loadExpenses();
+  if(section==='customers')return loadCustomers();
+  if(section==='vendors')return loadVendors();
+  if(section==='bank'){await loadBankSummary();await loadErpBank();return loadErpCash();}
+  if(section==='ops')return loadOpsDefaults();
+  if(section==='ledger')return loadLedgerView();
+}
+async function _currentSyncStamp(){
+  if(isStaticSnapshotHost()){
+    const r=await fetch(`/data/snapshot/manifest.json?_=${Date.now()}`, {cache:'no-store'});
+    if(!r.ok)return null;
+    const data=await r.json();
+    return data.generated_at||null;
+  }
+  const r=await fetch(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'});
+  if(!r.ok)return null;
+  const data=await r.json();
+  return data.last_sync||data.generated_at||data.updated_at||null;
+}
+async function checkForFreshSync(force=false){
+  if(_syncRefreshBusy)return;
+  _syncRefreshBusy=true;
+  try{
+    const stamp=await _currentSyncStamp();
+    if(!stamp)return;
+    if(_lastSeenSyncStamp && stamp!==_lastSeenSyncStamp){
+      _lastSeenSyncStamp=stamp;
+      await _reloadActiveSectionAfterSync();
+      flash('Latest sync data loaded');
+    }else if(!_lastSeenSyncStamp || force){
+      _lastSeenSyncStamp=stamp;
+    }
+  }catch(e){
+    // Stay quiet; status may require login or be temporarily unavailable during deploy.
+  }finally{
+    _syncRefreshBusy=false;
+  }
+}
+function startSyncAutoRefresh(){
+  checkForFreshSync(true);
+  clearInterval(_syncRefreshTimer);
+  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),60000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)checkForFreshSync(false);
+});
 function valByPath(row,key){return key.split('.').reduce((v,k)=>v==null?undefined:v[k],row);}
 function normSortVal(v){
   if(v==null)return'';
@@ -1463,6 +1593,7 @@ window.onload=async function(){
   ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   ['rpt-month','gst-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   await loadDash();
+  startSyncAutoRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
     printDashboard(false);
   }
@@ -1680,7 +1811,7 @@ function renderSales(){
   const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
   let tot=0,totTransport=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
-  let html='<table><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
+  let html='<table class="sales-table"><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
   slice.forEach(r=>{
     const tax=r.gst_rate>0?Math.round(_saleTotal(r)/(1+r.gst_rate/100)*r.gst_rate/100):0;
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
@@ -1734,9 +1865,10 @@ async function addCustomer(){
 }
 async function loadCustomers(){
   try{
-    const rows=await api('/api/customers/?active_only=false');
+    const asOf=document.getElementById('c-to')?.value||today();
+    const rows=await api(`/api/customers/?active_only=false&as_of=${asOf}`);
     _customers=rows;
-    const out=await api('/api/customers/outstanding');
+    const out=await api(`/api/customers/outstanding?as_of=${asOf}`);
     let totOut=out.reduce((s,r)=>s+r.outstanding,0);
     document.getElementById('c-total').textContent=rows.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
@@ -1758,7 +1890,8 @@ async function loadCustomers(){
       const ob=out.find(o=>o.id===r.id)||{};
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
-      html+=`<tr><td><a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
+      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
@@ -1828,9 +1961,10 @@ async function addVendor(){
 }
 async function loadVendors(){
   try{
-    const rows=await api('/api/vendors/?active_only=false');
+    const asOf=document.getElementById('v-to')?.value||today();
+    const rows=await api(`/api/vendors/?active_only=false&as_of=${asOf}`);
     _vendors=rows;
-    const pay=await api('/api/vendors/payables');
+    const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
     document.getElementById('v-total-pay').textContent=fmtINR(totPay);
@@ -1850,7 +1984,8 @@ async function loadVendors(){
       const pb=pay.find(p=>p.id===r.id)||{};
       const payable=derived.payable(r);
       const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
-      html+=`<tr><td><a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a></td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
+      const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
+      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No vendors</td></tr>';
     html+='</tbody></table>';
