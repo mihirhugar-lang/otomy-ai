@@ -1189,6 +1189,14 @@ def _row_quality(section, row):
     return 0
 
 def _prefer_archive_row(section, existing, incoming):
+    if section == "sales":
+        merged = dict(existing)
+        merged.update(incoming)
+        if str(incoming.get("id") or "") in ("", "0") and existing.get("id"):
+            merged["id"] = existing["id"]
+        if not incoming.get("customer_id") and existing.get("customer_id"):
+            merged["customer_id"] = existing["customer_id"]
+        return merged
     if section in {"sales", "receipts", "balances"}:
         return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
     return incoming
@@ -1765,10 +1773,16 @@ def write_snapshot_bundle(
 
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
+    write_snapshot("/api/customers/", customers_full)
     write_snapshot("/api/customers/?active_only=false", customers_full)
+    write_snapshot(f"/api/customers/?active_only=false&as_of={today}", customers_full)
     write_snapshot("/api/customers/outstanding", customers_outstanding)
+    write_snapshot(f"/api/customers/outstanding?as_of={today}", customers_outstanding)
+    write_snapshot("/api/vendors/", vendors_full)
     write_snapshot("/api/vendors/?active_only=false", vendors_full)
+    write_snapshot(f"/api/vendors/?active_only=false&as_of={today}", vendors_full)
     write_snapshot("/api/vendors/payables", vendors_payables)
+    write_snapshot(f"/api/vendors/payables?as_of={today}", vendors_payables)
     write_snapshot("/api/bank/accounts", bank_accounts)
     for account in bank_accounts:
         write_snapshot(f"/api/bank/accounts/{account['id']}/statement", seed_bank_statements.get(str(account["id"]), []))
