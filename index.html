@@ -1247,6 +1247,66 @@ async function api(url,opts={}){
   if(ct.includes('json'))return r.json();
   return r;
 }
+let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
+function _clearReadCaches(){
+  Object.values(_dashCache).forEach(cache=>cache?.clear?.());
+  _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+}
+function _activeSectionName(){
+  const active=document.querySelector('.section.active');
+  return active?.id?.replace('section-','')||'dashboard';
+}
+async function _reloadActiveSectionAfterSync(){
+  _clearReadCaches();
+  const section=_activeSectionName();
+  if(section==='dashboard')return loadDash();
+  if(section==='sales')return loadSales();
+  if(section==='expenses')return loadExpenses();
+  if(section==='customers')return loadCustomers();
+  if(section==='vendors')return loadVendors();
+  if(section==='bank'){await loadBankSummary();await loadErpBank();return loadErpCash();}
+  if(section==='ops')return loadOpsDefaults();
+  if(section==='ledger')return loadLedgerView();
+}
+async function _currentSyncStamp(){
+  if(isStaticSnapshotHost()){
+    const r=await fetch(`/data/snapshot/manifest.json?_=${Date.now()}`, {cache:'no-store'});
+    if(!r.ok)return null;
+    const data=await r.json();
+    return data.generated_at||null;
+  }
+  const r=await fetch(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'});
+  if(!r.ok)return null;
+  const data=await r.json();
+  return data.last_sync||data.generated_at||data.updated_at||null;
+}
+async function checkForFreshSync(force=false){
+  if(_syncRefreshBusy)return;
+  _syncRefreshBusy=true;
+  try{
+    const stamp=await _currentSyncStamp();
+    if(!stamp)return;
+    if(_lastSeenSyncStamp && stamp!==_lastSeenSyncStamp){
+      _lastSeenSyncStamp=stamp;
+      await _reloadActiveSectionAfterSync();
+      flash('Latest sync data loaded');
+    }else if(!_lastSeenSyncStamp || force){
+      _lastSeenSyncStamp=stamp;
+    }
+  }catch(e){
+    // Stay quiet; status may require login or be temporarily unavailable during deploy.
+  }finally{
+    _syncRefreshBusy=false;
+  }
+}
+function startSyncAutoRefresh(){
+  checkForFreshSync(true);
+  clearInterval(_syncRefreshTimer);
+  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),60000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)checkForFreshSync(false);
+});
 function valByPath(row,key){return key.split('.').reduce((v,k)=>v==null?undefined:v[k],row);}
 function normSortVal(v){
   if(v==null)return'';
@@ -1533,6 +1593,7 @@ window.onload=async function(){
   ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   ['rpt-month','gst-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   await loadDash();
+  startSyncAutoRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
     printDashboard(false);
   }
