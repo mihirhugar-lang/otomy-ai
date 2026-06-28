@@ -88,6 +88,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
 .tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
+.sales-table{min-width:1120px}
+.sales-table th,.sales-table td{white-space:nowrap}
+.sales-table td:nth-child(2){min-width:150px;white-space:normal}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th.sortable:hover{background:#3b3b3b}
@@ -1049,7 +1052,7 @@ function applyTableRangeMode(key,wrapId){
   const el=document.getElementById(wrapId);
   if(!el)return;
   const days=_rangeDaysForKey(key);
-  el.classList.toggle('no-side-scroll',days!==null&&days<=2);
+  el.classList.toggle('no-side-scroll',key!=='sales'&&days!==null&&days<=2);
 }
 
 function pagerHTML(key,total){
@@ -1741,7 +1744,7 @@ function renderSales(){
   const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
   let tot=0,totTransport=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
-  let html='<table><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
+  let html='<table class="sales-table"><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>GST</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
   slice.forEach(r=>{
     const tax=r.gst_rate>0?Math.round(_saleTotal(r)/(1+r.gst_rate/100)*r.gst_rate/100):0;
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
