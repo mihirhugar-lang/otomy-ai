@@ -1088,8 +1088,6 @@ def _archive_key(section, row):
         return "boulders:" + "|".join(str(part) for part in (
             row.get("date", ""),
             row.get("source", ""),
-            row.get("trips", ""),
-            row.get("total_tonnes", ""),
         ))
     if section == "bank":
         return "bank:" + "|".join(str(part) for part in _bank_dedupe_key(row))
