@@ -805,11 +805,17 @@ function _receiptPaymentAmount(row){
   const noted=_receiptNoteAmount(row.notes,'payment_received');
   return noted==null?_num(row.amount):_num(noted);
 }
-let _balCfgCache;
+let _balCfgCache, _bankStmtCache;
 async function _balanceConfig(){
   if(_balCfgCache!==undefined)return _balCfgCache;
   _balCfgCache=await fetch(`/data/balance_anchors.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
   return _balCfgCache;
+}
+async function _bankStatement(file){
+  if(!file)return null;
+  if(_bankStmtCache!==undefined)return _bankStmtCache;
+  _bankStmtCache=await fetch(`/data/${file}?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  return _bankStmtCache;
 }
 function _modeOverride(corrs,e){
   if(!corrs)return null;
@@ -840,25 +846,34 @@ async function _archiveOperatingBalances(toDate=today()){
     anchorDate=String(opening.as_of||'').slice(0,10)||'2025-02-13';
     bank=_num(opening.bank_balance); cash=_num(opening.cash_balance_office);
   }
-  const from=localISO(new Date(new Date(`${anchorDate}T00:00:00`).getTime()+86400000));
-  if(to<from)return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:anchorDate};
-  const months=await _loadArchiveRange(from,to);
-  const sales=_rowsInRange(months,'sales',from,to);
-  const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to);
   const corrs=(cfg&&cfg.mode_corrections)||null;
-  sales.forEach(s=>{
-    if(String(s.payment_mode||'').toLowerCase()==='credit')return;
-    if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s);else bank+=_saleTotal(s);
-  });
-  receipts.forEach(r=>{
-    const amount=_receiptPaymentAmount(r);
-    if(_payChannel(r.mode)==='cash')cash+=amount;else bank+=amount;
-  });
-  expenses.forEach(e=>{
-    const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
-    if(ch==='cash')cash-=_num(e.amount);else bank-=_num(e.amount);
-  });
+  // BANK: use the actual ICICI statement running balance (exact). After statement end, add bank movements.
+  let bankCutoff=null;
+  const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
+  if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
+    const le=stmt.rows.filter(r=>String(r.date)<=to);
+    if(le.length){ bank=_num(le[le.length-1].balance); bankCutoff=String(stmt.to); }
+  }
+  const from=localISO(new Date(new Date(`${anchorDate}T00:00:00`).getTime()+86400000));
+  if(to>=from){
+    const months=await _loadArchiveRange(from,to);
+    const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
+    _rowsInRange(months,'sales',from,to).forEach(s=>{
+      if(String(s.payment_mode||'').toLowerCase()==='credit')return;
+      if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s);
+      else if(inBank(s.date))bank+=_saleTotal(s);
+    });
+    _rowsInRange(months,'receipts',from,to).forEach(r=>{
+      const amount=_receiptPaymentAmount(r);
+      if(_payChannel(r.mode)==='cash')cash+=amount;
+      else if(inBank(r.date))bank+=amount;
+    });
+    _rowsInRange(months,'expenses',from,to).forEach(e=>{
+      const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
+      if(ch==='cash')cash-=_num(e.amount);
+      else if(inBank(e.date))bank-=_num(e.amount);
+    });
+  }
   return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:anchorDate};
 }
 function _archiveCustomerSales(sales){
