@@ -744,11 +744,15 @@ async function snapshotFetch(url){
   const data=await r.json();
   if(u.pathname==='/api/dashboard/control' && data && data.summary){
     const to=u.searchParams.get('to_date');
-    if(to && _archiveAllowedForRange(null,to)){
+    // Bank/cash: apply the verified anchor + statement for ANY date up to and including today.
+    if(to && String(to)<=today()){
       const operating=await _archiveOperatingBalances(to);
       data.summary.bank_balance=operating.bank_balance;
       data.summary.cash_balance_office=operating.cash_balance_office;
       data.summary.operating_balance_from=operating.operating_balance_from;
+    }
+    // Receivables/payables: historical only (archive balances don't include the live day).
+    if(to && _archiveAllowedForRange(null,to)){
       const balance=await _archiveBalanceForDate(to);
       if(balance){
         data.summary.receivables=Math.round(_num(balance.receivables)*100)/100;
