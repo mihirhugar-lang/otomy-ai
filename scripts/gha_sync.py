@@ -999,15 +999,14 @@ def _erp_credit_ref(row):
     if match:
         return match.group(1)
     match = re.search(r"\breceipt-(\d+)-\d{4}-\d{2}-\d{2}\b", text)
-    return match.group(1) if match else ""
+    if match and match.group(1) != "1":
+        return match.group(1)
+    return ""
 
 def _bank_dedupe_key(row):
     source = str(row.get("source") or "").strip()
     date_value, credit, debit = _bank_amount_key(row)
     if source == "Credit Payment":
-        ref = _erp_credit_ref(row)
-        if ref:
-            return ("credit-payment-ref", date_value, ref, credit, debit)
         return ("credit-payment", date_value, credit, debit, str(row.get("bank_name") or ""))
     return (
         "bank",
@@ -1024,6 +1023,10 @@ def _bank_row_quality(row):
     score = 0
     if "ERP-CREDIT-" in text:
         score += 10
+    if re.search(r"\breceipt-(?!1-)\d+-\d{4}-\d{2}-\d{2}\b", text):
+        score += 5
+    if " - Customer" in str(row.get("description") or ""):
+        score -= 2
     if row.get("id"):
         score += 1
     if row.get("description"):
