@@ -17,6 +17,7 @@ SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
+BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-05-31_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 
@@ -124,6 +125,37 @@ def load_customer_master_overrides():
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+def load_bank_statement_rows():
+    try:
+        with open(BANK_STATEMENT_PATH) as f:
+            data = json.load(f)
+    except Exception:
+        return []
+    bank_name = data.get("bank_name") or "ICICI Bank"
+    rows = []
+    for row in data.get("rows") or []:
+        rows.append({
+            "id": f"icici-{row.get('tran_id') or row.get('sr_no')}",
+            "date": row.get("date"),
+            "description": row.get("description") or row.get("tran_id") or "",
+            "credit": _num(row.get("credit")),
+            "debit": _num(row.get("debit")),
+            "balance": _num(row.get("balance")),
+            "bank_name": bank_name,
+            "source": "ICICI Statement",
+        })
+    return rows
+
+def latest_bank_statement_balance(rows, as_of):
+    candidates = [
+        row for row in rows or []
+        if row.get("date") and str(row.get("date")) <= str(as_of) and row.get("balance") is not None
+    ]
+    if not candidates:
+        return None
+    latest = sorted(candidates, key=lambda row: (row.get("date", ""), str(row.get("id", ""))))[-1]
+    return round(_num(latest.get("balance")), 2)
 
 def load_archive_manifest():
     try:
@@ -1683,6 +1715,82 @@ def build_vendor_ledgers(vendors_full, vendor_payments):
         ledgers[str(vendor.get("id"))] = ledger
     return ledgers
 
+
+def build_customer_ledgers(customers_full, all_sales, repayments):
+    """Per-customer ledger from already-fetched sales + repayments (linked by NAME — the
+    sale customer_id does NOT match the customer list id). Mirrors localhost's ledger shape."""
+    sales_by_name = {}
+    for s in all_sales or []:
+        sales_by_name.setdefault(str(s.get("customer_name", "")).strip().upper(), []).append(s)
+    reps_by_name = {}
+    for r in repayments or []:
+        reps_by_name.setdefault(str(r.get("customer_name", "")).strip().upper(), []).append(r)
+
+    ledgers = {}
+    for cust in customers_full:
+        name = cust.get("name", "")
+        key = str(name).strip().upper()
+        closing = round(_num(cust.get("outstanding", cust.get("balance"))), 2)
+        entries = []
+        for s in sales_by_name.get(key, []):
+            total = _sale_total(s)
+            entries.append({
+                "type": "sale",
+                "id": s.get("id"),
+                "date": s.get("date"),
+                "description": (f"{s.get('material') or 'Sale'} — {s.get('vehicle_no') or ''}").strip(" —"),
+                "debit": total, "credit": 0.0, "amount": total,
+                "transport_charge": _num(s.get("transport_charge")),
+                "ticket_no": s.get("ticket_no") or "",
+                "vehicle_no": s.get("vehicle_no") or "",
+                "material": s.get("material") or "",
+                "qty_mt": s.get("qty_mt") or 0,
+                "mdp_ton": s.get("mdp_ton"),
+                "rate_per_mt": s.get("rate_per_mt") or 0,
+                "payment_mode": s.get("payment_mode") or "",
+                "gst_rate": s.get("gst_rate") or 0,
+            })
+        received = 0.0
+        for r in reps_by_name.get(key, []):
+            amt = _num(r.get("payment_received", r.get("amount")))
+            received = round(received + amt, 2)
+            entries.append({
+                "type": "receipt",
+                "id": None,
+                "date": str(r.get("date", ""))[:10],
+                "description": f"Receipt ({r.get('mode') or 'Payment'})" + (f" Ref: {r.get('reference')}" if r.get("reference") else ""),
+                "debit": 0.0, "credit": amt, "amount": amt,
+            })
+        entries.sort(key=lambda x: (str(x.get("date") or ""), x.get("type") or ""))
+        window_net = round(sum(_num(e.get("debit")) - _num(e.get("credit")) for e in entries), 2)
+        opening = round(closing - window_net, 2)
+        result_entries = []
+        if abs(opening) > 0.01:
+            result_entries.append({
+                "type": "opening", "id": None, "date": None,
+                "description": "Opening Balance (before synced window)",
+                "debit": opening if opening > 0 else 0.0,
+                "credit": -opening if opening < 0 else 0.0,
+                "balance": opening,
+            })
+        running = opening
+        for e in entries:
+            running = round(running + _num(e.get("debit")) - _num(e.get("credit")), 2)
+            e["balance"] = running
+            result_entries.append(e)
+        ledger = empty_ledger(name, closing)
+        ledger.update({
+            "customer_id": cust.get("id"),
+            "customer_name": name,
+            "opening_balance": opening,
+            "entries": result_entries,
+            "closing_balance": closing,
+            "received": received,
+            "erp_received": round(_num(cust.get("received", cust.get("erp_received", received))), 2),
+        })
+        ledgers[str(cust.get("id"))] = ledger
+    return ledgers
+
 def write_snapshot_bundle(
     today,
     yesterday,
@@ -1802,8 +1910,13 @@ def write_snapshot_bundle(
     write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
     write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
 
+    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments)
     for row in customers_full:
-        write_snapshot(f"/api/customers/ledger/{row['id']}", seed_customer_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("outstanding", 0.0))))
+        write_snapshot(
+            f"/api/customers/ledger/{row['id']}",
+            customer_ledgers.get(str(row["id"]))
+            or seed_customer_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("outstanding", 0.0))),
+        )
     for row in vendors_full:
         write_snapshot(
             f"/api/vendors/ledger/{row['id']}",
@@ -2020,8 +2133,11 @@ def main():
         "mtd":       boulders_mtd,
     })
 
+    statement_bank_rows = load_bank_statement_rows()
     cash_rows = merge_rows_by_archive_key(archive_rows.get("cash"), fresh_cash, "cash")
     bank_rows = merge_rows_by_archive_key(archive_rows.get("bank"), fresh_bank, "bank")
+    if statement_bank_rows:
+        bank_rows = merge_rows_by_archive_key(bank_rows, statement_bank_rows, "bank")
 
     # absolute cash balance = last row's running balance from ERP cash ledger
     cash_balance = 0.0
@@ -2029,8 +2145,9 @@ def main():
         if row.get("balance") is not None:
             cash_balance = row["balance"]
 
-    # bank net = total credits minus total debits over the 30-day window
-    bank_net = round(
+    statement_bank_balance = latest_bank_statement_balance(statement_bank_rows, today)
+    # bank_net is the current bank balance shown on the dashboard.
+    bank_net = statement_bank_balance if statement_bank_balance is not None else round(
         sum(r["credit"] for r in bank_rows) - sum(r["debit"] for r in bank_rows), 2
     )
 
@@ -2117,8 +2234,12 @@ def main():
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
-    bank_rows = dedupe_bank_rows(derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows))
-    bank_net = round(
+    if statement_bank_rows:
+        bank_rows = dedupe_bank_rows(bank_rows)
+    else:
+        bank_rows = dedupe_bank_rows(derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows))
+    statement_bank_balance = latest_bank_statement_balance(statement_bank_rows, today)
+    bank_net = statement_bank_balance if statement_bank_balance is not None else round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
         2,
     )
