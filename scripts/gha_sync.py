@@ -16,6 +16,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
+CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 
@@ -115,6 +116,14 @@ def load_local_seed():
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+def load_customer_master_overrides():
+    try:
+        with open(CUSTOMER_MASTER_OVERRIDES_PATH) as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 def load_archive_manifest():
     try:
@@ -2365,6 +2374,35 @@ def main():
             "outstanding":       d["outstanding"],
             "age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0,
             "age_45_plus": round(max(d["outstanding"], 0.0), 2),
+        }
+
+    for override in load_customer_master_overrides():
+        name = str(override.get("name") or "").strip()
+        if not name or name in customers_by_name:
+            continue
+        max_customer_id += 1
+        customers_by_name[name] = {
+            "id": max_customer_id,
+            "name": name,
+            "gstin": override.get("gstin") or "",
+            "phone": override.get("phone") or "",
+            "address": override.get("address") or "",
+            "opening_balance": round(_num(override.get("opening_balance")), 2),
+            "active": bool(override.get("active", True)),
+            "balance": round(_num(override.get("balance")), 2),
+            "total_sales": round(_num(override.get("total_sales")), 2),
+            "total_receipts": round(_num(override.get("total_receipts")), 2),
+            "manual_receipts": round(_num(override.get("manual_receipts")), 2),
+            "erp_received": round(_num(override.get("erp_received")), 2),
+            "received": round(_num(override.get("received")), 2),
+            "erp_debit_balance": round(_num(override.get("erp_debit_balance")), 2),
+            "erp_credit_balance": round(_num(override.get("erp_credit_balance")), 2),
+            "erp_balance_as_of": str(today),
+            "outstanding": round(_num(override.get("outstanding")), 2),
+            "age_0_15": round(_num(override.get("age_0_15")), 2),
+            "age_16_30": round(_num(override.get("age_16_30")), 2),
+            "age_31_45": round(_num(override.get("age_31_45")), 2),
+            "age_45_plus": round(_num(override.get("age_45_plus")), 2),
         }
 
     customers_full = sorted(customers_by_name.values(), key=lambda row: row.get("name", ""))
