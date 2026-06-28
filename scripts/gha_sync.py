@@ -91,6 +91,20 @@ def _parse_date(raw, fallback):
     try:   return datetime.strptime(raw[:10], "%d-%m-%Y").date()
     except: return fallback
 
+def _expense_legacy_key(row):
+    return (
+        row["date"].isoformat() if hasattr(row.get("date"), "isoformat") else str(row.get("date", "")),
+        (row.get("category") or "").strip(),
+        (row.get("description") or "").strip(),
+        round(float(row.get("amount") or 0), 2),
+        (row.get("payment_mode") or "").strip(),
+        (row.get("notes") or "").strip(),
+    )
+
+def _expense_key(row, sequence):
+    base = "|".join(str(value) for value in _expense_legacy_key(row))
+    return f"{base}|seq={sequence}"
+
 def load_local_seed():
     try:
         with open(LOCAL_SEED_PATH) as f:
@@ -152,10 +166,7 @@ def load_archive_window(from_d, to_d):
     return out
 
 def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
-    merged = {_archive_key(section, row): row for row in archive_rows or []}
-    for row in fresh_rows or []:
-        merged[_archive_key(section, row)] = row
-    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
+    return _merge_archive_rows(archive_rows or [], fresh_rows or [], section)
 
 def archive_receipts_to_repayments(receipts):
     rows = []
@@ -258,6 +269,7 @@ def fetch_expenses(sess, from_d, to_d):
                    f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
                    f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
             data = json.loads(_clone_sess(sess).get(url, timeout=25, verify=True).text)
+            expense_sequence = 0
             for row in data.get("data", []):
                 cells = [_clean(c) for c in row]
                 if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
@@ -268,12 +280,15 @@ def fetch_expenses(sess, from_d, to_d):
                 remarks  = cells[7].strip() if len(cells) > 7 else ""
                 if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
                 pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
-                rows.append({
+                expense_sequence += 1
+                record = {
                     "id": 0, "date": str(d), "category": category[:50],
                     "description": desc[:300], "amount": amt,
                     "payment_mode": pay_mode, "notes": remarks[:200],
                     "vendor_id": None, "erp_synced": True,
-                })
+                }
+                record["erp_key"] = _expense_key(record, expense_sequence)
+                rows.append(record)
         except Exception as e:
             print(f"  expenses fetch error {ds}: {e}")
         return rows
@@ -1068,7 +1083,7 @@ def _archive_key(section, row):
         ))
     if section == "expenses":
         return "expenses:" + "|".join(str(part) for part in (
-            row.get("erp_key") or row.get("id") or "",
+            row.get("erp_key") or "",
             row.get("date", ""),
             row.get("category", ""),
             row.get("description", ""),
@@ -1173,18 +1188,35 @@ def _historical_existing_dates(rows):
         if str(row.get("date", ""))[:10] and str(row.get("date", ""))[:10] < cutoff
     }
 
+def _expense_content_key(row):
+    return "|".join(str(part) for part in (
+        row.get("date", ""),
+        row.get("category", ""),
+        row.get("description", ""),
+        row.get("amount", ""),
+        row.get("payment_mode", ""),
+        row.get("notes", ""),
+    ))
+
 def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
     protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
     merged = {}
-    for row in existing:
+    existing_expense_keys = set()
+    for idx, row in enumerate(existing):
         key = _archive_key(section, row)
+        if section == "expenses":
+            existing_expense_keys.add(_expense_content_key(row))
+            if key in merged:
+                key = f"{key}|archive-row:{row.get('id') or idx}"
         merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     for row in incoming:
         key = _archive_key(section, row)
         row_date = str(row.get("date", ""))[:10]
+        if section == "expenses" and _expense_content_key(row) in existing_expense_keys:
+            continue
         if row_date in protected_dates and key not in merged:
             continue
         merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
