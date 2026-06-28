@@ -1244,7 +1244,7 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
     rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
     return rows
 
-def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, repayments, vendor_payments, local_seed, balance_snapshots=None):
+def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, boulder_rows, repayments, vendor_payments, local_seed, balance_snapshots=None):
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     by_month = {}
     for section, rows in (
@@ -1252,6 +1252,7 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         ("expenses", all_expenses),
         ("cash", cash_rows),
         ("bank", bank_rows),
+        ("boulders", boulder_rows),
     ):
         for row in rows:
             month = str(row.get("date", ""))[:7]
@@ -2372,7 +2373,7 @@ def main():
     })
 
     print("  Updating monthly archive files...")
-    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, all_repayments, vendor_payments, local_seed, balance_snapshots)
+    write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, boulder_rows, all_repayments, vendor_payments, local_seed, balance_snapshots)
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(
