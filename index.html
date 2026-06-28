@@ -730,7 +730,7 @@ function fiveMinuteCacheBust(){
 }
 function _archiveAllowedForRange(from,to){
   if(!to)return false;
-  return String(to).substring(0,7)<today().substring(0,7);
+  return String(to)<today();
 }
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
