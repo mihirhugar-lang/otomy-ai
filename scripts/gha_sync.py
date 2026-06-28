@@ -30,6 +30,9 @@ _PAY = {"CASH", "CREDIT", "CARD/UPI", "SPLIT", "UPI"}
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
+class ErpFetchError(RuntimeError):
+    pass
+
 def _clean(x):
     return re.sub(r"<[^>]+>", "", htmllib.unescape(str(x))).strip()
 
@@ -255,6 +258,7 @@ def fetch_sales(sess, from_d, to_d):
                 })
     except Exception as e:
         print(f"  sales fetch error: {e}")
+        raise ErpFetchError(f"sales fetch failed; skipped Otomy write: {e}") from e
     return tickets
 
 
@@ -291,6 +295,7 @@ def fetch_expenses(sess, from_d, to_d):
                 rows.append(record)
         except Exception as e:
             print(f"  expenses fetch error {ds}: {e}")
+            raise ErpFetchError(f"expenses fetch failed for {ds}; skipped Otomy write: {e}") from e
         return rows
 
     entries = []
@@ -327,6 +332,7 @@ def fetch_cash_ledger(sess, from_d, to_d):
             })
     except Exception as e:
         print(f"  cash_ledger: {e}")
+        raise ErpFetchError(f"cash ledger fetch failed; skipped Otomy write: {e}") from e
     return entries
 
 
@@ -352,6 +358,7 @@ def fetch_bank_entries(sess, from_d, to_d):
             })
     except Exception as e:
         print(f"  bank_entries: {e}")
+        raise ErpFetchError(f"bank entries fetch failed; skipped Otomy write: {e}") from e
     return entries
 
 
@@ -393,6 +400,7 @@ def fetch_boulders(sess, from_d, to_d):
         }
     except Exception as e:
         print(f"  boulders fetch error: {e}")
+        raise ErpFetchError(f"boulders fetch failed; skipped Otomy write: {e}") from e
     return result
 
 
@@ -508,6 +516,7 @@ def fetch_debtors(sess, as_of=None):
             if len(rows) < length: break
     except Exception as e:
         print(f"  debtors fetch error ({as_of}): {e}")
+        raise ErpFetchError(f"debtors fetch failed for {as_of}; skipped Otomy write: {e}") from e
     return debtors
 
 
@@ -535,10 +544,13 @@ def fetch_creditors(sess, as_of=None):
             })
     except Exception as e:
         print(f"  creditors fetch error: {e}")
+        raise ErpFetchError(f"creditors fetch failed; skipped Otomy write: {e}") from e
     return creditors
 
 def fetch_vendor_payments(sess, creditors, from_d, to_d):
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    if not creditors:
+        return []
 
     def _fetch_one(creditor):
         supplier_id = creditor.get("erp_supplier_id")
@@ -573,6 +585,7 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
                 })
         except Exception as e:
             print(f"  vendor payment fetch error ({creditor.get('name')}): {e}")
+            raise ErpFetchError(f"vendor payment fetch failed for {creditor.get('name')}; skipped Otomy write: {e}") from e
         return rows
 
     payments = []
@@ -635,7 +648,7 @@ def fetch_customer_ledger_rows(sess, from_d, to_d, erp_customer_id):
         return payload.get("data", []) or []
     except Exception as e:
         print(f"  customer ledger {erp_customer_id}: {e}")
-        return []
+        raise ErpFetchError(f"customer ledger fetch failed for {erp_customer_id}; skipped Otomy write: {e}") from e
 
 def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debtors, debtors_cache=None):
     # --- Phase 1: pre-fetch all intermediate days' debtors in parallel ---
