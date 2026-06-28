@@ -986,6 +986,60 @@ def write(filename, data):
         json.dump(data, f, default=str, indent=2)
     print(f"  {filename}")
 
+def _bank_amount_key(row):
+    return (
+        str(row.get("date", ""))[:10],
+        round(_num(row.get("credit")), 2),
+        round(_num(row.get("debit")), 2),
+    )
+
+def _erp_credit_ref(row):
+    text = " ".join(str(row.get(key) or "") for key in ("id", "description", "reference", "notes"))
+    match = re.search(r"ERP-CREDIT-(\d+)-\d{4}-\d{2}-\d{2}", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"\breceipt-(\d+)-\d{4}-\d{2}-\d{2}\b", text)
+    return match.group(1) if match else ""
+
+def _bank_dedupe_key(row):
+    source = str(row.get("source") or "").strip()
+    date_value, credit, debit = _bank_amount_key(row)
+    if source == "Credit Payment":
+        ref = _erp_credit_ref(row)
+        if ref:
+            return ("credit-payment-ref", date_value, ref, credit, debit)
+        return ("credit-payment", date_value, credit, debit, str(row.get("bank_name") or ""))
+    return (
+        "bank",
+        source,
+        date_value,
+        str(row.get("description") or ""),
+        credit,
+        debit,
+        str(row.get("bank_name") or ""),
+    )
+
+def _bank_row_quality(row):
+    text = " ".join(str(row.get(key) or "") for key in ("id", "description", "reference", "notes"))
+    score = 0
+    if "ERP-CREDIT-" in text:
+        score += 10
+    if row.get("id"):
+        score += 1
+    if row.get("description"):
+        score += 1
+    return score
+
+def dedupe_bank_rows(rows):
+    merged = {}
+    for row in rows or []:
+        key = _bank_dedupe_key(row)
+        if key in merged:
+            merged[key] = row if _bank_row_quality(row) >= _bank_row_quality(merged[key]) else merged[key]
+        else:
+            merged[key] = row
+    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
+
 def _archive_key(section, row):
     if section == "sales":
         ticket_no = str(row.get("ticket_no") or "").strip()
@@ -1035,13 +1089,7 @@ def _archive_key(section, row):
             row.get("total_tonnes", ""),
         ))
     if section == "bank":
-        return "bank:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("description", ""),
-            row.get("credit", ""),
-            row.get("debit", ""),
-            row.get("bank_name", ""),
-        ))
+        return "bank:" + "|".join(str(part) for part in _bank_dedupe_key(row))
     if section == "cash":
         return "cash:" + "|".join(str(part) for part in (
             row.get("date", ""),
@@ -1981,7 +2029,7 @@ def main():
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
-    bank_rows = derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows)
+    bank_rows = dedupe_bank_rows(derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows))
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
         2,
@@ -2049,7 +2097,7 @@ def main():
             "bank_name": "UPI/Bank Vendor Payment",
             "source": "Vendor Payment",
         })
-    bank_rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
+    bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
         2,
