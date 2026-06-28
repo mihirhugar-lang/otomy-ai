@@ -99,6 +99,14 @@ def load_local_seed():
     except Exception:
         return {}
 
+def load_archive_manifest():
+    try:
+        with open(ARCHIVE_DIR / "manifest.json") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
 def _date_months(from_d, to_d):
     months = []
     cur = from_d.replace(day=1)
@@ -1695,7 +1703,13 @@ def write_snapshot_bundle(
             "current_balance": bank_net,
         }
     ]
+    archive_manifest = load_archive_manifest()
     exports_config = seed_endpoints.get("exports_config") or {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"}
+    if not exports_config.get("operating_balance_opening") and archive_manifest.get("operating_balance_opening"):
+        exports_config = {
+            **exports_config,
+            "operating_balance_opening": archive_manifest["operating_balance_opening"],
+        }
     opening = exports_config.get("operating_balance_opening") or {}
     try:
         opening_as_of = datetime.fromisoformat(str(opening.get("as_of"))).date()
@@ -1846,6 +1860,7 @@ def main():
     print(f"  Sync mode: {sync_mode} ({sync_label}); fetching {sync_start} to {today}")
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
+    archive_manifest = load_archive_manifest()
     archive_rows = load_archive_window(archive_start, today)
     archive_balances = {
         str(row.get("date", ""))[:10]: row
@@ -1855,7 +1870,9 @@ def main():
     labour_rows = merge_rows_by_archive_key(archive_rows.get("labour"), seed_endpoints.get("labour_30d", []), "labour")
     parts_rows = merge_rows_by_archive_key(archive_rows.get("parts"), seed_endpoints.get("parts_30d", []), "parts")
     machines_rows = merge_rows_by_archive_key(archive_rows.get("machines"), seed_endpoints.get("machines_30d", []), "machines")
-    seed_config = seed_endpoints.get("exports_config", {})
+    seed_config = dict(seed_endpoints.get("exports_config", {}))
+    if not seed_config.get("operating_balance_opening") and archive_manifest.get("operating_balance_opening"):
+        seed_config["operating_balance_opening"] = archive_manifest["operating_balance_opening"]
     seed_bank_accounts = seed_endpoints.get("bank_accounts", [])
 
     bank_balance_book = round(
