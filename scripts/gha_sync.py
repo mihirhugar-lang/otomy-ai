@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GitHub Actions sync script — fetches live data from loctell.com ERP
-and generates JSON files for otomy.ai. Runs every 5 min on GitHub servers.
+and generates JSON files for otomy.ai. Runs on GitHub servers.
 No Mac or local database required.
 """
 import base64, json, re, html as htmllib, os, time
@@ -17,6 +17,7 @@ SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 IST = ZoneInfo("Asia/Kolkata")
+MERGE_PROTECT_BEFORE_DATE = None
 
 ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
 ERP_ORG  = os.environ.get("ERP_ORG",  "VMIPL")
@@ -1107,11 +1108,11 @@ def _prefer_archive_row(section, existing, incoming):
     return incoming
 
 def _historical_existing_dates(rows):
-    today = datetime.now(IST).date().isoformat()
+    cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
     return {
         str(row.get("date", ""))[:10]
         for row in rows or []
-        if str(row.get("date", ""))[:10] and str(row.get("date", ""))[:10] < today
+        if str(row.get("date", ""))[:10] and str(row.get("date", ""))[:10] < cutoff
     }
 
 def _merge_archive_rows(existing, incoming, section):
@@ -1758,17 +1759,31 @@ def main():
     sess = erp_auth()
     print("  Authenticated with loctell.com")
 
+    global MERGE_PROTECT_BEFORE_DATE
     today       = datetime.now(IST).date()
     yesterday   = today - timedelta(days=1)
     month_start = today.replace(day=1)
     week_start  = today - timedelta(days=today.weekday())
-    thirty_ago  = today - timedelta(days=30)
     last_month_end = month_start - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
-    sync_start = min(thirty_ago, last_month_start)
+    sync_mode = os.environ.get("OTOMY_SYNC_MODE", "recent").strip().lower()
+    try:
+        recent_days = max(1, int(os.environ.get("OTOMY_RECENT_DAYS", "7")))
+    except ValueError:
+        recent_days = 7
+    if sync_mode in {"monthly", "month", "current_last_month"}:
+        sync_start = last_month_start
+        sync_label = "current month + last month"
+    else:
+        sync_mode = "recent"
+        sync_start = today - timedelta(days=recent_days - 1)
+        sync_label = f"last {recent_days} days"
+    archive_start = min(sync_start, last_month_start)
+    MERGE_PROTECT_BEFORE_DATE = sync_start.isoformat()
+    print(f"  Sync mode: {sync_mode} ({sync_label}); fetching {sync_start} to {today}")
     local_seed = load_local_seed()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
-    archive_rows = load_archive_window(sync_start, today)
+    archive_rows = load_archive_window(archive_start, today)
     archive_balances = {
         str(row.get("date", ""))[:10]: row
         for row in archive_rows.get("balances", [])
