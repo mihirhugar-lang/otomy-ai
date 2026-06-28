@@ -1716,14 +1716,22 @@ def build_vendor_ledgers(vendors_full, vendor_payments):
     return ledgers
 
 
-def build_customer_ledgers(customers_full, all_sales, repayments):
-    """Per-customer ledger from already-fetched sales + repayments (linked by NAME — the
-    sale customer_id does NOT match the customer list id). Mirrors localhost's ledger shape."""
+LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
+
+
+def build_customer_ledgers(customers_full, all_sales, repayments, today):
+    """Per-customer ledger from sales + receipts, linked by NAME (sale customer_id does NOT
+    match the customer list id). Loads the full archive window from LEDGER_HISTORY_START so
+    older dues show detail too; receipts exist only from that date, so anything before it
+    is captured in the opening balance. Mirrors localhost's ledger shape."""
+    hist = load_archive_window(LEDGER_HISTORY_START, today)
+    sales_src = hist.get("sales") or all_sales or []
+    reps_src = hist.get("receipts") or repayments or []
     sales_by_name = {}
-    for s in all_sales or []:
+    for s in sales_src:
         sales_by_name.setdefault(str(s.get("customer_name", "")).strip().upper(), []).append(s)
     reps_by_name = {}
-    for r in repayments or []:
+    for r in reps_src:
         reps_by_name.setdefault(str(r.get("customer_name", "")).strip().upper(), []).append(r)
 
     ledgers = {}
@@ -1764,16 +1772,20 @@ def build_customer_ledgers(customers_full, all_sales, repayments):
         entries.sort(key=lambda x: (str(x.get("date") or ""), x.get("type") or ""))
         window_net = round(sum(_num(e.get("debit")) - _num(e.get("credit")) for e in entries), 2)
         opening = round(closing - window_net, 2)
+        # Show an opening line only when it's non-negative (carried-forward dues). A negative
+        # opening means credit repayments are undercounted in the data (the known estimation
+        # gap) — in that case start at 0 like localhost rather than display a misleading
+        # negative. The true balance is always shown via closing_balance (the ERP snapshot).
         result_entries = []
-        if abs(opening) > 0.01:
+        if opening > 0.01:
             result_entries.append({
                 "type": "opening", "id": None, "date": None,
                 "description": "Opening Balance (before synced window)",
-                "debit": opening if opening > 0 else 0.0,
-                "credit": -opening if opening < 0 else 0.0,
-                "balance": opening,
+                "debit": opening, "credit": 0.0, "balance": opening,
             })
-        running = opening
+            running = opening
+        else:
+            running = 0.0
         for e in entries:
             running = round(running + _num(e.get("debit")) - _num(e.get("credit")), 2)
             e["balance"] = running
@@ -1910,7 +1922,7 @@ def write_snapshot_bundle(
     write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
     write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
 
-    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments)
+    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments, today)
     for row in customers_full:
         write_snapshot(
             f"/api/customers/ledger/{row['id']}",
