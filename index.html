@@ -1316,9 +1316,22 @@ async function api(url,opts={}){
   return r;
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
+const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+}
+function _rememberStaticSyncStamp(stamp){
+  if(!isStaticSnapshotHost()||!stamp)return;
+  try{sessionStorage.setItem(OTOMY_SYNC_STAMP_KEY,stamp);}catch(e){}
+}
+function _reloadStaticPageForSync(stamp){
+  if(!isStaticSnapshotHost())return false;
+  _rememberStaticSyncStamp(stamp);
+  const url=new URL(window.location.href);
+  url.searchParams.set('_sync',String(Date.now()));
+  window.location.replace(url.toString());
+  return true;
 }
 function _activeSectionName(){
   const active=document.querySelector('.section.active');
@@ -1356,10 +1369,12 @@ async function checkForFreshSync(force=false){
     if(!stamp)return;
     if(_lastSeenSyncStamp && stamp!==_lastSeenSyncStamp){
       _lastSeenSyncStamp=stamp;
+      if(_reloadStaticPageForSync(stamp))return;
       await _reloadActiveSectionAfterSync();
       flash('Latest sync data loaded');
     }else if(!_lastSeenSyncStamp || force){
       _lastSeenSyncStamp=stamp;
+      _rememberStaticSyncStamp(stamp);
     }
   }catch(e){
     // Stay quiet; status may require login or be temporarily unavailable during deploy.
@@ -1368,9 +1383,12 @@ async function checkForFreshSync(force=false){
   }
 }
 function startSyncAutoRefresh(){
+  if(isStaticSnapshotHost()){
+    try{_lastSeenSyncStamp=sessionStorage.getItem(OTOMY_SYNC_STAMP_KEY)||_lastSeenSyncStamp;}catch(e){}
+  }
   checkForFreshSync(true);
   clearInterval(_syncRefreshTimer);
-  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),60000);
+  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),30000);
 }
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden)checkForFreshSync(false);
@@ -1673,7 +1691,10 @@ window.onload=async function(){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').then(()=>refreshInstallButton()).catch(()=>{});
+    navigator.serviceWorker.register('/service-worker.js').then(reg=>{
+      if(reg.update)reg.update();
+      refreshInstallButton();
+    }).catch(()=>{});
   });
 }
 

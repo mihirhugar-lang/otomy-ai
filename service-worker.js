@@ -1,4 +1,4 @@
-const CACHE = 'crusherops-v2';
+const CACHE = 'crusherops-v3';
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -19,9 +19,15 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API calls and HTML navigation — always network, never cache
+  // API calls, snapshot data, and HTML navigation stay network-only.
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/data/')) return;
   if (event.request.mode === 'navigate') return;
+
+  const canCache =
+    url.pathname === '/static/manifest.webmanifest' ||
+    url.pathname.startsWith('/static/icons/');
+  if (!canCache) return;
 
   // Static assets only (icons, manifest, etc.) — cache first
   event.respondWith(
