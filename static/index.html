@@ -745,10 +745,15 @@ function _archiveAllowedForRange(from,to){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  const archived=await archiveFetch(url);
-  if(archived!==null)return archived;
+  const preferSnapshotFirst=u.pathname==='/api/dashboard/control';
+  if(!preferSnapshotFirst){
+    const archived=await archiveFetch(url);
+    if(archived!==null)return archived;
+  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
+    const archived=preferSnapshotFirst?await archiveFetch(url):null;
+    if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
   const data=await r.json();
