@@ -2320,8 +2320,12 @@ def main():
     # ── debtors and ERP credit repayments ─────────────────────────────────────
     print(f"  {len(debtors_today)} customers")
     seed_controls = local_seed.get("controls") or {}
+    override_controls = local_dashboard_overrides.get("controls") or {}
 
     def seeded_repayments(start, end):
+        override_control = override_controls.get(f"{start}|{end}") or {}
+        if "customer_repayments" in override_control:
+            return override_control.get("customer_repayments") or []
         control = seed_controls.get(f"{start}|{end}") or {}
         return control.get("customer_repayments")
 
