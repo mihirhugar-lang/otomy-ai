@@ -2545,41 +2545,6 @@ def main():
         }
         for as_of in sorted(set(debtor_cache.keys()) | set(creditor_cache.keys()))
     }
-    # Reliable per-end-date balances for the dashboard presets, committed every 5 min (small file,
-    # NOT in data/archive -> no bloat). Receivables/payables come from SEQUENTIAL debtor/creditor
-    # fetches (the concurrent snapshot loop is intermittently corrupt); cash/bank from the overlay
-    # (includes today's movements). This makes every range live + correct without the nightly lag.
-    last_week_end = week_start - timedelta(days=1)
-    recent_balance_dates = sorted({today, yesterday, last_week_end, last_month_end})
-    balances_recent = []
-    for as_of in recent_balance_dates:
-        try:
-            deb = fetch_debtors(sess, as_of)
-            cre = fetch_creditors(sess, as_of)
-        except Exception as e:
-            print(f"  balances_recent fetch error ({as_of}): {e}")
-            continue
-        if not deb and not cre:
-            continue
-        recv_rows = sorted(
-            ({"name": r.get("name"), "balance": round(_num(r.get("outstanding", r.get("balance", 0.0))), 2)}
-             for r in deb if _num(r.get("outstanding", r.get("balance", 0.0))) > 0),
-            key=lambda r: r["balance"], reverse=True)
-        pay_rows = sorted(
-            ({"name": c.get("name"), "balance": round(_num(c.get("payable", c.get("balance", 0.0))), 2)}
-             for c in cre if _num(c.get("payable", c.get("balance", 0.0))) > 0),
-            key=lambda r: r["balance"], reverse=True)
-        ov = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments)
-        balances_recent.append({
-            "date": str(as_of),
-            "receivables": round(sum(r["balance"] for r in recv_rows), 2),
-            "payables": round(sum(r["balance"] for r in pay_rows), 2),
-            "top_receivables": recv_rows[:5],
-            "top_payables": pay_rows[:5],
-            "cash_balance_office": ov[1] if ov else None,
-            "bank_balance": ov[0] if ov else None,
-        })
-    write("balances_recent.json", balances_recent)
     write("ctrl_today.json", ctrl_today)
     write("ctrl_yesterday.json", ctrl_yesterday)
     write("ctrl_week.json", ctrl_week)
