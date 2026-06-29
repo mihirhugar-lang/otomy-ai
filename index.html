@@ -1063,7 +1063,7 @@ async function archiveFetch(url){
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
-    if(`${year}-${String(month).padStart(2,'0')}`>today().substring(0,7))return null;  // only FUTURE months fall back
+    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;  // current+future month -> snapshot (has today + correct balances); past -> archive
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;

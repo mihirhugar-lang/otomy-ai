@@ -1532,6 +1532,102 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         summary["credit_payment_received"] = control["customer_repayments_payment_total"]
     return control
 
+_BALANCE_OVERLAY = None
+
+
+def _balance_overlay():
+    """Verified balance overlay (anchors + ICICI statement + mode corrections), mirroring the
+    client _archiveOperatingBalances. Lets snapshots carry correct balances for TODAY too
+    (the archive lags a day). No extra files/commits — only corrects snapshot content."""
+    global _BALANCE_OVERLAY
+    if _BALANCE_OVERLAY is None:
+        cfg = {}
+        try:
+            with open(DATA_DIR / "balance_anchors.json") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        stmt_rows, stmt_to = [], None
+        fn = cfg.get("bank_statement_file")
+        if fn:
+            try:
+                with open(DATA_DIR / fn) as f:
+                    sd = json.load(f)
+                    stmt_rows = sd.get("rows") or []
+                    stmt_to = str(sd.get("to") or "")
+            except Exception:
+                pass
+        _BALANCE_OVERLAY = {
+            "anchors": sorted(cfg.get("anchors", []), key=lambda a: str(a.get("date"))),
+            "corrections": cfg.get("mode_corrections", []),
+            "stmt_rows": stmt_rows,
+            "stmt_to": stmt_to,
+        }
+    return _BALANCE_OVERLAY
+
+
+def _overlay_mode(corrs, e):
+    amt = _num(e.get("amount"))
+    hay = ((e.get("category") or "") + " " + (e.get("description") or "") + " " + (e.get("notes") or "")).upper()
+    dt = str(e.get("date", ""))[:10]
+    for c in corrs:
+        if abs(amt - _num(c.get("amount"))) < 1 \
+           and (not c.get("contains") or str(c["contains"]).upper() in hay) \
+           and (not c.get("date_from") or dt >= c["date_from"]) \
+           and (not c.get("date_to") or dt <= c["date_to"]):
+            return c.get("force")
+    return None
+
+
+def _overlay_balance(to_iso, sales, expenses, repayments):
+    """Bank/cash as of to_iso: latest anchor + statement bank + corrected movements.
+    Returns (bank, cash) or None if no overlay. Vendor payments live in expenses (not added again)."""
+    ov = _balance_overlay()
+    anchors = [a for a in ov["anchors"] if str(a.get("date")) <= to_iso]
+    if not anchors:
+        return None
+    a = anchors[-1]
+    bank = _num(a.get("bank"))
+    cash = _num(a.get("cash"))
+    anchor_date = str(a.get("date"))
+    cutoff = None
+    if ov["stmt_rows"]:
+        le = [r for r in ov["stmt_rows"] if str(r.get("date")) <= to_iso]
+        if le:
+            bank = _num(le[-1].get("balance"))
+            cutoff = ov["stmt_to"]
+    frm = (date.fromisoformat(anchor_date) + timedelta(days=1)).isoformat()
+    corrs = ov["corrections"]
+    if to_iso >= frm:
+        for s in sales:
+            d = str(s.get("date", ""))[:10]
+            if not (frm <= d <= to_iso) or str(s.get("payment_mode", "")).lower() == "credit":
+                continue
+            if _payment_channel(s.get("payment_mode")) == "cash":
+                cash += _sale_total(s)
+            elif cutoff is None or d > cutoff:
+                bank += _sale_total(s)
+        for r in repayments:
+            d = str(r.get("date", ""))[:10]
+            if not (frm <= d <= to_iso):
+                continue
+            amt = _num(r.get("payment_received", r.get("amount")))
+            if _payment_channel(r.get("mode")) == "cash":
+                cash += amt
+            elif cutoff is None or d > cutoff:
+                bank += amt
+        for e in expenses:
+            d = str(e.get("date", ""))[:10]
+            if not (frm <= d <= to_iso):
+                continue
+            ch = _overlay_mode(corrs, e) or _payment_channel(e.get("payment_mode") or "Cash")
+            if ch == "cash":
+                cash -= _num(e.get("amount"))
+            elif cutoff is None or d > cutoff:
+                bank -= _num(e.get("amount"))
+    return round(bank, 2), round(cash, 2)
+
+
 def build_ledger_view(
     sales,
     expenses,
@@ -1636,6 +1732,9 @@ def build_ledger_view(
                 + sum(_num(row.get("amount")) for row in day_labour)
                 + sum(_num(row.get("total_amount")) for row in day_parts)
             )
+            _ov = _overlay_balance(key, sales, expenses, repayments)
+            row_bank = _ov[0] if _ov else round(bank_balance, 2)
+            row_cash = _ov[1] if _ov else round(cash_balance, 2)
             rows.append({
                 "date": key,
                 "sale_trips": len(day_sales),
@@ -1644,8 +1743,8 @@ def build_ledger_view(
                 "credit_sale_amount": round(sale_amount - spot_sale_amount, 2),
                 "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
                 "expenses": round(expense_total, 2),
-                "cash_balance_office": round(cash_balance, 2),
-                "bank_balance": round(bank_balance, 2),
+                "cash_balance_office": row_cash,
+                "bank_balance": row_bank,
                 "boulder_input_mt": round(sum(_num(row.get("total_tonnes")) for row in day_boulders), 2),
                 "boulder_trips": round(sum(_num(row.get("trips")) for row in day_boulders), 2),
             })
