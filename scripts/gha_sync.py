@@ -1501,11 +1501,8 @@ def apply_seed_control_overrides(control, local_seed, start, end):
     seed_summary = source_control.get("summary") or {}
     summary = control.setdefault("summary", {})
     for key in (
-        "bank_balance",
-        "cash_balance_office",
         "bank_balance_book",
         "cash_balance_office_book",
-        "operating_balance_from",
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
@@ -2442,6 +2439,13 @@ def main():
             operating_bank_balance -= _num(payment.get("amount"))
     operating_bank_balance = round(operating_bank_balance, 2)
     operating_cash_balance = round(operating_cash_balance, 2)
+
+    def operating_balance_for(as_of):
+        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments)
+        if overlay:
+            return overlay
+        return operating_bank_balance, operating_cash_balance
+
     seed_debtors = [
         {"name": row.get("name"), "outstanding": row.get("balance", row.get("outstanding", 0.0))}
         for row in seed_endpoints.get("customers_outstanding", [])
@@ -2468,10 +2472,12 @@ def main():
         return creditor_cache.get(as_of) or seed_creditors
 
     # ── control room JSON ─────────────────────────────────────────────────────
+    today_bank_balance, today_cash_balance = operating_balance_for(today)
+    yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
-        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        cash_balance=today_cash_balance, bank_net=today_bank_balance,
         labour=seed_for(labour_rows, today, today),
         parts=seed_for(parts_rows, today, today),
         machines=seed_for(machines_rows, today, today),
@@ -2483,7 +2489,7 @@ def main():
     ctrl_yesterday = build_control(
         sales_for(yesterday, yesterday), exp_for(yesterday, yesterday), yesterday, yesterday,
         boulders=boulders_yesterday, debtors=debtors_for(yesterday), creditors=creditors_for(yesterday),
-        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        cash_balance=yesterday_cash_balance, bank_net=yesterday_bank_balance,
         labour=seed_for(labour_rows, yesterday, yesterday),
         parts=seed_for(parts_rows, yesterday, yesterday),
         machines=seed_for(machines_rows, yesterday, yesterday),
@@ -2495,7 +2501,7 @@ def main():
     ctrl_week = build_control(
         sales_for(week_start, today), exp_for(week_start, today), week_start, today,
         boulders=boulders_week, debtors=debtors_for(today), creditors=creditors_for(today),
-        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        cash_balance=today_cash_balance, bank_net=today_bank_balance,
         labour=seed_for(labour_rows, week_start, today),
         parts=seed_for(parts_rows, week_start, today),
         machines=seed_for(machines_rows, week_start, today),
@@ -2507,7 +2513,7 @@ def main():
     ctrl_mtd = build_control(
         sales_for(month_start, today), exp_for(month_start, today), month_start, today,
         boulders=boulders_mtd, debtors=debtors_for(today), creditors=creditors_for(today),
-        cash_balance=operating_cash_balance, bank_net=operating_bank_balance,
+        cash_balance=today_cash_balance, bank_net=today_bank_balance,
         labour=seed_for(labour_rows, month_start, today),
         parts=seed_for(parts_rows, month_start, today),
         machines=seed_for(machines_rows, month_start, today),
