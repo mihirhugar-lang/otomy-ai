@@ -1,0 +1,13 @@
+name: Verify Otomy guards
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify dashboard parity guard
+        run: python3 scripts/verify_dashboard_parity.py

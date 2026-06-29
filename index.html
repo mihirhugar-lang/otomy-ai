@@ -756,21 +756,7 @@ async function snapshotFetch(url){
     if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
-  const data=await r.json();
-  if(u.pathname==='/api/dashboard/control' && data && data.summary){
-    const to=u.searchParams.get('to_date');
-    // Bank/cash: apply the verified anchor + statement for ANY date up to and including today.
-    if(to && String(to)<=today()){
-      const operating=await _archiveOperatingBalances(to);
-      data.summary.bank_balance=operating.bank_balance;
-      data.summary.cash_balance_office=operating.cash_balance_office;
-      data.summary.operating_balance_from=operating.operating_balance_from;
-    }
-    // Receivables/payables must remain from the dashboard snapshot. The
-    // snapshot is generated from localhost parity data; archive balances are
-    // only for archive fallback and can be stale for corrected historical tabs.
-  }
-  return data;
+  return r.json();
 }
 const _archiveCache={};
 function _dateMonths(from,to){
