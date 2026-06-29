@@ -1024,7 +1024,8 @@ async function _archiveLedger(year,month){
   if(!payload)return null;
   const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
-  for(let d=1;d<=days;d++){
+  const lastDay=(ym===today().substring(0,7))?Number(today().substring(8,10)):days;  // current month: stop at today
+  for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
     const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
     const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_saleTotal(r),0);
@@ -1062,7 +1063,7 @@ async function archiveFetch(url){
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
-    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;
+    if(`${year}-${String(month).padStart(2,'0')}`>today().substring(0,7))return null;  // only FUTURE months fall back
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;
