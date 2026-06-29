@@ -1964,6 +1964,13 @@ def write_snapshot_bundle(
         rows = balance_snapshots.get(str(as_of), {}).get("creditors") or []
         return [{"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))} for row in rows]
 
+    def overlay_anchor_date(as_of):
+        anchors = [
+            row for row in _balance_overlay().get("anchors", [])
+            if str(row.get("date")) <= str(as_of)
+        ]
+        return str(anchors[-1].get("date") or "") if anchors else ""
+
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
     seed_customer_ledgers = local_seed.get("customer_ledgers", {}) if isinstance(local_seed, dict) else {}
     seed_vendor_ledgers = local_seed.get("vendor_ledgers", {}) if isinstance(local_seed, dict) else {}
@@ -2066,6 +2073,12 @@ def write_snapshot_bundle(
             summary["payables"] = round(_num(archive_balance.get("payables")), 2)
             control["top_receivables"] = archive_balance.get("top_receivables", [])
             control["top_payables"] = archive_balance.get("top_payables", [])
+        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments)
+        if overlay_balance:
+            summary = control.setdefault("summary", {})
+            summary["bank_balance"] = overlay_balance[0]
+            summary["cash_balance_office"] = overlay_balance[1]
+            summary["operating_balance_from"] = overlay_anchor_date(end)
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))

@@ -425,6 +425,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('dashboard','today',this)">Today</button>
     <button class="pbtn" onclick="preset('dashboard','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('dashboard','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('dashboard','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('dashboard','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('dashboard','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -456,6 +457,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('sales','today',this)">Today</button>
       <button class="pbtn" onclick="preset('sales','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('sales','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('sales','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('sales','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('sales','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -480,6 +482,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('expenses','today',this)">Today</button>
       <button class="pbtn" onclick="preset('expenses','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('expenses','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('expenses','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('expenses','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('expenses','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -502,6 +505,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('customers','today',this)">Today</button>
     <button class="pbtn" onclick="preset('customers','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('customers','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('customers','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('customers','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('customers','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -536,6 +540,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('vendors','today',this)">Today</button>
     <button class="pbtn" onclick="preset('vendors','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('vendors','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('vendors','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('vendors','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('vendors','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -576,6 +581,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('erpbank','today',this)">Today</button>
       <button class="pbtn" onclick="preset('erpbank','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('erpbank','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpbank','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpbank','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpbank','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -597,6 +603,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('erpcash','today',this)">Today</button>
       <button class="pbtn" onclick="preset('erpcash','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('erpcash','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpcash','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpcash','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpcash','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -619,6 +626,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
     <button class="pbtn" onclick="opsPreset('yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="opsPreset('week',this)">This Week</button>
+    <button class="pbtn" onclick="opsPreset('lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -667,6 +675,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="setAuditDates(today(),today())">Today</button>
       <button class="pbtn" onclick="setAuditDates(yesterday(),yesterday())">Yesterday</button>
       <button class="pbtn" onclick="setAuditDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setAuditDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
       <button class="pbtn" onclick="setAuditDates(mtdStart(),today())">Month Till Date</button>
       <button class="pbtn" onclick="setAuditDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
       <div class="preset-dates">
@@ -682,6 +691,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="setTallyDates(today(),today())">Today</button>
       <button class="pbtn" onclick="setTallyDates(yesterday(),yesterday())">Yesterday</button>
       <button class="pbtn" onclick="setTallyDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setTallyDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
       <button class="pbtn" onclick="setTallyDates(mtdStart(),today())">Month Till Date</button>
       <button class="pbtn" onclick="setTallyDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
       <div class="preset-dates">
@@ -744,11 +754,15 @@ async function snapshotFetch(url){
   const data=await r.json();
   if(u.pathname==='/api/dashboard/control' && data && data.summary){
     const to=u.searchParams.get('to_date');
-    if(to && _archiveAllowedForRange(null,to)){
+    // Bank/cash: apply the verified anchor + statement for ANY date up to and including today.
+    if(to && String(to)<=today()){
       const operating=await _archiveOperatingBalances(to);
       data.summary.bank_balance=operating.bank_balance;
       data.summary.cash_balance_office=operating.cash_balance_office;
       data.summary.operating_balance_from=operating.operating_balance_from;
+    }
+    // Receivables/payables: historical only (archive balances don't include the live day).
+    if(to && _archiveAllowedForRange(null,to)){
       const balance=await _archiveBalanceForDate(to);
       if(balance){
         data.summary.receivables=Math.round(_num(balance.receivables)*100)/100;
@@ -805,30 +819,76 @@ function _receiptPaymentAmount(row){
   const noted=_receiptNoteAmount(row.notes,'payment_received');
   return noted==null?_num(row.amount):_num(noted);
 }
+let _balCfgCache, _bankStmtCache;
+async function _balanceConfig(){
+  if(_balCfgCache!==undefined)return _balCfgCache;
+  _balCfgCache=await fetch(`/data/balance_anchors.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  return _balCfgCache;
+}
+async function _bankStatement(file){
+  if(!file)return null;
+  if(_bankStmtCache!==undefined)return _bankStmtCache;
+  _bankStmtCache=await fetch(`/data/${file}?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  return _bankStmtCache;
+}
+function _modeOverride(corrs,e){
+  if(!corrs)return null;
+  const amt=_num(e.amount);
+  const hay=((e.category||'')+' '+(e.description||'')+' '+(e.notes||'')).toUpperCase();
+  const dt=String(e.date||'');
+  for(const c of corrs){
+    if(Math.abs(amt-_num(c.amount))<1
+      && (!c.contains||hay.includes(String(c.contains).toUpperCase()))
+      && (!c.date_from||dt>=c.date_from)
+      && (!c.date_to||dt<=c.date_to)) return c.force;
+  }
+  return null;
+}
 async function _archiveOperatingBalances(toDate=today()){
-  const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
-  const opening=(manifest&&manifest.operating_balance_opening)||{};
-  const asOf=String(opening.as_of||'').slice(0,10);
-  const from=asOf?localISO(new Date(new Date(`${asOf}T00:00:00`).getTime()+86400000)):'2025-02-14';
+  const cfg=await _balanceConfig();
   const to=toDate||today();
-  let bank=_num(opening.bank_balance), cash=_num(opening.cash_balance_office);
-  if(to<from)return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
-  const months=await _loadArchiveRange(from,to);
-  const sales=_rowsInRange(months,'sales',from,to);
-  const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to);
-  sales.forEach(s=>{
-    if(String(s.payment_mode||'').toLowerCase()==='credit')return;
-    if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s);else bank+=_saleTotal(s);
-  });
-  receipts.forEach(r=>{
-    const amount=_receiptPaymentAmount(r);
-    if(_payChannel(r.mode)==='cash')cash+=amount;else bank+=amount;
-  });
-  expenses.forEach(e=>{
-    if(_payChannel(e.payment_mode)==='cash')cash-=_num(e.amount);else bank-=_num(e.amount);
-  });
-  return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
+  // Anchor to the latest verified truth point (ICICI statement + cash count) on/before `to`.
+  // Fall back to manifest opening if no anchor config is present.
+  let anchorDate, bank, cash;
+  const anchors=((cfg&&cfg.anchors)||[]).filter(a=>String(a.date)<=to).sort((a,b)=>String(a.date)<String(b.date)?-1:1);
+  if(anchors.length){
+    const a=anchors[anchors.length-1];
+    anchorDate=String(a.date); bank=_num(a.bank); cash=_num(a.cash);
+  }else{
+    const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+    const opening=(manifest&&manifest.operating_balance_opening)||{};
+    anchorDate=String(opening.as_of||'').slice(0,10)||'2025-02-13';
+    bank=_num(opening.bank_balance); cash=_num(opening.cash_balance_office);
+  }
+  const corrs=(cfg&&cfg.mode_corrections)||null;
+  // BANK: use the actual ICICI statement running balance (exact). After statement end, add bank movements.
+  let bankCutoff=null;
+  const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
+  if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
+    const le=stmt.rows.filter(r=>String(r.date)<=to);
+    if(le.length){ bank=_num(le[le.length-1].balance); bankCutoff=String(stmt.to); }
+  }
+  const from=localISO(new Date(new Date(`${anchorDate}T00:00:00`).getTime()+86400000));
+  if(to>=from){
+    const months=await _loadArchiveRange(from,to);
+    const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
+    _rowsInRange(months,'sales',from,to).forEach(s=>{
+      if(String(s.payment_mode||'').toLowerCase()==='credit')return;
+      if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s);
+      else if(inBank(s.date))bank+=_saleTotal(s);
+    });
+    _rowsInRange(months,'receipts',from,to).forEach(r=>{
+      const amount=_receiptPaymentAmount(r);
+      if(_payChannel(r.mode)==='cash')cash+=amount;
+      else if(inBank(r.date))bank+=amount;
+    });
+    _rowsInRange(months,'expenses',from,to).forEach(e=>{
+      const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
+      if(ch==='cash')cash-=_num(e.amount);
+      else if(inBank(e.date))bank-=_num(e.amount);
+    });
+  }
+  return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:anchorDate};
 }
 function _archiveCustomerSales(sales){
   const map=new Map();
@@ -974,7 +1034,8 @@ async function _archiveLedger(year,month){
   if(!payload)return null;
   const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
-  for(let d=1;d<=days;d++){
+  const lastDay=(ym===today().substring(0,7))?Number(today().substring(8,10)):days;  // current month: stop at today
+  for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
     const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
     const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_saleTotal(r),0);
@@ -1012,7 +1073,7 @@ async function archiveFetch(url){
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
-    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;
+    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;  // current+future month -> snapshot (has today + correct balances); past -> archive
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;
@@ -1228,6 +1289,8 @@ function weekStart(){const d=new Date();const day=d.getDay();const diff=d.getDat
 function mtdStart(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`}
 function lastMonthStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return localISO(d)}
 function lastMonthEnd(){const d=new Date();d.setDate(0);return localISO(d)}
+function lastWeekStart(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-7);return localISO(d)}
+function lastWeekEnd(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-1);return localISO(d)}
 function monthNow(){return today().substring(0,7)}
 function lastMonthYM(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
 
@@ -1405,6 +1468,7 @@ function calcPreset(p){
     case'today':return[today(),today()];
     case'yesterday':return[yesterday(),yesterday()];
     case'week':return[weekStart(),today()];
+    case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
     default:return[today(),today()];
