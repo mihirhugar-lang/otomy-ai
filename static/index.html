@@ -766,16 +766,9 @@ async function snapshotFetch(url){
       data.summary.cash_balance_office=operating.cash_balance_office;
       data.summary.operating_balance_from=operating.operating_balance_from;
     }
-    // Receivables/payables: historical only (archive balances don't include the live day).
-    if(to && _archiveAllowedForRange(null,to)){
-      const balance=await _archiveBalanceForDate(to);
-      if(balance){
-        data.summary.receivables=Math.round(_num(balance.receivables)*100)/100;
-        data.summary.payables=Math.round(_num(balance.payables)*100)/100;
-        data.top_receivables=balance.top_receivables||balance.receivables_rows||[];
-        data.top_payables=balance.top_payables||balance.payables_rows||[];
-      }
-    }
+    // Receivables/payables must remain from the dashboard snapshot. The
+    // snapshot is generated from localhost parity data; archive balances are
+    // only for archive fallback and can be stale for corrected historical tabs.
   }
   return data;
 }
