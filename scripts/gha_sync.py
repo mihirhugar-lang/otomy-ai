@@ -1022,7 +1022,7 @@ def build_control(sales, expenses, from_d, to_d,
             "cash_balance_office_book": round(cash_balance_office_book, 2),
             "operating_balance_from":  str(from_d),
             "kumar_balance":           0.0,
-            "credit_payment_received": rp_pay_total,
+            "credit_payment_received": rp_total,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
             "selected_period_profit_director_adjusted": round(profit, 2),
@@ -1517,7 +1517,7 @@ def apply_seed_control_overrides(control, local_seed, start, end):
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
-    if seed_control and "credit_payment_received" in seed_summary:
+    if seed_control and "credit_payment_received" in seed_summary and "customer_repayments_total" not in seed_control:
         summary["credit_payment_received"] = seed_summary["credit_payment_received"]
     if seed_control:
         for key in ("receivables", "payables"):
@@ -1536,8 +1536,8 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         control["top_receivables"] = seed_control["top_receivables"]
     if seed_control and "top_payables" in seed_control:
         control["top_payables"] = seed_control["top_payables"]
-    if "customer_repayments_payment_total" in control:
-        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
+    if "customer_repayments_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_total"]
     return control
 
 def apply_local_dashboard_override(control, overrides, start, end):
@@ -1547,6 +1547,8 @@ def apply_local_dashboard_override(control, overrides, start, end):
         return control
     summary = control.setdefault("summary", {})
     for key, value in (override.get("summary") or {}).items():
+        if key == "credit_payment_received" and "customer_repayments_total" in override:
+            continue
         summary[key] = value
     for key in (
         "customer_repayments",
@@ -1559,8 +1561,8 @@ def apply_local_dashboard_override(control, overrides, start, end):
     ):
         if key in override:
             control[key] = override[key]
-    if "customer_repayments_payment_total" in control:
-        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
+    if "customer_repayments_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_total"]
     return control
 
 _BALANCE_OVERLAY = None
@@ -1772,7 +1774,7 @@ def build_ledger_view(
                 "sale_amount": round(sale_amount, 2),
                 "spot_sale_amount": round(spot_sale_amount, 2),
                 "credit_sale_amount": round(sale_amount - spot_sale_amount, 2),
-                "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
+                "credit_repayment": round(sum(_num(row.get("amount")) for row in day_repayments), 2),
                 "expenses": round(expense_total, 2),
                 "cash_balance_office": row_cash,
                 "bank_balance": row_bank,

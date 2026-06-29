@@ -31,7 +31,6 @@ FORBIDDEN_SNAPSHOT_FETCH_ASSIGNMENTS = (
 SUMMARY_FIELDS = (
     "receivables",
     "payables",
-    "credit_payment_received",
 )
 
 REQUIRED_DASHBOARD_SUMMARY_FIELDS = (
@@ -149,6 +148,17 @@ def visible_tile_values(summary: dict) -> dict[str, float]:
     return values
 
 
+def verify_credit_payment_uses_repayment_total(snapshot: dict, label: str) -> None:
+    summary = snapshot.get("summary") or {}
+    actual = round(number_value(summary.get("credit_payment_received"), f"{label} summary.credit_payment_received"), 2)
+    repayment_total = round(number_value(snapshot.get("customer_repayments_total"), f"{label} customer_repayments_total"), 2)
+    if actual != repayment_total:
+        fail(
+            f"{label} credit_payment_received must equal customer_repayments_total "
+            f"(actual={actual}, repayment_total={repayment_total})"
+        )
+
+
 def extract_snapshot_fetch(html: str, path: Path) -> str:
     start = html.find("async function snapshotFetch(url)")
     end = html.find("const _archiveCache", start)
@@ -197,6 +207,7 @@ def verify_override_snapshots() -> None:
                     f"{url} {field} drifted: snapshot={actual_value} "
                     f"override={expected_value}"
                 )
+        verify_credit_payment_uses_repayment_total(snapshot, url)
         checked += 1
 
     if checked == 0:
@@ -215,6 +226,7 @@ def verify_all_dashboard_presets() -> None:
             if field not in summary:
                 fail(f"{preset} {url} missing summary.{field}")
             number_value(summary[field], f"{preset} {url} summary.{field}")
+        verify_credit_payment_uses_repayment_total(snapshot, f"{preset} {url}")
         tiles = visible_tile_values(summary)
         for tile_label, tile_key in VISIBLE_DASHBOARD_TILES:
             if tile_key not in tiles:
