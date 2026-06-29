@@ -425,6 +425,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('dashboard','today',this)">Today</button>
     <button class="pbtn" onclick="preset('dashboard','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('dashboard','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('dashboard','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('dashboard','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('dashboard','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -456,6 +457,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('sales','today',this)">Today</button>
       <button class="pbtn" onclick="preset('sales','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('sales','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('sales','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('sales','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('sales','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -480,6 +482,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('expenses','today',this)">Today</button>
       <button class="pbtn" onclick="preset('expenses','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('expenses','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('expenses','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('expenses','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('expenses','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -502,6 +505,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('customers','today',this)">Today</button>
     <button class="pbtn" onclick="preset('customers','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('customers','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('customers','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('customers','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('customers','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -536,6 +540,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="preset('vendors','today',this)">Today</button>
     <button class="pbtn" onclick="preset('vendors','yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="preset('vendors','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('vendors','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('vendors','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('vendors','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -576,6 +581,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('erpbank','today',this)">Today</button>
       <button class="pbtn" onclick="preset('erpbank','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('erpbank','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpbank','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpbank','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpbank','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -597,6 +603,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn act" onclick="preset('erpcash','today',this)">Today</button>
       <button class="pbtn" onclick="preset('erpcash','yesterday',this)">Yesterday</button>
       <button class="pbtn" onclick="preset('erpcash','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('erpcash','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpcash','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpcash','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
@@ -619,6 +626,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn act" onclick="opsPreset('today',this)">Today</button>
     <button class="pbtn" onclick="opsPreset('yesterday',this)">Yesterday</button>
     <button class="pbtn" onclick="opsPreset('week',this)">This Week</button>
+    <button class="pbtn" onclick="opsPreset('lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
     <div class="preset-dates">
@@ -667,6 +675,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="setAuditDates(today(),today())">Today</button>
       <button class="pbtn" onclick="setAuditDates(yesterday(),yesterday())">Yesterday</button>
       <button class="pbtn" onclick="setAuditDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setAuditDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
       <button class="pbtn" onclick="setAuditDates(mtdStart(),today())">Month Till Date</button>
       <button class="pbtn" onclick="setAuditDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
       <div class="preset-dates">
@@ -682,6 +691,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="setTallyDates(today(),today())">Today</button>
       <button class="pbtn" onclick="setTallyDates(yesterday(),yesterday())">Yesterday</button>
       <button class="pbtn" onclick="setTallyDates(weekStart(),today())">This Week</button>
+      <button class="pbtn" onclick="setTallyDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
       <button class="pbtn" onclick="setTallyDates(mtdStart(),today())">Month Till Date</button>
       <button class="pbtn" onclick="setTallyDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
       <div class="preset-dates">
@@ -1279,6 +1289,8 @@ function weekStart(){const d=new Date();const day=d.getDay();const diff=d.getDat
 function mtdStart(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`}
 function lastMonthStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return localISO(d)}
 function lastMonthEnd(){const d=new Date();d.setDate(0);return localISO(d)}
+function lastWeekStart(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-7);return localISO(d)}
+function lastWeekEnd(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-1);return localISO(d)}
 function monthNow(){return today().substring(0,7)}
 function lastMonthYM(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
 
@@ -1456,6 +1468,7 @@ function calcPreset(p){
     case'today':return[today(),today()];
     case'yesterday':return[yesterday(),yesterday()];
     case'week':return[weekStart(),today()];
+    case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
     default:return[today(),today()];
