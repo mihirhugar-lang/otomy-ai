@@ -2545,30 +2545,6 @@ def main():
         }
         for as_of in sorted(set(debtor_cache.keys()) | set(creditor_cache.keys()))
     }
-    # Fresh per-day receivables/payables totals (committed every 5 min — small, NOT in data/archive
-    # so no bloat). Lets past-date balances stay current instead of waiting for the nightly archive.
-    balances_recent = []
-    for as_of in sorted(set(debtor_cache.keys()) | set(creditor_cache.keys())):
-        debtors = debtor_cache.get(as_of) or []
-        creditors = creditor_cache.get(as_of) or []
-        if not debtors and not creditors:
-            continue
-        receivables = sorted(
-            ({"name": r.get("name"), "balance": round(_num(r.get("outstanding", r.get("balance", 0.0))), 2)}
-             for r in debtors if _num(r.get("outstanding", r.get("balance", 0.0))) > 0),
-            key=lambda r: r["balance"], reverse=True)
-        payables = sorted(
-            ({"name": r.get("name"), "balance": round(_num(r.get("payable", r.get("balance", 0.0))), 2)}
-             for r in creditors if _num(r.get("payable", r.get("balance", 0.0))) > 0),
-            key=lambda r: r["balance"], reverse=True)
-        balances_recent.append({
-            "date": str(as_of),
-            "receivables": round(sum(r["balance"] for r in receivables), 2),
-            "payables": round(sum(r["balance"] for r in payables), 2),
-            "top_receivables": receivables[:5],
-            "top_payables": payables[:5],
-        })
-    write("balances_recent.json", balances_recent)
     write("ctrl_today.json", ctrl_today)
     write("ctrl_yesterday.json", ctrl_yesterday)
     write("ctrl_week.json", ctrl_week)

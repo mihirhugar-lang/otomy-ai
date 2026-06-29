@@ -923,24 +923,10 @@ function _archiveBalanceAsOf(months,to){
   });
   return latest||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
 }
-let _recentBalCache;
-async function _recentBalances(){
-  if(_recentBalCache!==undefined)return _recentBalCache;
-  _recentBalCache=await fetch(`/data/balances_recent.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
-  return _recentBalCache;
-}
-// Latest balance <= `to`, preferring the fresh balances_recent over the (nightly) archive on same date.
-function _mergeBalanceAsOf(months,recent,to){
-  const byDate={};
-  (months||[]).forEach(m=>{(m.balances||[]).forEach(r=>{if(r.date<=to)byDate[r.date]=r;});});
-  (recent||[]).forEach(r=>{if(r.date<=to)byDate[r.date]=r;});  // fresh overrides same-date archive
-  const dates=Object.keys(byDate).sort();
-  return dates.length?byDate[dates[dates.length-1]]:null;
-}
 async function _archiveBalanceForDate(asOf){
   const payload=await _loadArchiveMonth(asOf.substring(0,7));
-  const recent=await _recentBalances();
-  return _mergeBalanceAsOf(payload?[payload]:[], recent, asOf);
+  if(!payload)return null;
+  return _archiveBalanceAsOf([payload],asOf);
 }
 function _archiveCustomerRows(balance){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
@@ -992,7 +978,7 @@ async function _archiveControl(from,to){
   const labour=_rowsInRange(months,'labour',from,to);
   const parts=_rowsInRange(months,'parts',from,to);
   const machines=_rowsInRange(months,'machines',from,to);
-  const balances=_mergeBalanceAsOf(months, await _recentBalances(), to)||{receivables:0,payables:0,top_receivables:[],top_payables:[]};
+  const balances=_archiveBalanceAsOf(months,to);
   const totalSales=sales.reduce((s,r)=>s+_saleTotal(r),0);
   const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
   const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
