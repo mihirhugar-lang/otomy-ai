@@ -16,6 +16,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
+LOCAL_DASHBOARD_OVERRIDES_PATH = DATA_DIR / "local_dashboard_overrides.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
 BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-05-31_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
@@ -113,6 +114,14 @@ def _expense_key(row, sequence):
 def load_local_seed():
     try:
         with open(LOCAL_SEED_PATH) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def load_local_dashboard_overrides():
+    try:
+        with open(LOCAL_DASHBOARD_OVERRIDES_PATH) as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
     except Exception:
@@ -1531,6 +1540,29 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         summary["credit_payment_received"] = control["customer_repayments_payment_total"]
     return control
 
+def apply_local_dashboard_override(control, overrides, start, end):
+    controls = (overrides.get("controls") or {}) if isinstance(overrides, dict) else {}
+    override = controls.get(f"{start}|{end}")
+    if not override:
+        return control
+    summary = control.setdefault("summary", {})
+    for key, value in (override.get("summary") or {}).items():
+        summary[key] = value
+    for key in (
+        "customer_repayments",
+        "customer_repayments_total",
+        "customer_repayments_payment_total",
+        "customer_repayments_bank_total",
+        "customer_repayments_cash_total",
+        "top_receivables",
+        "top_payables",
+    ):
+        if key in override:
+            control[key] = override[key]
+    if "customer_repayments_payment_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
+    return control
+
 _BALANCE_OVERLAY = None
 
 
@@ -1926,6 +1958,7 @@ def write_snapshot_bundle(
     vendor_payments,
     repayments,
     local_seed,
+    local_dashboard_overrides,
     controls,
     balance_snapshots,
     archive_balances,
@@ -2081,6 +2114,7 @@ def write_snapshot_bundle(
             summary["bank_balance"] = overlay_balance[0]
             summary["cash_balance_office"] = overlay_balance[1]
             summary["operating_balance_from"] = overlay_anchor_date(end)
+        control = apply_local_dashboard_override(control, local_dashboard_overrides, start, end)
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
@@ -2164,6 +2198,7 @@ def main():
     MERGE_PROTECT_BEFORE_DATE = sync_start.isoformat()
     print(f"  Sync mode: {sync_mode} ({sync_label}); fetching {sync_start} to {today}")
     local_seed = load_local_seed()
+    local_dashboard_overrides = load_local_dashboard_overrides()
     seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
     archive_manifest = load_archive_manifest()
     archive_rows = load_archive_window(archive_start, today)
@@ -2770,6 +2805,7 @@ def main():
         vendor_payments,
         all_repayments,
         local_seed,
+        local_dashboard_overrides,
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
         balance_snapshots,
         archive_balances,
