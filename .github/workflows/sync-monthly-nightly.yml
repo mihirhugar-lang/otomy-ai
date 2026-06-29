@@ -1,7 +1,5 @@
 name: Refresh monthly JSON data
 on:
-  schedule:
-    - cron: '0 18 * * *'
   workflow_dispatch:
 
 concurrency:
