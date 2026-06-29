@@ -745,7 +745,11 @@ function _archiveAllowedForRange(from,to){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  const preferSnapshotFirst=u.pathname==='/api/dashboard/control';
+  const preferSnapshotFirst=new Set([
+    '/api/dashboard/control',
+    '/api/sync/erp/bank',
+    '/api/sync/erp/cash',
+  ]).has(u.pathname);
   if(!preferSnapshotFirst){
     const archived=await archiveFetch(url);
     if(archived!==null)return archived;

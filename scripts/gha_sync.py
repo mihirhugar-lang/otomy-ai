@@ -2293,9 +2293,10 @@ def main():
 
     statement_bank_rows = load_bank_statement_rows()
     cash_rows = merge_rows_by_archive_key(archive_rows.get("cash"), fresh_cash, "cash")
-    bank_rows = merge_rows_by_archive_key(archive_rows.get("bank"), fresh_bank, "bank")
-    if statement_bank_rows:
-        bank_rows = merge_rows_by_archive_key(bank_rows, statement_bank_rows, "bank")
+    bank_rows = [
+        row for row in merge_rows_by_archive_key(archive_rows.get("bank"), fresh_bank, "bank")
+        if str(row.get("source") or "") != "ICICI Statement"
+    ]
 
     # absolute cash balance = last row's running balance from ERP cash ledger
     cash_balance = 0.0
@@ -2399,10 +2400,10 @@ def main():
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
-    if statement_bank_rows:
-        bank_rows = dedupe_bank_rows(bank_rows)
-    else:
-        bank_rows = dedupe_bank_rows(derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows))
+    # Match localhost Bank & Cash page: ERP rows plus derived bank/UPI sales,
+    # expenses, and customer credit repayments. Bank statement rows are used
+    # for balance anchoring only, not for the transaction table.
+    bank_rows = dedupe_bank_rows(derive_bank_transactions(all_sales, all_expenses, all_repayments, bank_rows))
     statement_bank_balance = latest_bank_statement_balance(statement_bank_rows, today)
     bank_net = statement_bank_balance if statement_bank_balance is not None else round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),

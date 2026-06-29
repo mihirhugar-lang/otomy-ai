@@ -13,6 +13,7 @@ import base64
 import datetime as dt
 import json
 import sys
+import argparse
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -120,11 +121,24 @@ def dashboard_snapshot(start: dt.date | str, end: dt.date | str) -> tuple[str, d
     return url, read_json(snapshot_path)
 
 
+def api_snapshot(path: str) -> tuple[str, object]:
+    snapshot_path = SNAPSHOT_DIR / f"{snapshot_key(path)}.json"
+    return path, read_json(snapshot_path)
+
+
 def number_value(value: object, label: str) -> float:
     try:
         return float(value or 0)
     except (TypeError, ValueError):
         fail(f"{label} must be numeric, got {value!r}")
+
+
+def payment_channel(mode: object) -> str:
+    return "cash" if "CASH" in str(mode or "").upper() else "bank"
+
+
+def sale_total(row: dict) -> float:
+    return number_value(row.get("amount"), "sale.amount") + number_value(row.get("transport_charge"), "sale.transport_charge")
 
 
 def visible_tile_values(summary: dict) -> dict[str, float]:
@@ -214,9 +228,86 @@ def verify_all_dashboard_presets() -> None:
     print(f"Dashboard preset guard passed for {checked} tabs.")
 
 
+def verify_bank_page_presets() -> None:
+    checked = 0
+    for preset, (start, end) in required_preset_ranges().items():
+        start_s, end_s = str(start), str(end)
+        sales_url, sales = api_snapshot(f"/api/sales/?from_date={start_s}&to_date={end_s}")
+        expenses_url, expenses = api_snapshot(f"/api/expenses/?from_date={start_s}&to_date={end_s}")
+        control_url, control = dashboard_snapshot(start_s, end_s)
+        bank_url, bank_rows = api_snapshot(f"/api/sync/erp/bank?from_date={start_s}&to_date={end_s}")
+        if not isinstance(sales, list):
+            fail(f"{preset} {sales_url} must be a list")
+        if not isinstance(expenses, list):
+            fail(f"{preset} {expenses_url} must be a list")
+        if not isinstance(bank_rows, list):
+            fail(f"{preset} {bank_url} must be a list")
+        repayments = control.get("customer_repayments") or []
+        if not isinstance(repayments, list):
+            fail(f"{preset} {control_url} customer_repayments must be a list")
+
+        expected_sale_credit = round(sum(
+            sale_total(row)
+            for row in sales
+            if str(row.get("payment_mode") or "").lower() != "credit"
+            and payment_channel(row.get("payment_mode")) != "cash"
+        ), 2)
+        expected_expense_debit = round(sum(
+            number_value(row.get("amount"), "expense.amount")
+            for row in expenses
+            if payment_channel(row.get("payment_mode")) != "cash"
+        ), 2)
+        expected_repayment_credit = round(sum(
+            number_value(row.get("bank_received"), "repayment.bank_received")
+            or (
+                number_value(row.get("payment_received", row.get("amount")), "repayment.payment_received")
+                if payment_channel(row.get("mode")) != "cash"
+                else 0.0
+            )
+            for row in repayments
+        ), 2)
+
+        actual_sale_credit = round(sum(
+            number_value(row.get("credit"), "bank.credit")
+            for row in bank_rows
+            if row.get("bank_name") == "UPI/Bank Sale" or row.get("source") == "Sale"
+        ), 2)
+        actual_expense_debit = round(sum(
+            number_value(row.get("debit"), "bank.debit")
+            for row in bank_rows
+            if row.get("bank_name") == "UPI/Bank Expense" or row.get("source") == "Expense"
+        ), 2)
+        actual_repayment_credit = round(sum(
+            number_value(row.get("credit"), "bank.credit")
+            for row in bank_rows
+            if row.get("bank_name") == "UPI/Bank Credit Payment" or row.get("source") == "Credit Payment"
+        ), 2)
+
+        for label, expected, actual in (
+            ("bank sale credits", expected_sale_credit, actual_sale_credit),
+            ("bank expense debits", expected_expense_debit, actual_expense_debit),
+            ("bank credit-payment credits", expected_repayment_credit, actual_repayment_credit),
+        ):
+            if abs(expected - actual) > 0.01:
+                fail(f"{preset} {bank_url} {label} drifted: expected={expected} actual={actual}")
+        checked += 1
+    print(f"Bank page guard passed for {checked} tabs.")
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Verify Otomy dashboard and bank-page parity guards.")
+    parser.add_argument(
+        "--code-only",
+        action="store_true",
+        help="Only check frontend/code invariants; sync workflows run full data checks after generation.",
+    )
+    args = parser.parse_args()
     verify_frontend_guard()
+    if args.code_only:
+        print("Code-only parity guard passed.")
+        return
     verify_all_dashboard_presets()
+    verify_bank_page_presets()
     verify_override_snapshots()
 
 
