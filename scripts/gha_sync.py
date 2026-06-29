@@ -1238,7 +1238,9 @@ def _prefer_archive_row(section, existing, incoming):
         if not incoming.get("customer_id") and existing.get("customer_id"):
             merged["customer_id"] = existing["customer_id"]
         return merged
-    if section in {"sales", "receipts", "balances"}:
+    if section == "balances":
+        return incoming
+    if section in {"sales", "receipts"}:
         return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
     return incoming
 
@@ -2340,7 +2342,10 @@ def main():
     repayments_yesterday = repayments_yesterday or []
     repayments_mtd = repayments_mtd or []
     repayments_last_month = repayments_last_month or []
-    archive_repayments = archive_receipts_to_repayments(archive_rows.get("receipts"))
+    archive_repayments = [
+        row for row in archive_receipts_to_repayments(archive_rows.get("receipts"))
+        if str(row.get("date", ""))[:10] < str(last_month_start)
+    ]
     repayment_map = {}
     for row in archive_repayments + repayments_last_month + repayments_mtd:
         key = (
