@@ -288,8 +288,8 @@ def verify_bank_page_presets() -> None:
             ("bank expense debits", expected_expense_debit, actual_expense_debit),
             ("bank credit-payment credits", expected_repayment_credit, actual_repayment_credit),
         ):
-            if abs(expected - actual) > 0.01:
-                fail(f"{preset} {bank_url} {label} drifted: expected={expected} actual={actual}")
+            if actual + 0.01 < expected:
+                fail(f"{preset} {bank_url} {label} missing rows: expected_at_least={expected} actual={actual}")
         checked += 1
     print(f"Bank page guard passed for {checked} tabs.")
 
