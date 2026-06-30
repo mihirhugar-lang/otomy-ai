@@ -186,8 +186,11 @@ def verify_sync_tolerance_guard() -> None:
     required = (
         "ERP_FETCH_RETRIES",
         "ERP_DEBTOR_WORKERS",
+        "_request_text_with_retry",
         "read_snapshot(",
         "fetch_result_or_saved(",
+        "fetch_rows_or_saved(",
+        "using archived non-empty rows",
         "using saved non-empty snapshot",
         "today repayments ERP compute skipped",
         "replace_repayment_day(saved_mtd, today, repayments_today)",

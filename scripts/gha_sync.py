@@ -72,6 +72,20 @@ def _request_json_with_retry(sess, url, *, params=None, timeout=35, label="ERP r
                 time.sleep(ERP_RETRY_DELAY_SECONDS * attempt)
     raise last_error
 
+def _request_text_with_retry(sess, url, *, params=None, timeout=35, label="ERP request"):
+    last_error = None
+    for attempt in range(1, ERP_FETCH_RETRIES + 1):
+        try:
+            response = sess.get(url, params=params, timeout=timeout, verify=True)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            last_error = e
+            if attempt < ERP_FETCH_RETRIES:
+                print(f"  {label} retry {attempt}/{ERP_FETCH_RETRIES} after {type(e).__name__}: {e}")
+                time.sleep(ERP_RETRY_DELAY_SECONDS * attempt)
+    raise last_error
+
 def _clean(x):
     return re.sub(r"<[^>]+>", "", htmllib.unescape(str(x))).strip()
 
@@ -309,9 +323,13 @@ def fetch_sales(sess, from_d, to_d):
     tickets = []
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
     try:
-        raw = sess.get(f"{ERP_BASE}/crusher/ListCustomerWiseReport"
-                       f"?start={fs}&end={ts}&customerId=-1&type=3",
-                       timeout=60, verify=True).text
+        raw = _request_text_with_retry(
+            sess,
+            f"{ERP_BASE}/crusher/ListCustomerWiseReport"
+            f"?start={fs}&end={ts}&customerId=-1&type=3",
+            timeout=60,
+            label=f"sales {fs} to {ts}",
+        )
         try:    cw_html = htmllib.unescape(json.loads(raw))
         except: cw_html = raw
         for block in cw_html.split("Party Name :"):
@@ -358,7 +376,12 @@ def fetch_expenses(sess, from_d, to_d):
             url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
                    f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
                    f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
-            data = json.loads(_clone_sess(sess).get(url, timeout=25, verify=True).text)
+            data = json.loads(_request_text_with_retry(
+                _clone_sess(sess),
+                url,
+                timeout=25,
+                label=f"expenses {ds}",
+            ))
             expense_sequence = 0
             for row in data.get("data", []):
                 cells = [_clean(c) for c in row]
@@ -398,9 +421,12 @@ def fetch_cash_ledger(sess, from_d, to_d):
     entries = []
     try:
         fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(sess.get(
+        data = json.loads(_request_text_with_retry(
+            sess,
             f"{ERP_BASE}/crusher/CashLedger?start={fs}&end={ts}&type=1&cashLedgerId=-1",
-            timeout=35, verify=True).text)
+            timeout=35,
+            label=f"cash ledger {fs} to {ts}",
+        ))
         for row in data.get("data", []):
             cells = [_clean(c) for c in row]
             if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
@@ -426,9 +452,12 @@ def fetch_bank_entries(sess, from_d, to_d):
     entries = []
     try:
         fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(sess.get(
+        data = json.loads(_request_text_with_retry(
+            sess,
             f"{ERP_BASE}/crusher/ListBankTransaction?start={fs}&end={ts}&bankId=-1&type=1",
-            timeout=35, verify=True).text)
+            timeout=35,
+            label=f"bank entries {fs} to {ts}",
+        ))
         for row in data.get("data", []):
             cells = [_clean(c) for c in row]
             if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
@@ -452,9 +481,13 @@ def fetch_boulders(sess, from_d, to_d):
     result = {"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": []}
     try:
         fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        html = sess.get(f"{ERP_BASE}/crusher/listInput",
-                        params={"startDt": fs, "end": ts},
-                        timeout=35, verify=True).text
+        html = _request_text_with_retry(
+            sess,
+            f"{ERP_BASE}/crusher/listInput",
+            params={"startDt": fs, "end": ts},
+            timeout=35,
+            label=f"boulders {fs} to {ts}",
+        )
 
         def parse_table(src, table_id, label_key):
             pat = r"<table[^>]*id=['\"]" + re.escape(table_id) + r"['\"][^>]*>(.*?)</table>"
@@ -1546,6 +1579,17 @@ def read_snapshot_list(url):
     data = read_snapshot_payload(url)
     return data if isinstance(data, list) else []
 
+def read_data_payload(filename):
+    try:
+        with open(DATA_DIR / filename, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def read_data_list(filename):
+    data = read_data_payload(filename)
+    return data if isinstance(data, list) else []
+
 def _repayment_copy(rows):
     if not isinstance(rows, list):
         return None
@@ -2394,6 +2438,55 @@ def main():
                 return saved_rows, False
             raise
 
+    def rows_between_dates(rows, start, end):
+        fs, ts = str(start), str(end)
+        return [dict(row) for row in rows or [] if fs <= str(row.get("date", "")) <= ts]
+
+    def saved_stream_rows(section, start, end, filename=None):
+        rows = rows_between_dates(archive_rows.get(section, []), start, end)
+        if rows:
+            return rows
+        if filename:
+            rows = rows_between_dates(read_data_list(filename), start, end)
+            if rows:
+                return rows
+        if section in ("cash", "bank"):
+            ledger = read_data_payload("erp_ledger.json") or {}
+            rows = rows_between_dates(ledger.get(section, []), start, end)
+            if rows:
+                return rows
+        return []
+
+    def fetch_rows_or_saved(future, label, saved_rows):
+        try:
+            return future.result(), True
+        except ErpFetchError as e:
+            if saved_rows:
+                print(f"  {label} fetch failed; using archived non-empty rows ({len(saved_rows)} rows): {e}")
+                return saved_rows, False
+            raise
+
+    def saved_boulder_summary(label, start, end):
+        summaries = read_data_payload("boulders.json") or {}
+        summary = summaries.get(label) if isinstance(summaries, dict) else None
+        if isinstance(summary, dict) and (_num(summary.get("total_tonnes")) or _num(summary.get("total_trips"))):
+            return dict(summary)
+        rows = saved_stream_rows("boulders", start, end)
+        tonnes = round(sum(_num(row.get("total_tonnes")) for row in rows), 2)
+        trips = round(sum(_num(row.get("trips")) for row in rows), 2)
+        if rows or tonnes or trips:
+            return {"total_tonnes": tonnes, "total_trips": trips, "materials": [], "suppliers": []}
+        return {}
+
+    def fetch_summary_or_saved(future, label, saved_summary):
+        try:
+            return future.result(), True
+        except ErpFetchError as e:
+            if saved_summary:
+                print(f"  {label} fetch failed; using saved boulder summary: {e}")
+                return saved_summary, False
+            raise
+
     # ── parallel fetch all independent ERP streams ────────────────────────────
     print("  Fetching all ERP streams in parallel...")
     with ThreadPoolExecutor(max_workers=10) as pool:
@@ -2411,16 +2504,34 @@ def main():
         f_debtors_yest = pool.submit(fetch_debtors,  _clone_sess(sess), yesterday)
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
 
-        fresh_sales       = f_sales.result()
-        fresh_expenses    = f_expenses.result()
-        boulders_today    = f_b_today.result()
-        boulders_yesterday = f_b_yest.result()
-        boulders_week     = f_b_week.result()
-        boulders_mtd      = f_b_mtd.result()
-        fresh_b_rows      = f_b_rows.result()
+        fresh_sales, sales_fresh = fetch_rows_or_saved(
+            f_sales, "sales", saved_stream_rows("sales", sync_start, today, "sales_all.json")
+        )
+        fresh_expenses, expenses_fresh = fetch_rows_or_saved(
+            f_expenses, "expenses", saved_stream_rows("expenses", sync_start, today, "expenses_all.json")
+        )
+        boulders_today, boulders_today_fresh = fetch_summary_or_saved(
+            f_b_today, "today boulders", saved_boulder_summary("today", today, today)
+        )
+        boulders_yesterday, boulders_yesterday_fresh = fetch_summary_or_saved(
+            f_b_yest, "yesterday boulders", saved_boulder_summary("yesterday", yesterday, yesterday)
+        )
+        boulders_week, boulders_week_fresh = fetch_summary_or_saved(
+            f_b_week, "this week boulders", saved_boulder_summary("week", week_start, today)
+        )
+        boulders_mtd, boulders_mtd_fresh = fetch_summary_or_saved(
+            f_b_mtd, "MTD boulders", saved_boulder_summary("mtd", month_start, today)
+        )
+        fresh_b_rows, boulder_rows_fresh = fetch_rows_or_saved(
+            f_b_rows, "boulder rows", saved_stream_rows("boulders", sync_start, today)
+        )
         iot_rows          = []
-        fresh_cash        = f_cash.result()
-        fresh_bank        = f_bank.result()
+        fresh_cash, cash_fresh = fetch_rows_or_saved(
+            f_cash, "cash ledger", saved_stream_rows("cash", sync_start, today)
+        )
+        fresh_bank, bank_fresh = fetch_rows_or_saved(
+            f_bank, "bank entries", saved_stream_rows("bank", sync_start, today)
+        )
         debtors_today, debtors_today_fresh = fetch_result_or_saved(
             f_debtors, "today debtors", today, saved_debtors_snapshot
         )
