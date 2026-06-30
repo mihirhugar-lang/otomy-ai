@@ -134,6 +134,20 @@ def sale_total(row: dict) -> float:
     return number_value(row.get("amount"), "sale.amount") + number_value(row.get("transport_charge"), "sale.transport_charge")
 
 
+def sale_upi(row: dict) -> float:
+    """UPI/bank portion of a sale — the captured ListSale Final UPI when present,
+    else derived from payment_mode. Mirrors gha_sync _sale_channels so the bank page
+    (which lists only the UPI portion of SPLIT sales) reconciles."""
+    cash = number_value(row.get("cash_amount"), "sale.cash_amount")
+    credit = number_value(row.get("credit_amount"), "sale.credit_amount")
+    upi = number_value(row.get("upi_amount"), "sale.upi_amount")
+    if cash + credit + upi > 0:
+        return upi
+    if str(row.get("payment_mode") or "").lower() == "credit" or payment_channel(row.get("payment_mode")) == "cash":
+        return 0.0
+    return sale_total(row)
+
+
 def visible_tile_values(summary: dict) -> dict[str, float]:
     sales_qty_mt = number_value(summary.get("sales_qty_mt"), "summary.sales_qty_mt")
     expenses = number_value(summary.get("expenses"), "summary.expenses")
@@ -226,6 +240,24 @@ def verify_cloud_independence_guard() -> None:
     print("Cloud independence guard passed: no localhost/Mac dashboard overrides.")
 
 
+def verify_payment_split_guard() -> None:
+    """Ensure the per-ticket payment split (ListSale Final Cash/Credit/UPI) stays wired in,
+    so SPLIT sales and bank-paid expenses can't silently collapse back to one channel."""
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    required = (
+        "def fetch_sale_splits(",
+        "def _sale_channels(",
+        "def _cash_row_is_bank_expense(",
+        "_sale_channels(sale)",
+        "fetch_sale_splits(sess",
+        "_cash_row_is_bank_expense(r, _bank_expenses)",
+    )
+    for needle in required:
+        if needle not in source:
+            fail(f"gha_sync.py lost payment-split handling: missing {needle!r}")
+    print("Payment-split guard passed: ListSale Final Cash/Credit/UPI split is wired in.")
+
+
 def verify_all_dashboard_presets() -> None:
     checked = 0
     for preset, (start, end) in required_preset_ranges().items():
@@ -269,12 +301,8 @@ def verify_bank_page_presets() -> None:
         if not isinstance(repayments, list):
             fail(f"{preset} {control_url} customer_repayments must be a list")
 
-        expected_sale_credit = round(sum(
-            sale_total(row)
-            for row in sales
-            if str(row.get("payment_mode") or "").lower() != "credit"
-            and payment_channel(row.get("payment_mode")) != "cash"
-        ), 2)
+        # Bank page lists only the UPI/bank portion of each sale (SPLIT-aware).
+        expected_sale_credit = round(sum(sale_upi(row) for row in sales), 2)
         expected_expense_debit = round(sum(
             number_value(row.get("amount"), "expense.amount")
             for row in expenses
@@ -327,6 +355,7 @@ def main() -> None:
     args = parser.parse_args()
     verify_frontend_guard()
     verify_sync_tolerance_guard()
+    verify_payment_split_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return

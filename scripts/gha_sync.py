@@ -107,6 +107,22 @@ def _sale_total(row):
     return _num(row.get("amount")) + _num(row.get("transport_charge"))
 
 
+def _sale_channels(s):
+    """(cash, credit, upi) for a sale dict. Uses the captured ListSale split
+    (Final Cash/Credit/UPI) when present, else derives from payment_mode so
+    archive rows keep working."""
+    cash = _num(s.get("cash_amount")); credit = _num(s.get("credit_amount")); upi = _num(s.get("upi_amount"))
+    if cash + credit + upi > 0:
+        return round(cash, 2), round(credit, 2), round(upi, 2)
+    total = _sale_total(s)
+    mode = (s.get("payment_mode") or "Credit")
+    if mode.lower() == "credit":
+        return 0.0, total, 0.0
+    if "CASH" in mode.upper():
+        return total, 0.0, 0.0
+    return 0.0, 0.0, total
+
+
 def _is_director_payment(*values):
     text = " ".join(str(value or "") for value in values).upper()
     return "PRASHANT" in text or "KUMAR" in text
@@ -355,6 +371,71 @@ def fetch_sales(sess, from_d, to_d):
         print(f"  sales fetch error: {e}")
         raise ErpFetchError(f"sales fetch failed; skipped Otomy write: {e}") from e
     return tickets
+
+
+def fetch_sale_splits(sess, from_d, to_d):
+    """{ticket_no: {cash, credit, upi, total, pay_type}} from ERP ListSale.
+
+    Captures real SPLIT payments (part cash + part UPI) that ListCustomerWiseReport
+    collapses into one payment mode. Best-effort: a per-day failure is logged and
+    skipped, never aborts the sync.
+    """
+    splits = {}
+    cur = from_d
+    while cur <= to_d:
+        ds = cur.strftime("%d-%m-%Y")
+        try:
+            url = (
+                f"{ERP_BASE}/crusher/ListSale?startDt={ds}&end={ds}"
+                "&materialId=-1&customerId=-1&operatorId=-1&startTicket=&endTicket=&crusherId=-1"
+                "&paymentType=-1&vehicleId=-1&marketingPersonId=-1&transporterId=-1&dateTicketOrder=4"
+                "&startTime=12:00:00 AM&endTime=11:59:59 PM&destination=&ledgerGroupId=-1"
+                "&invoiceGenerated=-1&dcGenerated=-1&royaltyIssued=-1&isStock=-1"
+                "&shippingAddressId=-1&vehicleType=-1&type=3"
+            )
+            raw = _clone_sess(sess).post(
+                url, data={"draw": 1, "start": 0, "length": 2000},
+                headers={"X-Requested-With": "XMLHttpRequest"}, timeout=35, verify=True,
+            ).text
+            html = json.loads(raw) if raw.lstrip().startswith('"') else raw
+            table = next((t for t in re.findall(r"<table.*?</table>", html, re.DOTALL)
+                          if "Final" in t or "Payment" in t), None)
+            if table:
+                cells = [_clean(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", table, re.DOTALL)]
+                REC = 22  # Sl,Date,Time,Ticket,Veh,Mat,Cust,EWt,LWt,NWt,Rate,Amt,Tpt,Roy,Total,PayType,Cash,Credit,UPI,Rmk,EDate,MDP
+                for i in range(0, len(cells) - REC + 1, REC):
+                    row = cells[i:i + REC]
+                    if not re.fullmatch(r"\d+", row[3]):
+                        break  # footer / total row -> end of data
+                    splits[row[3]] = {
+                        "total": _num(row[14]), "pay_type": row[15],
+                        "cash": round(_num(row[16]), 2), "credit": round(_num(row[17]), 2), "upi": round(_num(row[18]), 2),
+                    }
+        except Exception as e:
+            print(f"  sale splits {ds}: {e}")
+        cur += timedelta(days=1)
+        time.sleep(0.1)
+    return splits
+
+
+def _cash_row_is_bank_expense(row, bank_expenses):
+    """A cash-ledger row that is really a bank/UPI expense (e.g. 'PAID FROM VMI ACCOUNT'),
+    so it must be dropped from the Cash section. Mirrors localhost _cash_row_matches_bank_expense."""
+    paid = round(_num(row.get("paid")), 2)
+    if paid <= 0:
+        return False
+    text = " ".join(str(row.get(k) or "") for k in ("ledger", "ledger_name", "description")).upper()
+    if "EXPENSE" not in text:
+        return False
+    row_date = str(row.get("date") or "")[:10]
+    for e in bank_expenses:
+        if _payment_channel(e.get("payment_mode") or "Cash") == "cash":
+            continue
+        if str(e.get("date") or "")[:10] != row_date or abs(paid - round(_num(e.get("amount")), 2)) > 0.01:
+            continue
+        if any(str(e.get(k) or "") and str(e.get(k)).upper() in text for k in ("category", "description", "notes")):
+            return True
+    return False
 
 
 def fetch_expenses(sess, from_d, to_d):
@@ -944,17 +1025,15 @@ def build_control(sales, expenses, from_d, to_d,
         })
         amt = _sale_total(s)
         pm  = s["payment_mode"]
+        # Split each sale into its real channels (handles SPLIT payments).
+        s_cash, s_credit, s_upi = _sale_channels(s)
         g["ticket_count"] += 1
         g["qty_mt"]        += _num(s["qty_mt"])
         g["amount"]        += amt
-        if pm == "Credit":
-            g["credit_sale_amount"] += amt
-        elif pm == "Cash":
-            g["cash_received"]    += amt
-            g["paid_against_sale"] += amt
-        else:
-            g["bank_received"]    += amt
-            g["paid_against_sale"] += amt
+        g["credit_sale_amount"] += s_credit
+        g["cash_received"]      += s_cash
+        g["bank_received"]      += s_upi
+        g["paid_against_sale"]  += s_cash + s_upi
         g["tickets"].append({
             "date": s["date"], "ticket_no": s.get("ticket_no", "—"),
             "qty_mt": round(_num(s["qty_mt"]), 2),
@@ -1364,11 +1443,17 @@ def _bank_key(row):
     return "|".join(str(row.get(k, "")) for k in ("date", "description", "credit", "debit", "bank_name"))
 
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
-    rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])]
+    # Drop archived "Sale" rows so they re-derive fresh with the current split amount
+    # (otherwise a sale whose UPI portion changed shows twice — old full + new split).
+    # Other derived sources (Expense / Credit Payment / Vendor Payment) are unaffected by
+    # the split and are preserved to avoid dropping rows the recent window can't re-derive.
+    rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
+            if row.get("source") != "Sale"]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
-        mode = sale.get("payment_mode") or "Credit"
-        if mode.lower() == "credit" or _payment_channel(mode) == "cash":
+        # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
+        _s_cash, _s_credit, s_upi = _sale_channels(sale)
+        if s_upi <= 0:
             continue
         r = {
             "id": f"sale-{sale.get('id') or sale.get('ticket_no') or ''}-{sale.get('date')}",
@@ -1377,7 +1462,7 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
                 f"Sale received by bank/UPI - {sale.get('customer_name') or 'Customer'}"
                 f" - Ticket {sale.get('ticket_no') or '-'} - {sale.get('vehicle_no') or '-'}"
             ),
-            "credit": _sale_total(sale),
+            "credit": round(s_upi, 2),
             "debit": 0.0,
             "bank_name": "UPI/Bank Sale",
             "source": "Sale",
@@ -2548,6 +2633,19 @@ def main():
             f_creditors, "today creditors", today, saved_creditors_snapshot
         )
 
+    # Capture per-ticket payment split (ERP ListSale Final Cash/Credit/UPI) onto fresh sales.
+    try:
+        _splits = fetch_sale_splits(sess, sync_start, today)
+        _n = 0
+        for _s in fresh_sales:
+            _sp = _splits.get(str(_s.get("ticket_no") or ""))
+            if _sp and (_sp["cash"] + _sp["credit"] + _sp["upi"]) > 0:
+                _s["cash_amount"] = _sp["cash"]; _s["credit_amount"] = _sp["credit"]; _s["upi_amount"] = _sp["upi"]
+                _n += 1
+        print(f"  sale splits captured for {_n}/{len(fresh_sales)} fresh tickets")
+    except Exception as _e:
+        print(f"  sale splits unavailable: {_e}")
+
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     print(f"  {len(all_sales)} sales tickets")
     all_expenses = merge_rows_by_archive_key(archive_rows.get("expenses"), fresh_expenses, "expenses")
@@ -2581,6 +2679,10 @@ def main():
 
     statement_bank_rows = load_bank_statement_rows()
     cash_rows = merge_rows_by_archive_key(archive_rows.get("cash"), fresh_cash, "cash")
+    # Drop cash-ledger rows that are really bank/UPI expense payments (e.g. VMI LOADER
+    # "PAID FROM VMI ACCOUNT") so they appear only under Bank/UPI, not Cash.
+    _bank_expenses = [e for e in all_expenses if _payment_channel(e.get("payment_mode") or "Cash") != "cash"]
+    cash_rows = [r for r in cash_rows if not _cash_row_is_bank_expense(r, _bank_expenses)]
     bank_rows = [
         row for row in merge_rows_by_archive_key(archive_rows.get("bank"), fresh_bank, "bank")
         if str(row.get("source") or "") != "ICICI Statement"
@@ -2767,13 +2869,10 @@ def main():
         operating_bank_balance = _num(opening.get("bank_balance"))
         operating_cash_balance = _num(opening.get("cash_balance_office"))
         for sale in sales_for(movement_start, today):
-            mode = sale.get("payment_mode") or "Credit"
-            if mode.lower() == "credit":
-                continue
-            if _payment_channel(mode) == "cash":
-                operating_cash_balance += _sale_total(sale)
-            else:
-                operating_bank_balance += _sale_total(sale)
+            # cash portion -> Cash-in-office tile, UPI/bank portion -> Bank tile (SPLIT-aware)
+            s_cash, _s_credit, s_upi = _sale_channels(sale)
+            operating_cash_balance += s_cash
+            operating_bank_balance += s_upi
         for receipt in repayments_movement:
             operating_cash_balance += _num(receipt.get("cash_received"))
             operating_bank_balance += _num(receipt.get("bank_received"))
