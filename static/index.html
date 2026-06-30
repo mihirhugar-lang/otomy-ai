@@ -1744,6 +1744,7 @@ function renderControlRoom(data){
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const repaymentTotal=Number(data.customer_repayments_total||0);
   const repaymentPaymentTotal=Number(data.customer_repayments_payment_total||0);
+  const paymentReceivedTile=data.customer_repayments_payment_total!=null?repaymentPaymentTotal:Number(s.credit_payment_received||0);
   const repaymentBankTotal=Number(data.customer_repayments_bank_total||0);
   const repaymentCashTotal=Number(data.customer_repayments_cash_total||0);
   const repaymentRows=(data.customer_repayments||[]).map(r=>`
@@ -1809,7 +1810,7 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
-          <div class="control-metric"><span>Payment Received From Customer</span><strong>${fmtINR(s.credit_payment_received ?? repaymentPaymentTotal)}</strong></div>
+          <div class="control-metric"><span>Payment Received From Customer</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
           <div class="control-metric glass-green"><span>Selected Period Profit / MT</span><strong>${fmtINR(s.selected_period_profit_per_tonne||0)}</strong></div>
         </div>
       </div>
@@ -2146,10 +2147,11 @@ async function loadBankSummary(){
   try{
     const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
     const s=data.summary||{};
+    const paymentReceivedTile=data.customer_repayments_payment_total!=null?Number(data.customer_repayments_payment_total||0):Number(s.credit_payment_received||0);
     sumDiv.innerHTML=`
       <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
       <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
-      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(s.credit_payment_received||0)}</div><div class="kpi-sub">Total received before sale adjustment</div></div>
+      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Total received before sale adjustment</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
     sumDiv.innerHTML=`<div class="alert-banner alert-red"><strong>Cash & Bank summary error</strong><span>${esc(e.message)}</span></div>`;
