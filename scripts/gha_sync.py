@@ -1861,12 +1861,14 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
     if to_iso >= frm:
         for s in sales:
             d = str(s.get("date", ""))[:10]
-            if not (frm <= d <= to_iso) or str(s.get("payment_mode", "")).lower() == "credit":
+            if not (frm <= d <= to_iso):
                 continue
-            if _payment_channel(s.get("payment_mode")) == "cash":
-                cash += _sale_total(s)
-            elif cutoff is None or d > cutoff:
-                bank += _sale_total(s)
+            # Split each sale: cash portion -> cash, UPI/bank portion -> bank (SPLIT-aware),
+            # so a part-cash/part-UPI sale lands in the right tile (matches localhost).
+            s_cash, _s_credit, s_upi = _sale_channels(s)
+            cash += s_cash
+            if s_upi and (cutoff is None or d > cutoff):
+                bank += s_upi
         for r in repayments:
             d = str(r.get("date", ""))[:10]
             if not (frm <= d <= to_iso):
@@ -2648,7 +2650,12 @@ def main():
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     print(f"  {len(all_sales)} sales tickets")
-    all_expenses = merge_rows_by_archive_key(archive_rows.get("expenses"), fresh_expenses, "expenses")
+    # The fresh fetch is the authoritative current state for its window — drop archived
+    # expense versions inside that window so an ERP edit (note added, amount corrected)
+    # replaces the old row instead of duplicating it (e.g. DMG OFFICER 8900 appearing twice).
+    _fresh_window = {(sync_start + timedelta(days=i)).isoformat() for i in range((today - sync_start).days + 1)}
+    _archive_exp = [e for e in (archive_rows.get("expenses") or []) if str(e.get("date"))[:10] not in _fresh_window]
+    all_expenses = merge_rows_by_archive_key(_archive_exp, fresh_expenses, "expenses")
     print(f"  {len(all_expenses)} expenses")
     boulder_rows = merge_rows_by_archive_key(
         archive_rows.get("boulders"),
