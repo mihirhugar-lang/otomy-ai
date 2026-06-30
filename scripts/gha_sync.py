@@ -1530,19 +1530,62 @@ def write_snapshot(url, data):
     with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
 
-def read_snapshot(url):
+def read_snapshot_payload(url):
     path = SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json"
     try:
         with open(path, "r") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else None
+            return json.load(f)
     except Exception:
         return None
+
+def read_snapshot(url):
+    data = read_snapshot_payload(url)
+    return data if isinstance(data, dict) else None
+
+def read_snapshot_list(url):
+    data = read_snapshot_payload(url)
+    return data if isinstance(data, list) else []
 
 def _repayment_copy(rows):
     if not isinstance(rows, list):
         return None
     return [dict(row) for row in rows if isinstance(row, dict)]
+
+def _saved_debtors_from_rows(rows):
+    debtors = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or row.get("customer_name") or "").strip()
+        if not name:
+            continue
+        outstanding = _num(row.get("outstanding", row.get("balance", 0.0)))
+        billed = _num(row.get("erp_debit_balance", row.get("total_sales", row.get("billed", outstanding))))
+        received = _num(row.get("erp_credit_balance", row.get("total_receipts", row.get("received", 0.0))))
+        debtors.append({
+            "name": name[:200],
+            "outstanding": round(outstanding, 2),
+            "billed": round(billed, 2),
+            "received": round(received, 2),
+            "erp_customer_id": row.get("erp_customer_id") or row.get("id"),
+        })
+    return debtors
+
+def _saved_creditors_from_rows(rows):
+    creditors = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or row.get("vendor_name") or "").strip()
+        if not name:
+            continue
+        payable = _num(row.get("payable", row.get("balance", 0.0)))
+        creditors.append({
+            "name": name[:200],
+            "payable": round(payable, 2),
+            "erp_supplier_id": row.get("erp_supplier_id") or row.get("id"),
+        })
+    return creditors
 
 def _repayment_key(row):
     return (
@@ -2313,6 +2356,44 @@ def main():
         2,
     )
 
+    def saved_debtors_snapshot(as_of):
+        for rows in (
+            read_snapshot_list(f"/api/customers/outstanding?as_of={as_of}"),
+            read_snapshot_list("/api/customers/outstanding"),
+            seed_endpoints.get("customers_outstanding", []),
+            read_snapshot_list(f"/api/customers/?active_only=false&as_of={as_of}"),
+            read_snapshot_list("/api/customers/?active_only=false"),
+            seed_endpoints.get("customers_all", []),
+        ):
+            debtors = _saved_debtors_from_rows(rows)
+            if debtors:
+                return debtors
+        return []
+
+    def saved_creditors_snapshot(as_of):
+        for rows in (
+            read_snapshot_list(f"/api/vendors/payables?as_of={as_of}"),
+            read_snapshot_list("/api/vendors/payables"),
+            seed_endpoints.get("vendors_payables", []),
+            read_snapshot_list(f"/api/vendors/?active_only=false&as_of={as_of}"),
+            read_snapshot_list("/api/vendors/?active_only=false"),
+            seed_endpoints.get("vendors_all", []),
+        ):
+            creditors_snapshot = _saved_creditors_from_rows(rows)
+            if creditors_snapshot:
+                return creditors_snapshot
+        return []
+
+    def fetch_result_or_saved(future, label, as_of, saved_loader):
+        try:
+            return future.result(), True
+        except ErpFetchError as e:
+            saved_rows = saved_loader(as_of)
+            if saved_rows:
+                print(f"  {label} fetch failed; using saved non-empty snapshot ({len(saved_rows)} rows): {e}")
+                return saved_rows, False
+            raise
+
     # ── parallel fetch all independent ERP streams ────────────────────────────
     print("  Fetching all ERP streams in parallel...")
     with ThreadPoolExecutor(max_workers=10) as pool:
@@ -2340,9 +2421,15 @@ def main():
         iot_rows          = []
         fresh_cash        = f_cash.result()
         fresh_bank        = f_bank.result()
-        debtors_today     = f_debtors.result()
-        _debtors_yest_pre = f_debtors_yest.result()
-        creditors         = f_creditors.result()
+        debtors_today, debtors_today_fresh = fetch_result_or_saved(
+            f_debtors, "today debtors", today, saved_debtors_snapshot
+        )
+        _debtors_yest_pre, debtors_yesterday_fresh = fetch_result_or_saved(
+            f_debtors_yest, "yesterday debtors", yesterday, saved_debtors_snapshot
+        )
+        creditors, creditors_today_fresh = fetch_result_or_saved(
+            f_creditors, "today creditors", today, saved_creditors_snapshot
+        )
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     print(f"  {len(all_sales)} sales tickets")
@@ -2461,18 +2548,22 @@ def main():
     saved_last_month = saved_repayments(last_month_start, last_month_end)
 
     repayments_today = None
-    try:
-        repayments_today = compute_repayments_from_erp(
-            _clone_sess(sess),
-            today,
-            today,
-            debtors_yesterday,
-            debtors_today,
-            debtors_cache,
-        )
-        print(f"  today repayments computed from ERP: {len(repayments_today)} rows")
-    except ErpFetchError as e:
-        print(f"  today repayments ERP compute failed; using saved snapshot if available: {e}")
+    if debtors_today_fresh and debtors_yesterday_fresh:
+        try:
+            repayments_today = compute_repayments_from_erp(
+                _clone_sess(sess),
+                today,
+                today,
+                debtors_yesterday,
+                debtors_today,
+                debtors_cache,
+            )
+            print(f"  today repayments computed from ERP: {len(repayments_today)} rows")
+        except ErpFetchError as e:
+            print(f"  today repayments ERP compute failed; using saved snapshot if available: {e}")
+            repayments_today = saved_today
+    else:
+        print("  today repayments ERP compute skipped; using saved snapshot because debtor balances are fallback")
         repayments_today = saved_today
     repayments_today = require_repayments("today", repayments_today)
 
@@ -2869,7 +2960,7 @@ def main():
         if row.get("active", True) and _num(row.get("outstanding", row.get("balance", 0.0))) > 0
     ]
     customers_outstanding.sort(key=lambda row: row.get("balance", 0.0), reverse=True)
-    if seed_endpoints.get("customers_outstanding"):
+    if not customers_outstanding and seed_endpoints.get("customers_outstanding"):
         customers_outstanding = seed_endpoints["customers_outstanding"]
 
     write("customers_outstanding.json", customers_outstanding)
