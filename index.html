@@ -1300,6 +1300,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
+const OTOMY_APP_VERSION='2026-06-30-cloud-dashboard-tabs-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
@@ -1334,10 +1335,15 @@ async function _reloadActiveSectionAfterSync(){
 }
 async function _currentSyncStamp(){
   if(isStaticSnapshotHost()){
-    const r=await fetch(`/data/snapshot/manifest.json?_=${Date.now()}`, {cache:'no-store'});
-    if(!r.ok)return null;
-    const data=await r.json();
-    return data.generated_at||null;
+    const now=Date.now();
+    const manifestReq=fetch(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
+    const appReq=fetch(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
+      .then(r=>r.ok?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:'')
+      .catch(()=>'');
+    const [data, appStamp]=await Promise.all([manifestReq, appReq]);
+    const dataStamp=data?.generated_at||'';
+    const codeStamp=appStamp||OTOMY_APP_VERSION;
+    return `${dataStamp}|${codeStamp}`;
   }
   const r=await fetch(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'});
   if(!r.ok)return null;
