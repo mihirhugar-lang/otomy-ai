@@ -1007,7 +1007,7 @@ async function _archiveControl(from,to){
   }
   return {
     period:{from,to,days},
-    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
     input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
@@ -1028,7 +1028,7 @@ async function _archiveLedger(year,month){
     const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
     const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_saleTotal(r),0);
     const operating=await _archiveOperatingBalances(day);
-    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
   }
   const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
   totals.boulder_input_mt=Math.round(rows.reduce((s,r)=>s+r.boulder_input_mt,0)*100)/100;
@@ -1809,7 +1809,7 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
-          <div class="control-metric"><span>Credit Payment Received</span><strong>${fmtINR(s.credit_payment_received ?? repaymentTotal)}</strong></div>
+          <div class="control-metric"><span>Payment Received From Customer</span><strong>${fmtINR(s.credit_payment_received ?? repaymentPaymentTotal)}</strong></div>
           <div class="control-metric glass-green"><span>Selected Period Profit / MT</span><strong>${fmtINR(s.selected_period_profit_per_tonne||0)}</strong></div>
         </div>
       </div>
@@ -2149,7 +2149,7 @@ async function loadBankSummary(){
     sumDiv.innerHTML=`
       <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
       <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
-      <div class="kpi blue"><div class="kpi-label">Credit Payment Received</div><div class="kpi-value">${fmtINR(s.credit_payment_received||0)}</div><div class="kpi-sub">Credit repayment after sale adjustment</div></div>
+      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(s.credit_payment_received||0)}</div><div class="kpi-sub">Total received before sale adjustment</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
     sumDiv.innerHTML=`<div class="alert-banner alert-red"><strong>Cash & Bank summary error</strong><span>${esc(e.message)}</span></div>`;
@@ -2197,12 +2197,12 @@ function renderLedgerView(data){
   document.getElementById('ledger-summary').innerHTML=`
     <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value">${fmtINR(t.spot_sale_amount||0)}</div></div>
     <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Credit Payment Received</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
     <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
-  let html='<table><thead><tr><th>Date</th><th>Sale Trips</th><th>Sale Amount</th><th>Spot Sale (Bank+Cash)</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Trips That Day</th></tr></thead><tbody>';
+  let html='<table><thead><tr><th>Date</th><th>Sale Trips</th><th>Sale Amount</th><th>Spot Sale (Bank+Cash)</th><th>Credit Sale</th><th>Payment Received From Customer</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Trips That Day</th></tr></thead><tbody>';
   rows.forEach(r=>{
     html+=`<tr>
       <td>${esc(r.date)}</td>

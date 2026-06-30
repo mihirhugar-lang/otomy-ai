@@ -1096,7 +1096,7 @@ def build_control(sales, expenses, from_d, to_d,
             "cash_balance_office_book": round(cash_balance_office_book, 2),
             "operating_balance_from":  str(from_d),
             "kumar_balance":           0.0,
-            "credit_payment_received": rp_total,
+            "credit_payment_received": rp_pay_total,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
             "selected_period_profit_director_adjusted": round(profit, 2),
@@ -1686,7 +1686,12 @@ def apply_seed_control_overrides(control, local_seed, start, end):
     ):
         if key in seed_summary:
             summary[key] = seed_summary[key]
-    if seed_control and "credit_payment_received" in seed_summary and "customer_repayments_total" not in seed_control:
+    if (
+        seed_control
+        and "credit_payment_received" in seed_summary
+        and "customer_repayments_payment_total" not in seed_control
+        and "customer_repayments_total" not in seed_control
+    ):
         summary["credit_payment_received"] = seed_summary["credit_payment_received"]
     if seed_control:
         for key in ("receivables", "payables"):
@@ -1705,7 +1710,9 @@ def apply_seed_control_overrides(control, local_seed, start, end):
         control["top_receivables"] = seed_control["top_receivables"]
     if seed_control and "top_payables" in seed_control:
         control["top_payables"] = seed_control["top_payables"]
-    if "customer_repayments_total" in control:
+    if "customer_repayments_payment_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
+    elif "customer_repayments_total" in control:
         summary["credit_payment_received"] = control["customer_repayments_total"]
     return control
 
@@ -1716,7 +1723,10 @@ def apply_local_dashboard_override(control, overrides, start, end):
         return control
     summary = control.setdefault("summary", {})
     for key, value in (override.get("summary") or {}).items():
-        if key == "credit_payment_received" and "customer_repayments_total" in override:
+        if key == "credit_payment_received" and (
+            "customer_repayments_payment_total" in override
+            or "customer_repayments_total" in override
+        ):
             continue
         summary[key] = value
     for key in (
@@ -1730,7 +1740,9 @@ def apply_local_dashboard_override(control, overrides, start, end):
     ):
         if key in override:
             control[key] = override[key]
-    if "customer_repayments_total" in control:
+    if "customer_repayments_payment_total" in control:
+        summary["credit_payment_received"] = control["customer_repayments_payment_total"]
+    elif "customer_repayments_total" in control:
         summary["credit_payment_received"] = control["customer_repayments_total"]
     return control
 
@@ -1943,7 +1955,7 @@ def build_ledger_view(
                 "sale_amount": round(sale_amount, 2),
                 "spot_sale_amount": round(spot_sale_amount, 2),
                 "credit_sale_amount": round(sale_amount - spot_sale_amount, 2),
-                "credit_repayment": round(sum(_num(row.get("amount")) for row in day_repayments), 2),
+                "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
                 "expenses": round(expense_total, 2),
                 "cash_balance_office": row_cash,
                 "bank_balance": row_bank,
@@ -2457,6 +2469,28 @@ def main():
                 return rows
         return []
 
+    def saved_vendor_payment_rows(start, end):
+        rows = []
+        for row in saved_stream_rows("bank", start, end):
+            if row.get("source") != "Vendor Payment" and row.get("bank_name") != "UPI/Bank Vendor Payment":
+                continue
+            amount = _num(row.get("debit"))
+            if amount <= 0:
+                continue
+            description = str(row.get("description") or "")
+            vendor_name = description.split(" - ", 1)[1].strip() if " - " in description else "Vendor"
+            row_id = str(row.get("id") or "")
+            reference = row_id.replace("vendor-payment-", "", 1) if row_id.startswith("vendor-payment-") else row_id
+            rows.append({
+                "date": str(row.get("date", ""))[:10],
+                "vendor_name": vendor_name,
+                "amount": amount,
+                "mode": "Bank",
+                "reference": reference or f"ARCHIVE-VENDOR-{row.get('date')}-{int(round(amount))}",
+                "notes": "Archived vendor payment fallback",
+            })
+        return rows
+
     def fetch_rows_or_saved(future, label, saved_rows):
         try:
             return future.result(), True
@@ -2465,6 +2499,17 @@ def main():
                 print(f"  {label} fetch failed; using archived non-empty rows ({len(saved_rows)} rows): {e}")
                 return saved_rows, False
             raise
+
+    def fetch_vendor_payments_or_saved():
+        try:
+            return fetch_vendor_payments(sess, creditors, sync_start, today), True
+        except ErpFetchError as e:
+            saved_rows = saved_vendor_payment_rows(sync_start, today)
+            if saved_rows:
+                print(f"  vendor payments fetch failed; using archived non-empty rows ({len(saved_rows)} rows): {e}")
+                return saved_rows, False
+            print(f"  vendor payments fetch failed; no saved rows; continuing without vendor-payment rows: {e}")
+            return [], False
 
     def saved_boulder_summary(label, start, end):
         summaries = read_data_payload("boulders.json") or {}
@@ -2785,7 +2830,7 @@ def main():
 
     # ── creditors (already fetched in parallel above) ─────────────────────────
     print(f"  {len(creditors)} vendors")
-    vendor_payments = fetch_vendor_payments(sess, creditors, sync_start, today)
+    vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()
     print(f"  {len(vendor_payments)} vendor payments")
     existing_bank_ids = {str(row.get("id")) for row in bank_rows}
     for payment in vendor_payments:

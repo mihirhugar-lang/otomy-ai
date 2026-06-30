@@ -71,7 +71,7 @@ VISIBLE_DASHBOARD_TILES = (
     ("Expenses / MT", "expenses_per_mt"),
     ("Bank Balance", "bank_balance"),
     ("Cash Balance In Office", "cash_balance_office"),
-    ("Credit Payment Received", "credit_payment_received"),
+    ("Payment Received From Customer", "credit_payment_received"),
     ("Credit Sales", "credit_sales"),
     ("Receivables", "receivables"),
     ("Payables", "payables"),
@@ -148,14 +148,19 @@ def visible_tile_values(summary: dict) -> dict[str, float]:
     return values
 
 
-def verify_credit_payment_uses_repayment_total(snapshot: dict, label: str) -> None:
+def verify_credit_payment_uses_payment_total(snapshot: dict, label: str) -> None:
     summary = snapshot.get("summary") or {}
     actual = round(number_value(summary.get("credit_payment_received"), f"{label} summary.credit_payment_received"), 2)
-    repayment_total = round(number_value(snapshot.get("customer_repayments_total"), f"{label} customer_repayments_total"), 2)
-    if actual != repayment_total:
+    if "customer_repayments_payment_total" not in snapshot:
+        fail(f"{label} missing customer_repayments_payment_total")
+    payment_total = round(
+        number_value(snapshot.get("customer_repayments_payment_total"), f"{label} customer_repayments_payment_total"),
+        2,
+    )
+    if actual != payment_total:
         fail(
-            f"{label} credit_payment_received must equal customer_repayments_total "
-            f"(actual={actual}, repayment_total={repayment_total})"
+            f"{label} credit_payment_received must equal customer_repayments_payment_total "
+            f"(actual={actual}, payment_total={payment_total})"
         )
 
 
@@ -192,6 +197,8 @@ def verify_sync_tolerance_guard() -> None:
         "fetch_rows_or_saved(",
         "using archived non-empty rows",
         "using saved non-empty snapshot",
+        "vendor payments fetch failed; using archived non-empty rows",
+        "vendor payments fetch failed; no saved rows; continuing without vendor-payment rows",
         "today repayments ERP compute skipped",
         "replace_repayment_day(saved_mtd, today, repayments_today)",
         "optional debtor balance snapshot skipped",
@@ -234,7 +241,7 @@ def verify_override_snapshots() -> None:
                     f"{url} {field} drifted: snapshot={actual_value} "
                     f"override={expected_value}"
                 )
-        verify_credit_payment_uses_repayment_total(snapshot, url)
+        verify_credit_payment_uses_payment_total(snapshot, url)
         checked += 1
 
     if checked == 0:
@@ -253,7 +260,7 @@ def verify_all_dashboard_presets() -> None:
             if field not in summary:
                 fail(f"{preset} {url} missing summary.{field}")
             number_value(summary[field], f"{preset} {url} summary.{field}")
-        verify_credit_payment_uses_repayment_total(snapshot, f"{preset} {url}")
+        verify_credit_payment_uses_payment_total(snapshot, f"{preset} {url}")
         tiles = visible_tile_values(summary)
         for tile_label, tile_key in VISIBLE_DASHBOARD_TILES:
             if tile_key not in tiles:
