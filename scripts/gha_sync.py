@@ -36,6 +36,42 @@ _PAY = {"CASH", "CREDIT", "CARD/UPI", "SPLIT", "UPI"}
 class ErpFetchError(RuntimeError):
     pass
 
+def _env_int(name, default, min_value=1, max_value=None):
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        value = default
+    value = max(min_value, value)
+    if max_value is not None:
+        value = min(max_value, value)
+    return value
+
+def _env_float(name, default, min_value=0.0):
+    try:
+        value = float(os.environ.get(name, str(default)))
+    except ValueError:
+        value = default
+    return max(min_value, value)
+
+ERP_FETCH_RETRIES = _env_int("OTOMY_ERP_RETRIES", 3, min_value=1, max_value=6)
+ERP_RETRY_DELAY_SECONDS = _env_float("OTOMY_ERP_RETRY_DELAY", 1.5, min_value=0.0)
+ERP_DEBTOR_WORKERS = _env_int("OTOMY_DEBTOR_WORKERS", 4, min_value=1, max_value=8)
+ERP_BALANCE_WORKERS = _env_int("OTOMY_BALANCE_WORKERS", 4, min_value=1, max_value=8)
+
+def _request_json_with_retry(sess, url, *, params=None, timeout=35, label="ERP request"):
+    last_error = None
+    for attempt in range(1, ERP_FETCH_RETRIES + 1):
+        try:
+            response = sess.get(url, params=params, timeout=timeout, verify=True)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            last_error = e
+            if attempt < ERP_FETCH_RETRIES:
+                print(f"  {label} retry {attempt}/{ERP_FETCH_RETRIES} after {type(e).__name__}: {e}")
+                time.sleep(ERP_RETRY_DELAY_SECONDS * attempt)
+    raise last_error
+
 def _clean(x):
     return re.sub(r"<[^>]+>", "", htmllib.unescape(str(x))).strip()
 
@@ -535,12 +571,14 @@ def fetch_debtors(sess, as_of=None):
         start_at, length = 0, 500
         total = None
         while total is None or start_at < total:
-            payload = sess.get(
+            payload = _request_json_with_retry(
+                sess,
                 f"{ERP_BASE}/crusher/ListCustomerBalance",
                 params={"date": ds, "type": 1, "sortByName": -1, "sortByPayment": -1,
                         "customerId": -1, "draw": 1, "start": start_at, "length": length},
-                timeout=35, verify=True,
-            ).json()
+                timeout=35,
+                label=f"debtors {ds} page {start_at}",
+            )
             rows = payload.get("data", []) or []
             total = int(payload.get("recordsTotal", len(rows)))
             if not rows: break
@@ -575,9 +613,12 @@ def fetch_creditors(sess, as_of=None):
     creditors = []
     try:
         ds = (as_of or date.today()).strftime("%d-%m-%Y")
-        data = json.loads(sess.get(
+        data = _request_json_with_retry(
+            sess,
             f"{ERP_BASE}/crusher/ListSupplierBalance?date={ds}&type=1",
-            timeout=35, verify=True).text)
+            timeout=35,
+            label=f"creditors {ds}",
+        )
         for row in data.get("data", []):
             cells = [_clean(c) for c in row]
             if not cells or not cells[0]: continue
@@ -706,7 +747,7 @@ def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debt
     need_fetch = [d for d in inter_days if not (debtors_cache and d in debtors_cache)]
     pre = {}
     if need_fetch:
-        with ThreadPoolExecutor(max_workers=min(len(need_fetch), 10)) as pool:
+        with ThreadPoolExecutor(max_workers=min(len(need_fetch), ERP_DEBTOR_WORKERS)) as pool:
             futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in need_fetch}
             for d, f in futs.items():
                 pre[d] = f.result()
@@ -1488,6 +1529,47 @@ def write_snapshot(url, data):
     SNAPSHOT_API_DIR.mkdir(parents=True, exist_ok=True)
     with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
+
+def read_snapshot(url):
+    path = SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json"
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+def _repayment_copy(rows):
+    if not isinstance(rows, list):
+        return None
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+def _repayment_key(row):
+    return (
+        str(row.get("date", ""))[:10],
+        row.get("customer_name", ""),
+        row.get("reference", ""),
+        round(_num(row.get("amount")), 2),
+        round(_num(row.get("payment_received", row.get("amount"))), 2),
+    )
+
+def merge_repayment_rows(*row_sets):
+    merged = {}
+    for rows in row_sets:
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            merged[_repayment_key(row)] = dict(row)
+    return sorted(
+        merged.values(),
+        key=lambda row: (str(row.get("date", ""))[:10], row.get("customer_name", "")),
+        reverse=True,
+    )
+
+def replace_repayment_day(base_rows, day, fresh_rows):
+    day_s = str(day)
+    kept = [dict(row) for row in base_rows or [] if str(row.get("date", ""))[:10] != day_s]
+    return merge_repayment_rows(kept, fresh_rows or [])
 
 def latest_seed_control(local_seed):
     controls = (local_seed.get("controls") or {}) if isinstance(local_seed, dict) else {}
@@ -2325,65 +2407,112 @@ def main():
     seed_controls = local_seed.get("controls") or {}
     override_controls = local_dashboard_overrides.get("controls") or {}
 
-    def seeded_repayments(start, end):
+    def saved_control(start, end):
         override_control = override_controls.get(f"{start}|{end}") or {}
-        if "customer_repayments" in override_control:
-            return override_control.get("customer_repayments") or []
+        if override_control:
+            return override_control
         control = seed_controls.get(f"{start}|{end}") or {}
-        return control.get("customer_repayments")
+        if control:
+            return control
+        return read_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}") or {}
 
-    repayments_today = seeded_repayments(today, today)
-    repayments_yesterday = seeded_repayments(yesterday, yesterday)
-    repayments_mtd = seeded_repayments(month_start, today)
-    repayments_last_month = seeded_repayments(last_month_start, last_month_end)
-    need_repayment_fetch = any(value is None for value in (repayments_today, repayments_yesterday, repayments_mtd, repayments_last_month))
+    def saved_repayments(start, end):
+        control = saved_control(start, end)
+        return _repayment_copy(control.get("customer_repayments"))
+
+    def require_repayments(label, rows):
+        if rows is None:
+            raise ErpFetchError(f"{label} repayments unavailable; skipped Otomy write")
+        return rows
+
     debtors_yesterday = _debtors_yest_pre  # already fetched in parallel above
-    if need_repayment_fetch:
-        # Pre-fetch boundary debtors + all intermediate days in one parallel batch
-        mtd_inter   = [month_start      + timedelta(days=i) for i in range((today         - month_start).days)]
-        lm_inter    = [last_month_start  + timedelta(days=i) for i in range((last_month_end - last_month_start).days)]
-        boundary_dates = {
-            yesterday - timedelta(days=1),
-            month_start - timedelta(days=1),
-            last_month_start - timedelta(days=1),
-            last_month_end,
-        }
-        already_have = {today: debtors_today, yesterday: _debtors_yest_pre}
-        all_prefetch_dates = (boundary_dates | set(mtd_inter) | set(lm_inter)) - set(already_have)
-        debtors_cache = dict(already_have)
-        with ThreadPoolExecutor(max_workers=min(len(all_prefetch_dates), 15)) as pool:
-            futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in all_prefetch_dates}
+    debtors_cache = {today: debtors_today}
+    if debtors_yesterday:
+        debtors_cache[yesterday] = debtors_yesterday
+
+    def fetch_debtor_cache(dates):
+        missing = sorted({d for d in dates if d not in debtors_cache})
+        if not missing:
+            return
+        with ThreadPoolExecutor(max_workers=min(len(missing), ERP_DEBTOR_WORKERS)) as pool:
+            futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in missing}
             for d, f in futs.items():
                 debtors_cache[d] = f.result()
 
-        debtors_day_before_yesterday = debtors_cache.get(yesterday - timedelta(days=1), [])
-        debtors_before_mtd           = debtors_cache.get(month_start - timedelta(days=1), [])
-        debtors_before_last_month    = debtors_cache.get(last_month_start - timedelta(days=1), [])
-        debtors_last_month_end       = debtors_cache.get(last_month_end, [])
+    def compute_range_repayments(label, start, end, previous_date, current_date):
+        inter_days = [start + timedelta(days=i) for i in range((end - start).days)]
+        fetch_debtor_cache({previous_date, current_date, *inter_days})
+        previous_rows = debtors_cache.get(previous_date) or []
+        current_rows = debtors_cache.get(current_date) or []
+        rows = compute_repayments_from_erp(
+            _clone_sess(sess),
+            start,
+            end,
+            previous_rows,
+            current_rows,
+            debtors_cache,
+        )
+        print(f"  {label} repayments computed from ERP: {len(rows)} rows")
+        return rows
 
-        # Run all 4 repayment computations in parallel — each uses cached debtors, no HTTP for snapshots
-        def _rt(): return compute_repayments_from_erp(_clone_sess(sess), today, today,
-                       debtors_yesterday, debtors_today, debtors_cache)
-        def _ry(): return compute_repayments_from_erp(_clone_sess(sess), yesterday, yesterday,
-                       debtors_day_before_yesterday, debtors_yesterday, debtors_cache)
-        def _rm(): return compute_repayments_from_erp(_clone_sess(sess), month_start, today,
-                       debtors_before_mtd, debtors_today, debtors_cache)
-        def _rl(): return compute_repayments_from_erp(_clone_sess(sess), last_month_start, last_month_end,
-                       debtors_before_last_month, debtors_last_month_end, debtors_cache)
+    saved_today = saved_repayments(today, today)
+    saved_yesterday = saved_repayments(yesterday, yesterday)
+    saved_mtd = saved_repayments(month_start, today)
+    saved_last_month = saved_repayments(last_month_start, last_month_end)
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            f_rt = pool.submit(_rt) if repayments_today        is None else None
-            f_ry = pool.submit(_ry) if repayments_yesterday    is None else None
-            f_rm = pool.submit(_rm) if repayments_mtd          is None else None
-            f_rl = pool.submit(_rl) if repayments_last_month   is None else None
-            if f_rt: repayments_today        = f_rt.result()
-            if f_ry: repayments_yesterday    = f_ry.result()
-            if f_rm: repayments_mtd          = f_rm.result()
-            if f_rl: repayments_last_month   = f_rl.result()
-    repayments_today = repayments_today or []
-    repayments_yesterday = repayments_yesterday or []
-    repayments_mtd = repayments_mtd or []
-    repayments_last_month = repayments_last_month or []
+    repayments_today = None
+    try:
+        repayments_today = compute_repayments_from_erp(
+            _clone_sess(sess),
+            today,
+            today,
+            debtors_yesterday,
+            debtors_today,
+            debtors_cache,
+        )
+        print(f"  today repayments computed from ERP: {len(repayments_today)} rows")
+    except ErpFetchError as e:
+        print(f"  today repayments ERP compute failed; using saved snapshot if available: {e}")
+        repayments_today = saved_today
+    repayments_today = require_repayments("today", repayments_today)
+
+    repayments_yesterday = saved_yesterday
+    if repayments_yesterday is None:
+        try:
+            repayments_yesterday = compute_range_repayments(
+                "yesterday",
+                yesterday,
+                yesterday,
+                yesterday - timedelta(days=1),
+                yesterday,
+            )
+        except ErpFetchError as e:
+            print(f"  yesterday repayments ERP compute failed; using saved snapshot if available: {e}")
+            repayments_yesterday = saved_yesterday
+    repayments_yesterday = require_repayments("yesterday", repayments_yesterday)
+
+    if saved_mtd is not None:
+        repayments_mtd = replace_repayment_day(saved_mtd, today, repayments_today)
+    else:
+        repayments_mtd = compute_range_repayments(
+            "mtd",
+            month_start,
+            today,
+            month_start - timedelta(days=1),
+            today,
+        )
+    repayments_mtd = require_repayments("mtd", repayments_mtd)
+
+    repayments_last_month = saved_last_month
+    if repayments_last_month is None:
+        repayments_last_month = compute_range_repayments(
+            "last month",
+            last_month_start,
+            last_month_end,
+            last_month_start - timedelta(days=1),
+            last_month_end,
+        )
+    repayments_last_month = require_repayments("last month", repayments_last_month)
     archive_repayments = [
         row for row in archive_receipts_to_repayments(archive_rows.get("receipts"))
         if str(row.get("date", ""))[:10] < str(last_month_start)
@@ -2430,8 +2559,7 @@ def main():
         operating_bank_balance = _num(today_seed_summary.get("bank_balance"))
         operating_cash_balance = _num(today_seed_summary.get("cash_balance_office"))
     else:
-        movement_prev = fetch_debtors(sess, movement_start - timedelta(days=1))
-        repayments_movement = compute_repayments_from_erp(sess, movement_start, today, movement_prev, debtors_today)
+        repayments_movement = seed_for(all_repayments, movement_start, today)
         operating_bank_balance = _num(opening.get("bank_balance"))
         operating_cash_balance = _num(opening.get("cash_balance_office"))
         for sale in sales_for(movement_start, today):
@@ -2515,7 +2643,7 @@ def main():
         for row in seed_endpoints.get("vendors_payables", [])
     ]
     debtor_cache = {today: debtors_today}
-    if debtors_yesterday is not debtors_today:
+    if debtors_yesterday and debtors_yesterday is not debtors_today:
         debtor_cache[yesterday] = debtors_yesterday
     if "debtors_last_month_end" in locals():
         debtor_cache[last_month_end] = debtors_last_month_end
@@ -2523,13 +2651,25 @@ def main():
 
     def debtors_for(as_of):
         if as_of not in debtor_cache:
-            debtor_cache[as_of] = fetch_debtors(sess, as_of)
-        return debtor_cache.get(as_of) or seed_debtors
+            try:
+                debtor_cache[as_of] = fetch_debtors(sess, as_of)
+            except ErpFetchError as e:
+                if as_of == today:
+                    raise
+                print(f"  optional debtor balance lookup skipped ({as_of}): {e}")
+                return seed_debtors or debtors_today
+        return debtor_cache.get(as_of) or seed_debtors or debtors_today
 
     def creditors_for(as_of):
         if as_of not in creditor_cache:
-            creditor_cache[as_of] = fetch_creditors(sess, as_of)
-        return creditor_cache.get(as_of) or seed_creditors
+            try:
+                creditor_cache[as_of] = fetch_creditors(sess, as_of)
+            except ErpFetchError as e:
+                if as_of == today:
+                    raise
+                print(f"  optional creditor balance lookup skipped ({as_of}): {e}")
+                return seed_creditors or creditors
+        return creditor_cache.get(as_of) or seed_creditors or creditors
 
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
@@ -2586,24 +2726,34 @@ def main():
     ctrl_yesterday = apply_seed_control_overrides(ctrl_yesterday, local_seed, yesterday, yesterday)
     ctrl_week = apply_seed_control_overrides(ctrl_week, local_seed, week_start, today)
     ctrl_mtd = apply_seed_control_overrides(ctrl_mtd, local_seed, month_start, today)
-    # Fetch all per-day balance snapshots in parallel
-    all_snap_dates = sorted(
-        {today.replace(day=d) for d in range(1, today.day + 1)}
-        | {last_month_start + timedelta(days=d) for d in range((last_month_end - last_month_start).days + 1)}
-    )
+    # Keep historical balance archive updates best-effort. The 5-minute cloud
+    # sync should not freeze just because one older Loctell balance date times out.
+    all_snap_dates = sorted({
+        sync_start + timedelta(days=i)
+        for i in range((today - sync_start).days + 1)
+    } | {today, yesterday})
     needed_d = [d for d in all_snap_dates if d not in debtor_cache]
     needed_c = [d for d in all_snap_dates if d not in creditor_cache]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        d_futures = {d: pool.submit(fetch_debtors,   _clone_sess(sess), d) for d in needed_d}
-        c_futures = {d: pool.submit(fetch_creditors,  _clone_sess(sess), d) for d in needed_c}
-        for d, f in d_futures.items():
-            rows = f.result()
-            if rows:
-                debtor_cache[d] = rows
-        for d, f in c_futures.items():
-            rows = f.result()
-            if rows:
-                creditor_cache[d] = rows
+    if needed_d or needed_c:
+        with ThreadPoolExecutor(max_workers=ERP_BALANCE_WORKERS) as pool:
+            d_futures = {d: pool.submit(fetch_debtors,   _clone_sess(sess), d) for d in needed_d}
+            c_futures = {d: pool.submit(fetch_creditors,  _clone_sess(sess), d) for d in needed_c}
+            for d, f in d_futures.items():
+                try:
+                    rows = f.result()
+                except ErpFetchError as e:
+                    print(f"  optional debtor balance snapshot skipped ({d}): {e}")
+                    continue
+                if rows:
+                    debtor_cache[d] = rows
+            for d, f in c_futures.items():
+                try:
+                    rows = f.result()
+                except ErpFetchError as e:
+                    print(f"  optional creditor balance snapshot skipped ({d}): {e}")
+                    continue
+                if rows:
+                    creditor_cache[d] = rows
     balance_snapshots = {
         str(as_of): {
             "debtors": debtor_cache.get(as_of) or [],

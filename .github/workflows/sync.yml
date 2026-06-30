@@ -29,6 +29,10 @@ jobs:
           ERP_PASS: ${{ secrets.ERP_PASS }}
           OTOMY_SYNC_MODE: recent
           OTOMY_RECENT_DAYS: "7"
+          OTOMY_ERP_RETRIES: "3"
+          OTOMY_ERP_RETRY_DELAY: "1.5"
+          OTOMY_DEBTOR_WORKERS: "4"
+          OTOMY_BALANCE_WORKERS: "4"
         run: python3 scripts/gha_sync.py
 
       - name: Verify dashboard parity guard

@@ -181,6 +181,27 @@ def verify_frontend_guard() -> None:
                 f"after loading the snapshot; found {needle!r}"
             )
 
+def verify_sync_tolerance_guard() -> None:
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    required = (
+        "ERP_FETCH_RETRIES",
+        "ERP_DEBTOR_WORKERS",
+        "read_snapshot(",
+        "replace_repayment_day(saved_mtd, today, repayments_today)",
+        "optional debtor balance snapshot skipped",
+        "repayments_movement = seed_for(all_repayments, movement_start, today)",
+    )
+    for needle in required:
+        if needle not in source:
+            fail(f"gha_sync.py lost cloud tolerance guard: missing {needle!r}")
+    forbidden = (
+        "lm_inter",
+        "all_prefetch_dates = (boundary_dates | set(mtd_inter) | set(lm_inter))",
+    )
+    for needle in forbidden:
+        if needle in source:
+            fail(f"gha_sync.py must not fetch old debtor ranges on every recent sync: found {needle!r}")
+
 
 def verify_override_snapshots() -> None:
     overrides = read_json(OVERRIDES_PATH)
@@ -315,6 +336,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     verify_frontend_guard()
+    verify_sync_tolerance_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return
