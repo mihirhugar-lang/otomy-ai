@@ -444,28 +444,26 @@ def verify_pdf_export_guard() -> None:
     required = (
         "downloadCurrentPagePdf()",
         "function downloadCurrentPagePdf()",
-        "function buildPdfBytes(report)",
-        "function pdfBuildPayload(title,root,subtitle='')",
-        "function pdfFullTableForId(id)",
-        "function pdfDataTablesForRoot(root)",
-        "function downloadPdfReport(payload)",
-        "Download PDF",
-        "OTOMY_APP_VERSION='2026-07-01-no-vendor-bank-v1'",
+        "function runPrint(title, content, className='')",
+        "function openMobilePrintPage(title, content, className='')",
+        "setTimeout(()=>window.print(), 50)",
+        "function printDashboard(doPrint=true)",
+        "Print / PDF",
+        "CrusherOps — Dashboard Daily Report",
+        "&nbsp;|&nbsp; Printed:",
+        "OTOMY_APP_VERSION='2026-07-01-print-pdf-v1'",
     )
     for needle in required:
         if needle not in root_html:
-            fail(f"PDF export guard missing {needle!r}")
+            fail(f"PDF print guard missing {needle!r}")
     forbidden = (
-        "fetch('/api/report/table-pdf'",
-        'fetch("/api/report/table-pdf"',
-        "openMobilePrintPage(",
-        "setTimeout(()=>window.print()",
-        "setTimeout(function(){try{window.print();}",
+        "return downloadPdfReport(pdfBuildPayload(",
+        "downloadPdfReport(pdfBuildPayload('Dashboard Daily Report'",
     )
     for needle in forbidden:
         if needle in root_html:
-            fail(f"PDF export must not depend on old print/backend path: found {needle!r}")
-    print("PDF export guard passed: all pages use the built-in A4 PDF downloader.")
+            fail(f"PDF print guard found direct downloader path: {needle!r}")
+    print("PDF print guard passed: all page PDF buttons use the browser print flow.")
 
 
 def verify_customer_page_presets() -> None:

@@ -414,7 +414,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <button class="mobile-menu-btn no-print" type="button" onclick="toggleMobileNav(true)" aria-label="Open menu">☰</button>
   <div class="topbar-title" id="page-title">Dashboard</div>
   <div class="topbar-actions no-print">
-    <button class="print-btn" style="margin-left:0" onclick="downloadCurrentPagePdf()">Download PDF</button>
+    <button class="print-btn" style="margin-left:0" onclick="downloadCurrentPagePdf()">Print / PDF</button>
     <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
     <div class="topbar-date" id="topbar-date"></div>
   </div>
@@ -438,7 +438,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
-    <button class="print-btn" onclick="printDashboard()">Download PDF</button>
+    <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
   </div>
   <div id="dash-profit-bar"></div>
   <div class="kpi-row">
@@ -470,7 +470,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')">
         <button class="pbtn" onclick="loadSales()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Download PDF</button>
+      <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Print / PDF</button>
     </div>
     <div class="tbl-wrap" id="sales-tbl"></div>
     <div id="sales-pager" class="no-print"></div>
@@ -495,7 +495,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="e-to" onchange="clearPresetBtns('expenses')">
         <button class="pbtn" onclick="loadExpenses()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Download PDF</button>
+      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Print / PDF</button>
     </div>
     <div class="tbl-wrap" id="exp-tbl"></div>
     <div id="exp-pager" class="no-print"></div>
@@ -517,7 +517,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')">
     </div>
-    <button class="print-btn" onclick="printSection('Customers - Outstanding Balances','cust-tbl')">Download PDF</button>
+    <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
@@ -530,8 +530,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
   <div class="card" id="cust-ledger-card" style="display:none">
     <h3>Customer Ledger: <span id="cust-ledger-name"></span>
-      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Customer Sales - '+document.getElementById('cust-ledger-name').textContent,'cust-sales-print')">PDF Sales</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Customer Ledger - '+document.getElementById('cust-ledger-name').textContent,'cust-ledger-summary-print')">PDF Ledger</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Customer Sales - '+document.getElementById('cust-ledger-name').textContent,'cust-sales-print')">Print Sales</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Customer Ledger - '+document.getElementById('cust-ledger-name').textContent,'cust-ledger-summary-print')">Print Ledger</button>
     </h3>
     <div class="tbl-wrap" id="cust-ledger-tbl"></div>
   </div>
@@ -552,7 +552,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
       <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')">
     </div>
-    <button class="print-btn" onclick="printSection('Vendors - Payable Balances','vend-tbl')">Download PDF</button>
+    <button class="print-btn" onclick="printSection('Vendors — Payable Balances','vend-tbl')">Print / PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Payable</div><div class="kpi-value" id="v-total-pay">—</div></div>
@@ -565,9 +565,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
   <div class="card" id="vend-ledger-card" style="display:none">
     <h3>Vendor Ledger: <span id="vend-ledger-name"></span>
-      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Vendor Bills - '+document.getElementById('vend-ledger-name').textContent,'vend-bills-print')">PDF Bills</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Payments - '+document.getElementById('vend-ledger-name').textContent,'vend-payments-print')">PDF Payments</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Ledger - '+document.getElementById('vend-ledger-name').textContent,'vend-ledger-summary-print')">PDF Ledger</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Vendor Bills - '+document.getElementById('vend-ledger-name').textContent,'vend-bills-print')">Print Bills</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Payments - '+document.getElementById('vend-ledger-name').textContent,'vend-payments-print')">Print Payments</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Ledger - '+document.getElementById('vend-ledger-name').textContent,'vend-ledger-summary-print')">Print Ledger</button>
     </h3>
     <div class="tbl-wrap" id="vend-ledger-tbl"></div>
   </div>
@@ -594,7 +594,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')">
         <button class="pbtn" onclick="loadErpBank()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Download PDF</button>
+      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Print / PDF</button>
     </div>
     <div class="tbl-wrap" id="erp-bank-tbl"></div>
     <div id="erp-bank-pager" class="no-print"></div>
@@ -616,7 +616,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')">
         <button class="pbtn" onclick="loadErpCash()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Download PDF</button>
+      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Print / PDF</button>
     </div>
     <div class="tbl-wrap" id="erp-cash-tbl"></div>
     <div id="erp-cash-pager" class="no-print"></div>
@@ -638,7 +638,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
       <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
     </div>
-    <button class="print-btn" onclick="printCurrentOpsTab()">Download PDF</button>
+    <button class="print-btn" onclick="printCurrentOpsTab()">Print / PDF</button>
   </div>
 
   <div class="card">
@@ -664,7 +664,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="document.getElementById('ledger-month').value=monthNow();loadLedgerView()">This Month</button>
       <button class="pbtn" onclick="document.getElementById('ledger-month').value=lastMonthYM();loadLedgerView()">Last Month</button>
       <div class="preset-dates"><input type="month" id="ledger-month" onchange="loadLedgerView()"></div>
-      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Download PDF</button>
+      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Print / PDF</button>
     </div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
@@ -1362,7 +1362,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-01-no-vendor-bank-v1';
+const OTOMY_APP_VERSION='2026-07-01-print-pdf-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
@@ -1601,6 +1601,32 @@ function setTallyDates(f,t){document.getElementById('tally-from').value=f;docume
 // ── PDF download ───────────────────────────────────────────────────────────
 function isMobilePrint(){
   return window.matchMedia('(max-width: 760px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+function printStyles(){
+  return document.querySelector('style')?.textContent || '';
+}
+function openMobilePrintPage(title, content, className=''){
+  const safeTitle=esc(title);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
+  const win=window.open('', '_blank');
+  if(!win){
+    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
+    return false;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  return true;
+}
+function runPrint(title, content, className=''){
+  const pa=document.getElementById('print-area');
+  pa.className=className;
+  pa.innerHTML=content;
+  if(isMobilePrint()){
+    openMobilePrintPage(title, content, className);
+    return;
+  }
+  setTimeout(()=>window.print(), 50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
@@ -1932,44 +1958,57 @@ function downloadPdfReport(payload){
   flash('PDF downloaded');
   return true;
 }
-async function openTablePdf(title,el,subtitle){
-  if(!el){flash('Nothing to download',false);return false;}
-  return downloadPdfReport(pdfBuildPayload(title,el,subtitle));
+function openTablePdf(title,el,subtitle){
+  if(!el){flash('Nothing to print',false);return false;}
+  const detail=subtitle?`${esc(subtitle)} &nbsp;|&nbsp; `:'';
+  const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${el.outerHTML}`;
+  runPrint(title, content);
+  return true;
 }
 function printSection(title,tableContainerId){
   const el=document.getElementById(tableContainerId);
-  if(!el){flash('Nothing to download',false);return;}
+  if(!el){flash('Nothing to print',false);return;}
   const section=document.querySelector('.section.active');
-  openTablePdf(title,el,pdfSubtitleFromRoot(section));
+  let dateRange='';
+  if(section){
+    const f=section.querySelector('input[id$="-from"]');
+    const t=section.querySelector('input[id$="-to"]');
+    const s=section.querySelector('input[id$="-date"]');
+    if(f&&t&&f.value)dateRange=`Period: ${f.value} to ${t.value}`;
+    else if(s&&s.value)dateRange=`Date: ${s.value}`;
+  }
+  openTablePdf(title,el,dateRange);
 }
 function printDashboard(doPrint=true){
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
-  const root=document.getElementById('section-dashboard');
-  if(!root){flash('Dashboard PDF content not ready',false);return;}
-  if(doPrint===false){
-    const pa=document.getElementById('print-area');
-    const profit=document.getElementById('dash-profit-bar');
-    const kpis=document.querySelector('#section-dashboard .kpi-row');
-    const body=document.getElementById('dash-print-area');
-    pa.className='dashboard-print';
-    pa.innerHTML=`<div class="print-ph"><h1>CrusherOps - Dashboard Daily Report</h1><p>Day: ${d} | Period: ${f} to ${t} | Printed: ${pdfGeneratedStamp()}</p></div>${profit?.outerHTML||''}${kpis?.outerHTML||''}${body?.outerHTML||''}`;
-    return;
-  }
-  downloadPdfReport(pdfBuildPayload('Dashboard Daily Report',root,`Day: ${d} | Period: ${f} to ${t}`));
+  const profit=document.getElementById('dash-profit-bar');
+  const kpis=document.querySelector('#section-dashboard .kpi-row');
+  const body=document.getElementById('dash-print-area');
+  if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
+  const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
+  if(doPrint)runPrint('Dashboard Daily Report', content, 'dashboard-print');
+  else{const pa=document.getElementById('print-area');pa.className='dashboard-print';pa.innerHTML=content;}
 }
 function printCurrentOpsTab(){
-  const root=document.getElementById('section-ops');
+  const act=document.querySelector('.subtab-content.active');
+  if(!act)return;
+  const tbl=act.querySelector('.tbl-wrap');
+  const h3=act.querySelector('h3')?.textContent||'Operations';
   const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  openTablePdf('Operations',root,`Period: ${f} to ${t}`);
+  openTablePdf(h3,tbl,`Period: ${f} to ${t}`);
 }
 function downloadCurrentPagePdf(){
   const name=_activeSectionName();
   if(name==='dashboard'){printDashboard();return;}
   if(name==='ops'){printCurrentOpsTab();return;}
-  const root=document.getElementById(`section-${name}`);
   const title=TITLES[name]||document.getElementById('page-title')?.textContent||'Report';
+  const targetBySection={sales:'sales-tbl',expenses:'exp-tbl',customers:'cust-tbl',vendors:'vend-tbl',bank:'erp-bank-tbl',ledger:'ledger-tbl'};
+  const target=targetBySection[name];
+  if(target){printSection(title,target);return;}
+  const root=document.getElementById(`section-${name}`);
+  if(!root){flash('Nothing to print',false);return;}
   openTablePdf(title,root,pdfSubtitleFromRoot(root));
 }
 
