@@ -146,6 +146,17 @@ def verify_negative_number_guard() -> None:
     print("Negative number guard passed: ERP credit balances keep their sign.")
 
 
+def verify_archive_balance_guard() -> None:
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    if 'if section == "balances":\n        return incoming\n' in source:
+        fail("gha_sync.py must not blindly replace historical archive balance rows")
+    if 'return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing' not in source:
+        fail("gha_sync.py must preserve richer historical archive balance rows")
+    if "repayments=seed_for(all_repayments, week_start, today)" not in source:
+        fail("gha_sync.py weekly dashboard repayments must use all_repayments, not month-only repayments")
+    print("Archive balance guard passed: historical rows and cross-month weekly repayments are protected.")
+
+
 def payment_channel(mode: object) -> str:
     return "cash" if "CASH" in str(mode or "").upper() else "bank"
 
@@ -376,6 +387,7 @@ def main() -> None:
     verify_frontend_guard()
     verify_sync_tolerance_guard()
     verify_negative_number_guard()
+    verify_archive_balance_guard()
     verify_payment_split_guard()
     if args.code_only:
         print("Code-only parity guard passed.")

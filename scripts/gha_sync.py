@@ -1408,7 +1408,7 @@ def _prefer_archive_row(section, existing, incoming):
             merged["customer_id"] = existing["customer_id"]
         return merged
     if section == "balances":
-        return incoming
+        return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
     if section in {"sales", "receipts"}:
         return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
     return incoming
@@ -3034,7 +3034,7 @@ def main():
         vendor_payments=seed_for(vendor_payments, week_start, today),
         bank_balance_book=bank_balance_book,
         cash_balance_office_book=cash_balance_office_book,
-        repayments=seed_for(repayments_mtd, week_start, today),
+        repayments=seed_for(all_repayments, week_start, today),
     )
     ctrl_mtd = build_control(
         sales_for(month_start, today), exp_for(month_start, today), month_start, today,
