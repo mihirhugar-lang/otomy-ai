@@ -797,15 +797,20 @@ function _rowsInRange(months,section,from,to){
 }
 function _num(v){const n=Number(v||0);return Number.isFinite(n)?n:0;}
 function _saleTotal(r){return _num(r&&(r.amount!=null?r.amount:r.debit))+_num(r&&r.transport_charge);}
-function _saleCreditAmount(r){
-  const cash=_num(r&&r.cash_amount), credit=_num(r&&r.credit_amount), upi=_num(r&&r.upi_amount);
-  if(cash+credit+upi>0)return credit;
-  return String(r&&r.payment_mode||'').toLowerCase()==='credit'?_saleTotal(r):0;
-}
 function _payChannel(mode){
   const s=String(mode||'').toUpperCase();
   return s.includes('CASH')?'cash':'bank';
 }
+function _saleChannels(r){
+  const cash=_num(r&&r.cash_amount), credit=_num(r&&r.credit_amount), upi=_num(r&&r.upi_amount);
+  if(cash+credit+upi>0)return {cash,credit,upi};
+  const total=_saleTotal(r), mode=String(r&&r.payment_mode||'Credit');
+  if(mode.toLowerCase()==='credit')return {cash:0,credit:total,upi:0};
+  if(_payChannel(mode)==='cash')return {cash:total,credit:0,upi:0};
+  return {cash:0,credit:0,upi:total};
+}
+function _saleCreditAmount(r){return _saleChannels(r).credit;}
+function _saleSpotAmount(r){const ch=_saleChannels(r);return ch.cash+ch.upi;}
 function _isDirectorPayment(...values){
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
   return text.includes('PRASHANT')||text.includes('KUMAR');
@@ -872,9 +877,9 @@ async function _archiveOperatingBalances(toDate=today()){
     const months=await _loadArchiveRange(from,to);
     const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
     _rowsInRange(months,'sales',from,to).forEach(s=>{
-      if(String(s.payment_mode||'').toLowerCase()==='credit')return;
-      if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s);
-      else if(inBank(s.date))bank+=_saleTotal(s);
+      const ch=_saleChannels(s);
+      cash+=ch.cash;
+      if(ch.upi&&inBank(s.date))bank+=ch.upi;
     });
     _rowsInRange(months,'receipts',from,to).forEach(r=>{
       const amount=_receiptPaymentAmount(r);
@@ -898,9 +903,11 @@ function _archiveCustomerSales(sales){
     if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
     const g=map.get(key), amount=_saleTotal(s), mode=s.payment_mode||'Credit';
     g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.ticket_nos.push(s.ticket_no||'—');
-    if(String(mode).toLowerCase()==='credit')g.credit_sale_amount+=amount;
-    else if(_payChannel(mode)==='cash'){g.cash_received+=amount;g.paid_against_sale+=amount;}
-    else{g.bank_received+=amount;g.paid_against_sale+=amount;}
+    const ch=_saleChannels(s);
+    g.credit_sale_amount+=ch.credit;
+    g.cash_received+=ch.cash;
+    g.bank_received+=ch.upi;
+    g.paid_against_sale+=ch.cash+ch.upi;
     g.tickets.push({date:s.date,ticket_no:s.ticket_no||'—',qty_mt:_num(s.qty_mt),amount,payment_mode:mode});
   });
   return [...map.values()].map(g=>({
@@ -1015,7 +1022,7 @@ async function _archiveControl(from,to){
   const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
   const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
   const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
-  const cashCollected=sales.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_saleTotal(r),0);
+  const cashCollected=sales.reduce((s,r)=>s+_saleSpotAmount(r),0);
   const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes)).reduce((s,r)=>s+_num(r.amount),0);
   const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes)).reduce((s,r)=>s+_num(r.amount),0);
   const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes)).reduce((s,r)=>s+_num(r.total_amount),0);
@@ -1070,9 +1077,9 @@ async function _archiveLedger(year,month){
   for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
     const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
-    const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit').reduce((s,r)=>s+_saleTotal(r),0);
+    const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0), credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0);
     const operating=await _archiveOperatingBalances(day);
-    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round((saleAmount-spot)*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round(credit*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
   }
   const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
   totals.boulder_input_mt=Math.round(rows.reduce((s,r)=>s+r.boulder_input_mt,0)*100)/100;
@@ -1347,7 +1354,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-01-pdf-export-v1';
+const OTOMY_APP_VERSION='2026-07-01-ledger-split-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);

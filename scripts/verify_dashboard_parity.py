@@ -299,6 +299,60 @@ def verify_payment_split_guard() -> None:
     print("Payment-split guard passed: ListSale Final Cash/Credit/UPI split is wired in.")
 
 
+def verify_ledger_split_guard() -> None:
+    """Ensure static archive Ledger View uses captured cash/credit/UPI splits.
+
+    This protects against the old bug where a split UPI ticket was counted fully
+    as bank in Ledger View while dashboard balances used the real split.
+    """
+    root_html = (ROOT / "index.html").read_text()
+    required_helpers = (
+        "function _saleChannels(r)",
+        "function _saleCreditAmount(r){return _saleChannels(r).credit;}",
+        "function _saleSpotAmount(r){const ch=_saleChannels(r);return ch.cash+ch.upi;}",
+    )
+    for needle in required_helpers:
+        if needle not in root_html:
+            fail(f"ledger split guard missing helper {needle!r}")
+
+    def block_between(start_marker: str, end_marker: str) -> str:
+        start = root_html.find(start_marker)
+        end = root_html.find(end_marker, start)
+        if start == -1 or end == -1 or end <= start:
+            fail(f"ledger split guard could not locate block {start_marker!r}")
+        return root_html[start:end]
+
+    operating = block_between("async function _archiveOperatingBalances", "function _archiveCustomerSales")
+    ledger = block_between("async function _archiveLedger", "async function archiveFetch")
+    customer_sales = block_between("function _archiveCustomerSales", "function _archiveBalanceAsOf")
+
+    for needle in ("const ch=_saleChannels(s);", "cash+=ch.cash;", "if(ch.upi&&inBank(s.date))bank+=ch.upi;"):
+        if needle not in operating:
+            fail(f"archive operating balance must use split sale channels: missing {needle!r}")
+    for needle in (
+        "spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0)",
+        "credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0)",
+        "credit_sale_amount:Math.round(credit*100)/100",
+    ):
+        if needle not in ledger:
+            fail(f"archive ledger rows must use split sale channels: missing {needle!r}")
+    for needle in ("g.credit_sale_amount+=ch.credit;", "g.cash_received+=ch.cash;", "g.bank_received+=ch.upi;"):
+        if needle not in customer_sales:
+            fail(f"archive customer sale totals must use split sale channels: missing {needle!r}")
+
+    forbidden = (
+        "if(_payChannel(s.payment_mode)==='cash')cash+=_saleTotal(s)",
+        "bank+=_saleTotal(s)",
+        "ds.filter(r=>String(r.payment_mode||'').toLowerCase()!=='credit')",
+        "credit_sale_amount:Math.round((saleAmount-spot)*100)/100",
+    )
+    for block_name, block in (("operating", operating), ("ledger", ledger), ("customer_sales", customer_sales)):
+        for needle in forbidden:
+            if needle in block:
+                fail(f"{block_name} archive logic must not use old payment_mode-only split: found {needle!r}")
+    print("Ledger split guard passed: archive balances and ledger rows use cash/credit/UPI splits.")
+
+
 def verify_customer_page_guard() -> None:
     root_html = (ROOT / "index.html").read_text()
     start = root_html.find("async function loadCustomers()")
@@ -356,7 +410,7 @@ def verify_pdf_export_guard() -> None:
         "function pdfDataTablesForRoot(root)",
         "function downloadPdfReport(payload)",
         "Download PDF",
-        "OTOMY_APP_VERSION='2026-07-01-pdf-export-v1'",
+        "OTOMY_APP_VERSION='2026-07-01-ledger-split-v1'",
     )
     for needle in required:
         if needle not in root_html:
@@ -492,6 +546,7 @@ def main() -> None:
     verify_negative_number_guard()
     verify_archive_balance_guard()
     verify_payment_split_guard()
+    verify_ledger_split_guard()
     verify_customer_page_guard()
     verify_pdf_export_guard()
     if args.code_only:
