@@ -741,6 +741,12 @@ function snapshotKey(url){
   const normalized=u.pathname+(u.search?u.search:'');
   return btoa(normalized).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
+function _isVendorPaymentBankRow(row){
+  return row && (row.source==='Vendor Payment' || row.bank_name==='UPI/Bank Vendor Payment');
+}
+function _withoutVendorPaymentRows(rows){
+  return Array.isArray(rows)?rows.filter(row=>!_isVendorPaymentBankRow(row)):rows;
+}
 function fiveMinuteCacheBust(){
   return Math.floor(Date.now()/300000);
 }
@@ -766,7 +772,9 @@ async function snapshotFetch(url){
     if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
-  return r.json();
+  const data=await r.json();
+  if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(data);
+  return data;
 }
 const _archiveCache={};
 function _dateMonths(from,to){
@@ -1109,7 +1117,7 @@ async function archiveFetch(url){
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
-    if(u.pathname==='/api/sync/erp/bank')return _rowsInRange(months,'bank',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(_rowsInRange(months,'bank',from,to)).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
   }
@@ -1354,7 +1362,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-01-ledger-split-v1';
+const OTOMY_APP_VERSION='2026-07-01-no-vendor-bank-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);

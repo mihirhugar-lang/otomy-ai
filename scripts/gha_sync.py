@@ -1282,6 +1282,8 @@ def _bank_row_quality(row):
 def dedupe_bank_rows(rows):
     merged = {}
     for row in rows or []:
+        if _is_vendor_payment_bank_row(row):
+            continue
         key = _bank_dedupe_key(row)
         if key in merged:
             merged[key] = row if _bank_row_quality(row) >= _bank_row_quality(merged[key]) else merged[key]
@@ -1362,6 +1364,15 @@ def _is_vendor_payment_expense(row):
     text = " ".join(str(row.get(key, "")) for key in ("id", "category", "description", "notes")).upper()
     return row.get("category") == "Vendor Payment" or "VENDOR PAYMENT" in text or "ERP-SUP-" in text
 
+def _is_vendor_payment_bank_row(row):
+    text = " ".join(str(row.get(key, "")) for key in ("id", "bank_name", "source", "description")).upper()
+    return (
+        row.get("source") == "Vendor Payment"
+        or row.get("bank_name") == "UPI/Bank Vendor Payment"
+        or "VENDOR PAYMENT" in text
+        or "VENDOR-PAYMENT-" in text
+    )
+
 def _row_quality(section, row):
     if section == "sales":
         score = 0
@@ -1439,6 +1450,8 @@ def _merge_archive_rows(existing, incoming, section):
     merged = {}
     existing_expense_keys = set()
     for idx, row in enumerate(existing):
+        if section == "bank" and _is_vendor_payment_bank_row(row):
+            continue
         key = _archive_key(section, row)
         if section == "expenses":
             existing_expense_keys.add(_expense_content_key(row))
@@ -1446,6 +1459,8 @@ def _merge_archive_rows(existing, incoming, section):
                 key = f"{key}|archive-row:{row.get('id') or idx}"
         merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
     for row in incoming:
+        if section == "bank" and _is_vendor_payment_bank_row(row):
+            continue
         key = _archive_key(section, row)
         row_date = str(row.get("date", ""))[:10]
         if section == "expenses" and _expense_content_key(row) in existing_expense_keys:
@@ -1461,10 +1476,10 @@ def _bank_key(row):
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
     # Drop archived "Sale" rows so they re-derive fresh with the current split amount
     # (otherwise a sale whose UPI portion changed shows twice — old full + new split).
-    # Other derived sources (Expense / Credit Payment / Vendor Payment) are unaffected by
+    # Other derived sources (Expense / Credit Payment) are unaffected by
     # the split and are preserved to avoid dropping rows the recent window can't re-derive.
     rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if row.get("source") != "Sale"]
+            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
         # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
@@ -1556,22 +1571,6 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 f"sale_adjusted={row.get('sale_adjusted', 0.0)}"
             ),
         })
-
-    for row in vendor_payments or []:
-        day = str(row.get("date", ""))[:10]
-        month = day[:7]
-        if not month:
-            continue
-        if _payment_channel(row.get("mode") or "") != "cash":
-            by_month.setdefault(month, {}).setdefault("bank", []).append({
-                "id": f"vendor-payment-{row.get('reference') or day}",
-                "date": day,
-                "description": f"Vendor payment by bank/UPI - {row.get('vendor_name') or 'Vendor'}",
-                "credit": 0.0,
-                "debit": _num(row.get("amount")),
-                "bank_name": "UPI/Bank Vendor Payment",
-                "source": "Vendor Payment",
-            })
 
     for as_of, snapshot in (balance_snapshots or {}).items():
         day = str(as_of)[:10]
@@ -3029,23 +3028,6 @@ def main():
     print(f"  {len(creditors)} vendors")
     vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()
     print(f"  {len(vendor_payments)} vendor payments")
-    existing_bank_ids = {str(row.get("id")) for row in bank_rows}
-    for payment in vendor_payments:
-        if _payment_channel(payment.get("mode") or "") == "cash":
-            continue
-        row_id = f"vendor-payment-{payment.get('reference') or payment.get('date')}"
-        if row_id in existing_bank_ids:
-            continue
-        existing_bank_ids.add(row_id)
-        bank_rows.append({
-            "id": row_id,
-            "date": str(payment.get("date", ""))[:10],
-            "description": f"Vendor payment by bank/UPI - {payment.get('vendor_name') or 'Vendor'}",
-            "credit": 0.0,
-            "debit": _num(payment.get("amount")),
-            "bank_name": "UPI/Bank Vendor Payment",
-            "source": "Vendor Payment",
-        })
     bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),

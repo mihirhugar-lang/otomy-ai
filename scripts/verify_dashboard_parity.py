@@ -353,6 +353,46 @@ def verify_ledger_split_guard() -> None:
     print("Ledger split guard passed: archive balances and ledger rows use cash/credit/UPI splits.")
 
 
+def verify_no_vendor_payment_bank_guard() -> None:
+    """Vendor payments are already represented in expenses, so Cash & Bank must not list them again."""
+    root_html = (ROOT / "index.html").read_text()
+    for needle in (
+        "function _isVendorPaymentBankRow(row)",
+        "function _withoutVendorPaymentRows(rows)",
+        "if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(data);",
+        "return _withoutVendorPaymentRows(_rowsInRange(months,'bank',from,to))",
+    ):
+        if needle not in root_html:
+            fail(f"frontend must filter vendor-payment bank rows: missing {needle!r}")
+
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    for needle in (
+        "def _is_vendor_payment_bank_row(row):",
+        "if _is_vendor_payment_bank_row(row):\n            continue",
+        'if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)',
+        'if section == "bank" and _is_vendor_payment_bank_row(row):',
+    ):
+        if needle not in source:
+            fail(f"gha_sync.py must drop vendor-payment bank rows: missing {needle!r}")
+
+    append_start = source.find("vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()")
+    append_end = source.find("bank_rows = dedupe_bank_rows(bank_rows)", append_start)
+    if append_start == -1 or append_end == -1 or append_end <= append_start:
+        fail("could not locate vendor-payment/bank_rows block in gha_sync.py")
+    append_block = source[append_start:append_end]
+    if "bank_rows.append" in append_block or "UPI/Bank Vendor Payment" in append_block:
+        fail("gha_sync.py must not append vendor payments to bank_rows")
+
+    archive_start = source.find("def write_archive_updates(")
+    archive_end = source.find("for as_of, snapshot in (balance_snapshots or {}).items():", archive_start)
+    if archive_start == -1 or archive_end == -1 or archive_end <= archive_start:
+        fail("could not locate archive update pre-balance block in gha_sync.py")
+    archive_block = source[archive_start:archive_end]
+    if "UPI/Bank Vendor Payment" in archive_block or "Vendor payment by bank/UPI" in archive_block:
+        fail("gha_sync.py must not write vendor payments into archive bank rows")
+    print("Vendor-payment bank guard passed: Cash & Bank no longer duplicates vendor expenses.")
+
+
 def verify_customer_page_guard() -> None:
     root_html = (ROOT / "index.html").read_text()
     start = root_html.find("async function loadCustomers()")
@@ -410,7 +450,7 @@ def verify_pdf_export_guard() -> None:
         "function pdfDataTablesForRoot(root)",
         "function downloadPdfReport(payload)",
         "Download PDF",
-        "OTOMY_APP_VERSION='2026-07-01-ledger-split-v1'",
+        "OTOMY_APP_VERSION='2026-07-01-no-vendor-bank-v1'",
     )
     for needle in required:
         if needle not in root_html:
@@ -485,6 +525,9 @@ def verify_bank_page_presets() -> None:
             fail(f"{preset} {expenses_url} must be a list")
         if not isinstance(bank_rows, list):
             fail(f"{preset} {bank_url} must be a list")
+        for row in bank_rows:
+            if row.get("source") == "Vendor Payment" or row.get("bank_name") == "UPI/Bank Vendor Payment":
+                fail(f"{preset} {bank_url} must not include duplicate vendor payment row {row.get('id')!r}")
         repayments = control.get("customer_repayments") or []
         if not isinstance(repayments, list):
             fail(f"{preset} {control_url} customer_repayments must be a list")
@@ -547,6 +590,7 @@ def main() -> None:
     verify_archive_balance_guard()
     verify_payment_split_guard()
     verify_ledger_split_guard()
+    verify_no_vendor_payment_bank_guard()
     verify_customer_page_guard()
     verify_pdf_export_guard()
     if args.code_only:
