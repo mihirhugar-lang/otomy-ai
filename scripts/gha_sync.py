@@ -89,9 +89,18 @@ def _clean(x):
     return re.sub(r"<[^>]+>", "", htmllib.unescape(str(x))).strip()
 
 def _num(s):
-    s = re.sub(r"[^\d.]", "", str(s).replace(",", "").strip())
-    try:    return float(s)
-    except: return 0.0
+    text = str(s).replace(",", "").strip()
+    sign_text = text.replace("₹", "")
+    negative = bool(
+        re.search(r"(^|[^\d])[-\u2212]\s*(?:rs\.?\s*)?\d", sign_text, re.IGNORECASE)
+        or re.match(r"^\s*\(.*\)\s*$", text)
+    )
+    cleaned = re.sub(r"[^\d.]", "", text)
+    try:
+        value = float(cleaned)
+    except:
+        return 0.0
+    return -value if negative and value else value
 
 def _pay_channel(p):
     p = (p or "").upper().strip()
@@ -125,6 +134,13 @@ def _sale_channels(s):
 
 def _is_director_payment(*values):
     text = " ".join(str(value or "") for value in values).upper()
+    localhost_operating_expense_labels = (
+        "CASH GIVEN TO KUMAR SIR",
+        "PRASHANTH SIR (NJP) LODGE EXP",
+        "KUMAR SIR CAR PENALTY",
+    )
+    if any(label in text for label in localhost_operating_expense_labels):
+        return False
     return "PRASHANT" in text or "KUMAR" in text
 
 def _mode_bucket(raw):
@@ -3245,6 +3261,12 @@ def main():
 
     print("  Updating monthly archive files...")
     write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, boulder_rows, all_repayments, vendor_payments, local_seed, balance_snapshots)
+    archive_rows = load_archive_window(archive_start, today)
+    archive_balances = {
+        str(row.get("date", ""))[:10]: row
+        for row in archive_rows.get("balances", [])
+        if row.get("date")
+    }
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(

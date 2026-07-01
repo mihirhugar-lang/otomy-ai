@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import datetime as dt
+import importlib.util
 import json
 import sys
 import argparse
@@ -124,6 +125,25 @@ def number_value(value: object, label: str) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         fail(f"{label} must be numeric, got {value!r}")
+
+
+def verify_negative_number_guard() -> None:
+    gha_sync_path = ROOT / "scripts" / "gha_sync.py"
+    spec = importlib.util.spec_from_file_location("otomy_gha_sync", gha_sync_path)
+    if spec is None or spec.loader is None:
+        fail("could not load gha_sync.py for number parser guard")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    samples = (
+        ("-1,039,311.00", -1039311.0),
+        ("₹-741,055.00", -741055.0),
+        ("1,039,311.00", 1039311.0),
+    )
+    for raw, expected in samples:
+        actual = round(float(module._num(raw)), 2)
+        if actual != expected:
+            fail(f"gha_sync.py _num({raw!r}) returned {actual}, expected {expected}")
+    print("Negative number guard passed: ERP credit balances keep their sign.")
 
 
 def payment_channel(mode: object) -> str:
@@ -355,6 +375,7 @@ def main() -> None:
     args = parser.parse_args()
     verify_frontend_guard()
     verify_sync_tolerance_guard()
+    verify_negative_number_guard()
     verify_payment_split_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
