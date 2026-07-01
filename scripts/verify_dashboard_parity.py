@@ -72,6 +72,16 @@ VISIBLE_DASHBOARD_TILES = (
     ("Payables", "payables"),
 )
 
+REQUIRED_CUSTOMER_RANGE_FIELDS = (
+    "name",
+    "material_sold",
+    "range_credit_sales",
+    "range_payment_received",
+    "total_outstanding",
+    "range_latest_sale_date",
+    "latest_sale_date",
+)
+
 
 def fail(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
@@ -289,6 +299,70 @@ def verify_payment_split_guard() -> None:
     print("Payment-split guard passed: ListSale Final Cash/Credit/UPI split is wired in.")
 
 
+def verify_customer_page_guard() -> None:
+    root_html = (ROOT / "index.html").read_text()
+    start = root_html.find("async function loadCustomers()")
+    end = root_html.find("async function showCustLedger", start)
+    if start == -1 or end == -1 or end <= start:
+        fail("could not locate loadCustomers block")
+    block = root_html[start:end]
+    required = (
+        "from_date=${from}&to_date=${to}&as_of=${to}",
+        "Material Sold",
+        "Credit Sale",
+        "Payment Received",
+        "Total Outstanding",
+        "range_latest_sale_date||r.latest_sale_date",
+    )
+    for needle in required:
+        if needle not in block:
+            fail(f"customer page lost meaningful range column: missing {needle!r}")
+    forbidden = ("GSTIN", "Phone", "ERP Received", "age_0_15", "age_16_30", "age_31_45", "age_45_plus")
+    for needle in forbidden:
+        if needle in block:
+            fail(f"customer page table must not show old column {needle!r}")
+    detail_start = root_html.find("function renderCustLedger()")
+    detail_end = root_html.find("async function addReceipt", detail_start)
+    if detail_start == -1 or detail_end == -1 or detail_end <= detail_start:
+        fail("could not locate renderCustLedger block")
+    detail = root_html[detail_start:detail_end]
+    detail_required = (
+        "rangeSales",
+        "rangeReceipts",
+        "rangeLedger",
+        "Material Sold",
+        "Credit Sale",
+        "Payment Received",
+        "Total Outstanding",
+    )
+    for needle in detail_required:
+        if needle not in detail:
+            fail(f"customer detail lost range-aware field: missing {needle!r}")
+    detail_forbidden = ("ERP Received", "0-15 Days", "16-30 Days", "31-45 Days", "45+ Days")
+    for needle in detail_forbidden:
+        if needle in detail:
+            fail(f"customer detail must not show old receivable card {needle!r}")
+    print("Customer page guard passed: range-aware customer table and detail are wired in.")
+
+
+def verify_customer_page_presets() -> None:
+    checked = 0
+    for preset, (start, end) in required_preset_ranges().items():
+        url, rows = api_snapshot(f"/api/customers/?active_only=false&from_date={start}&to_date={end}&as_of={end}")
+        if not isinstance(rows, list):
+            fail(f"{preset} {url} must be a list")
+        active_rows = [row for row in rows if isinstance(row, dict) and row.get("active", True)]
+        for row in active_rows[:10]:
+            for field in REQUIRED_CUSTOMER_RANGE_FIELDS:
+                if field not in row:
+                    fail(f"{preset} {url} customer row missing {field}")
+            number_value(row.get("range_credit_sales"), f"{preset} customer range_credit_sales")
+            number_value(row.get("range_payment_received"), f"{preset} customer range_payment_received")
+            number_value(row.get("total_outstanding"), f"{preset} customer total_outstanding")
+        checked += 1
+    print(f"Customer page snapshot guard passed for {checked} tabs.")
+
+
 def verify_all_dashboard_presets() -> None:
     checked = 0
     for preset, (start, end) in required_preset_ranges().items():
@@ -389,11 +463,13 @@ def main() -> None:
     verify_negative_number_guard()
     verify_archive_balance_guard()
     verify_payment_split_guard()
+    verify_customer_page_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return
     verify_all_dashboard_presets()
     verify_bank_page_presets()
+    verify_customer_page_presets()
     verify_cloud_independence_guard()
 
 

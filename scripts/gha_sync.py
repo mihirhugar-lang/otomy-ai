@@ -2180,6 +2180,114 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today):
         ledgers[str(cust.get("id"))] = ledger
     return ledgers
 
+def _format_material_sold(materials):
+    rows = sorted(
+        materials.items(),
+        key=lambda item: (_num(item[1].get("qty")), _num(item[1].get("amount"))),
+        reverse=True,
+    )
+    if not rows:
+        return "No sale"
+    parts = []
+    for material, totals in rows[:4]:
+        qty = _num(totals.get("qty"))
+        label = material or "Material"
+        parts.append(f"{label} {qty:,.2f} MT" if qty else label)
+    if len(rows) > 4:
+        parts.append(f"+{len(rows) - 4} more")
+    return ", ".join(parts)
+
+def build_customer_range_rows(customers_full, all_sales, range_sales, range_repayments, archive_balance=None):
+    metrics = {}
+    for sale in all_sales or []:
+        name = str(sale.get("customer_name") or "").strip()
+        if not name:
+            continue
+        metric = metrics.setdefault(name, {
+            "material_totals": {},
+            "range_total_sales": 0.0,
+            "range_credit_sales": 0.0,
+            "range_payment_received": 0.0,
+            "range_latest_sale_date": "",
+            "latest_sale_date": "",
+        })
+        sale_date = str(sale.get("date", ""))[:10]
+        if sale_date > metric["latest_sale_date"]:
+            metric["latest_sale_date"] = sale_date
+    for sale in range_sales or []:
+        name = str(sale.get("customer_name") or "").strip()
+        if not name:
+            continue
+        metric = metrics.setdefault(name, {
+            "material_totals": {},
+            "range_total_sales": 0.0,
+            "range_credit_sales": 0.0,
+            "range_payment_received": 0.0,
+            "range_latest_sale_date": "",
+            "latest_sale_date": "",
+        })
+        sale_date = str(sale.get("date", ""))[:10]
+        if sale_date > metric["range_latest_sale_date"]:
+            metric["range_latest_sale_date"] = sale_date
+        if sale_date > metric["latest_sale_date"]:
+            metric["latest_sale_date"] = sale_date
+        amount = _sale_total(sale)
+        _sale_cash, sale_credit, _sale_upi = _sale_channels(sale)
+        material = str(sale.get("material") or "Material").strip() or "Material"
+        mat = metric["material_totals"].setdefault(material, {"qty": 0.0, "amount": 0.0})
+        mat["qty"] += _num(sale.get("qty_mt"))
+        mat["amount"] += amount
+        metric["range_total_sales"] += amount
+        metric["range_credit_sales"] += sale_credit
+    for repayment in range_repayments or []:
+        name = str(repayment.get("customer_name") or "").strip()
+        if not name:
+            continue
+        metric = metrics.setdefault(name, {
+            "material_totals": {},
+            "range_total_sales": 0.0,
+            "range_credit_sales": 0.0,
+            "range_payment_received": 0.0,
+            "range_latest_sale_date": "",
+            "latest_sale_date": "",
+        })
+        metric["range_payment_received"] += _num(repayment.get("payment_received", repayment.get("amount")))
+
+    outstanding_by_name = {}
+    if archive_balance:
+        for row in archive_balance.get("receivables_rows") or archive_balance.get("top_receivables") or []:
+            name = str(row.get("name") or "").strip()
+            if name:
+                outstanding_by_name[name] = _num(row.get("balance"))
+
+    rows = []
+    for customer in customers_full or []:
+        row = dict(customer)
+        name = str(row.get("name") or "").strip()
+        metric = metrics.get(name, {})
+        outstanding = outstanding_by_name.get(name, _num(row.get("outstanding", row.get("balance", 0.0))))
+        row.update({
+            "balance": round(outstanding, 2),
+            "outstanding": round(outstanding, 2),
+            "total_outstanding": round(outstanding, 2),
+            "material_sold": _format_material_sold(metric.get("material_totals", {})),
+            "range_total_sales": round(_num(metric.get("range_total_sales")), 2),
+            "range_credit_sales": round(_num(metric.get("range_credit_sales")), 2),
+            "range_payment_received": round(_num(metric.get("range_payment_received")), 2),
+            "range_latest_sale_date": metric.get("range_latest_sale_date") or None,
+            "latest_sale_date": metric.get("latest_sale_date") or None,
+        })
+        rows.append(row)
+    def _date_sort_value(value):
+        return int(str(value or "").replace("-", "") or "0")
+    rows.sort(key=lambda row: (
+        not row.get("active", True),
+        -_date_sort_value(row.get("range_latest_sale_date") or row.get("latest_sale_date")),
+        -_num(row.get("total_outstanding")),
+        str(row.get("name") or ""),
+    ))
+    return rows
+
 def write_snapshot_bundle(
     today,
     yesterday,
@@ -2364,6 +2472,16 @@ def write_snapshot_bundle(
             summary["cash_balance_office"] = overlay_balance[1]
             summary["operating_balance_from"] = overlay_anchor_date(end)
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
+        write_snapshot(
+            f"/api/customers/?active_only=false&from_date={start}&to_date={end}&as_of={end}",
+            build_customer_range_rows(
+                customers_full,
+                all_sales,
+                rows_between(all_sales, start, end),
+                rows_between(repayments, start, end),
+                archive_balance,
+            ),
+        )
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
         write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", rows_between(boulder_rows, start, end))

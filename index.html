@@ -790,7 +790,12 @@ function _rowsInRange(months,section,from,to){
   return months.flatMap(m=>m[section]||[]).filter(r=>r.date>=from&&r.date<=to);
 }
 function _num(v){const n=Number(v||0);return Number.isFinite(n)?n:0;}
-function _saleTotal(r){return _num(r&&r.amount)+_num(r&&r.transport_charge);}
+function _saleTotal(r){return _num(r&&(r.amount!=null?r.amount:r.debit))+_num(r&&r.transport_charge);}
+function _saleCreditAmount(r){
+  const cash=_num(r&&r.cash_amount), credit=_num(r&&r.credit_amount), upi=_num(r&&r.upi_amount);
+  if(cash+credit+upi>0)return credit;
+  return String(r&&r.payment_mode||'').toLowerCase()==='credit'?_saleTotal(r):0;
+}
 function _payChannel(mode){
   const s=String(mode||'').toUpperCase();
   return s.includes('CASH')?'cash':'bank';
@@ -805,7 +810,7 @@ function _receiptNoteAmount(notes,key){
 }
 function _receiptPaymentAmount(row){
   const noted=_receiptNoteAmount(row.notes,'payment_received');
-  return noted==null?_num(row.amount):_num(noted);
+  return noted==null?_num(row.amount!=null?row.amount:row.credit):_num(noted);
 }
 let _balCfgCache, _bankStmtCache;
 async function _balanceConfig(){
@@ -916,18 +921,45 @@ async function _archiveBalanceForDate(asOf){
   if(!payload)return null;
   return _archiveBalanceAsOf([payload],asOf);
 }
-function _archiveCustomerRows(balance){
+function _formatArchiveMaterials(materials){
+  const rows=[...materials.entries()].sort((a,b)=>(b[1].qty-a[1].qty)||(b[1].amount-a[1].amount));
+  if(!rows.length)return 'No sale';
+  const parts=rows.slice(0,4).map(([name,total])=>total.qty?`${name} ${total.qty.toFixed(2)} MT`:name);
+  if(rows.length>4)parts.push(`+${rows.length-4} more`);
+  return parts.join(', ');
+}
+function _archiveCustomerRows(balance,sales=[],receipts=[]){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
-  return rows.map((row,idx)=>({
+  const byName=new Map();
+  function ensure(name){
+    const key=(name||'Customer').trim()||'Customer';
+    if(!byName.has(key))byName.set(key,{name:key,materials:new Map(),range_total_sales:0,range_credit_sales:0,range_payment_received:0,range_latest_sale_date:'',latest_sale_date:'',outstanding:0,id:null});
+    return byName.get(key);
+  }
+  sales.forEach(s=>{
+    const g=ensure(s.customer_name||'Customer'), amount=_saleTotal(s), material=(s.material||'Material').trim()||'Material';
+    const mat=g.materials.get(material)||{qty:0,amount:0};
+    mat.qty+=_num(s.qty_mt);mat.amount+=amount;g.materials.set(material,mat);
+    g.range_total_sales+=amount;g.range_credit_sales+=_saleCreditAmount(s);
+    const d=String(s.date||'').slice(0,10);if(d>g.range_latest_sale_date)g.range_latest_sale_date=d;if(d>g.latest_sale_date)g.latest_sale_date=d;
+  });
+  receipts.forEach(r=>{ensure(r.customer_name||'Customer').range_payment_received+=_receiptPaymentAmount(r);});
+  rows.forEach((row,idx)=>{
+    const g=ensure(row.name||'Customer');
+    g.id=row.id||g.id||`archive-customer-${idx}`;
+    g.outstanding=_num(row.balance);
+  });
+  return [...byName.values()].map((row,idx)=>({
     id:row.id||`archive-customer-${idx}`,
     name:row.name||'Customer',
     gstin:'',
     phone:'',
     opening_balance:0,
     active:true,
-    balance:_num(row.balance),
-    outstanding:_num(row.balance),
-    total_sales:0,
+    balance:Math.round(row.outstanding*100)/100,
+    outstanding:Math.round(row.outstanding*100)/100,
+    total_outstanding:Math.round(row.outstanding*100)/100,
+    total_sales:Math.round(row.range_total_sales*100)/100,
     total_receipts:0,
     manual_receipts:0,
     erp_received:0,
@@ -935,8 +967,14 @@ function _archiveCustomerRows(balance){
     age_0_15:0,
     age_16_30:0,
     age_31_45:0,
-    age_45_plus:_num(row.balance),
-  }));
+    age_45_plus:Math.round(row.outstanding*100)/100,
+    material_sold:_formatArchiveMaterials(row.materials),
+    range_total_sales:Math.round(row.range_total_sales*100)/100,
+    range_credit_sales:Math.round(row.range_credit_sales*100)/100,
+    range_payment_received:Math.round(row.range_payment_received*100)/100,
+    range_latest_sale_date:row.range_latest_sale_date||null,
+    latest_sale_date:row.latest_sale_date||null,
+  })).sort((a,b)=>String(b.range_latest_sale_date||b.latest_sale_date||'').localeCompare(String(a.range_latest_sale_date||a.latest_sale_date||'')) || _num(b.total_outstanding)-_num(a.total_outstanding));
 }
 function _archiveVendorRows(balance){
   const rows=(balance?.payables_rows||balance?.top_payables||[]);
@@ -1041,7 +1079,10 @@ async function archiveFetch(url){
   const asOf=u.searchParams.get('as_of');
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
     const balance=await _archiveBalanceForDate(asOf);
-    if(balance)return _archiveCustomerRows(balance);
+    if(balance){
+      const months=from&&to?await _loadArchiveRange(from,to):[];
+      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf));
+    }
   }
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
     const balance=await _archiveBalanceForDate(asOf);
@@ -1072,7 +1113,7 @@ const _page={sales:1,expenses:1,boulders:1,machines:1,labour:1,parts:1,erpbank:1
 const _sort={
   sales:{key:'amount',dir:'desc'},
   expenses:{key:'amount',dir:'desc'},
-  customers:{key:'outstanding',dir:'desc'},
+  customers:{key:'latest_sale_date',dir:'desc'},
   vendors:{key:'payable',dir:'desc'},
   erpbank:{key:'max_amount',dir:'desc'},
   erpcash:{key:'max_amount',dir:'desc'},
@@ -1300,7 +1341,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-06-30-cloud-dashboard-tabs-v1';
+const OTOMY_APP_VERSION='2026-07-01-customer-page-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
@@ -1946,34 +1987,31 @@ async function addCustomer(){
 async function loadCustomers(){
   try{
     const asOf=document.getElementById('c-to')?.value||today();
-    const rows=await api(`/api/customers/?active_only=false&as_of=${asOf}`);
+    const from=document.getElementById('c-from')?.value||asOf;
+    const to=document.getElementById('c-to')?.value||asOf;
+    const rows=await api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`);
     _customers=rows;
-    const out=await api(`/api/customers/outstanding?as_of=${asOf}`);
-    let totOut=out.reduce((s,r)=>s+r.outstanding,0);
-    document.getElementById('c-total').textContent=rows.length;
+    const active=rows.filter(r=>r.active);
+    let totOut=active.reduce((s,r)=>s+(r.total_outstanding??r.outstanding??r.balance??0),0);
+    document.getElementById('c-total').textContent=active.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
-    document.getElementById('c-with-bal').textContent=out.length;
+    document.getElementById('c-with-bal').textContent=active.filter(r=>(r.total_outstanding??r.outstanding??r.balance??0)>0).length;
     const derived={
-      outstanding:r=>r.outstanding??r.balance??(out.find(o=>o.id===r.id)||{}).outstanding??0,
-      total_sales:r=>r.total_sales??(out.find(o=>o.id===r.id)||{}).total_sales??0,
-      total_receipts:r=>r.total_receipts??(out.find(o=>o.id===r.id)||{}).total_receipts??0,
-      manual_receipts:r=>r.manual_receipts??(out.find(o=>o.id===r.id)||{}).manual_receipts??0,
-      received:r=>r.received??r.erp_received??(out.find(o=>o.id===r.id)||{}).received??0,
-      age_0_15:r=>r.age_0_15??(out.find(o=>o.id===r.id)||{}).age_0_15??0,
-      age_16_30:r=>r.age_16_30??(out.find(o=>o.id===r.id)||{}).age_16_30??0,
-      age_31_45:r=>r.age_31_45??(out.find(o=>o.id===r.id)||{}).age_31_45??0,
-      age_45_plus:r=>r.age_45_plus??(out.find(o=>o.id===r.id)||{}).age_45_plus??0,
+      outstanding:r=>r.total_outstanding??r.outstanding??r.balance??0,
+      material_sold:r=>r.material_sold||'No sale',
+      range_credit_sales:r=>r.range_credit_sales??0,
+      range_payment_received:r=>r.range_payment_received??0,
+      latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
-    const activeRows=sortedRows(rows.filter(r=>r.active),'customers',derived);
-    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','gstin','GSTIN','loadCustomers')+thSort('customers','phone','Phone','loadCustomers')+thSort('customers','opening_balance','Opening/Adj','loadCustomers')+thSort('customers','total_sales','Total Sales','loadCustomers')+thSort('customers','received','ERP Received','loadCustomers')+thSort('customers','age_0_15','0-15','loadCustomers')+thSort('customers','age_16_30','16-30','loadCustomers')+thSort('customers','age_31_45','31-45','loadCustomers')+thSort('customers','age_45_plus','45+','loadCustomers')+thSort('customers','outstanding','Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    const activeRows=sortedRows(active,'customers',derived);
+    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_payment_received','Payment Received','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
     activeRows.forEach(r=>{
-      const ob=out.find(o=>o.id===r.id)||{};
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.received(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="5" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
@@ -1996,31 +2034,43 @@ function renderCustLedger(){
   const sales=sortedRows(rows.filter(r=>r.type==='sale'),'custSales',{amount:r=>r.debit||r.amount||0});
   const ledger=sortedRows(rows,'custLedger');
   const receipts=rows.filter(r=>r.type==='receipt');
-  const totalSales=sales.reduce((s,r)=>s+(r.debit||r.amount||0),0);
-  const totalReceipts=data.received??data.erp_received??receipts.reduce((s,r)=>s+(r.credit||r.amount||0),0);
+  const rangeTo=document.getElementById('c-to')?.value||today();
+  const rangeFrom=document.getElementById('c-from')?.value||rangeTo;
+  const inCustomerRange=r=>{const d=String(r.date||'').slice(0,10);return (!rangeFrom||d>=rangeFrom)&&(!rangeTo||d<=rangeTo);};
+  const rangeSales=sales.filter(inCustomerRange);
+  const rangeReceipts=receipts.filter(inCustomerRange);
+  const rangeLedger=ledger.filter(inCustomerRange);
+  const materialMap=new Map();
+  rangeSales.forEach(r=>{
+    const material=(r.material||'Material').trim()||'Material';
+    const current=materialMap.get(material)||{qty:0,amount:0};
+    current.qty+=_num(r.qty_mt);current.amount+=_saleTotal(r);
+    materialMap.set(material,current);
+  });
+  const materialSold=_formatArchiveMaterials(materialMap);
+  const totalSales=rangeSales.reduce((s,r)=>s+_saleTotal(r),0);
+  const totalCreditSales=rangeSales.reduce((s,r)=>s+_saleCreditAmount(r),0);
+  const totalReceipts=rangeReceipts.reduce((s,r)=>s+_receiptPaymentAmount(r),0);
   let html=`<div class="kpi-row" style="margin-bottom:12px">
-    <div class="kpi blue"><div class="kpi-label">Sales Tickets</div><div class="kpi-value">${sales.length}</div></div>
-    <div class="kpi green"><div class="kpi-label">Total Sales</div><div class="kpi-value">${fmtINR(totalSales)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">ERP Received</div><div class="kpi-value">${fmtINR(totalReceipts)}</div></div>
-    <div class="kpi red"><div class="kpi-label">Closing Balance</div><div class="kpi-value">${fmtINR(data.closing_balance||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">0-15 Days</div><div class="kpi-value">${fmtINR(data.age_0_15||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">16-30 Days</div><div class="kpi-value">${fmtINR(data.age_16_30||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">31-45 Days</div><div class="kpi-value">${fmtINR(data.age_31_45||0)}</div></div>
-    <div class="kpi red"><div class="kpi-label">45+ Days</div><div class="kpi-value">${fmtINR(data.age_45_plus||0)}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Sales Tickets</div><div class="kpi-value">${rangeSales.length}</div></div>
+    <div class="kpi green"><div class="kpi-label">Material Sold</div><div class="kpi-value" style="font-size:18px;line-height:1.25">${esc(materialSold)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Credit Sale</div><div class="kpi-value">${fmtINR(totalCreditSales)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Payment Received</div><div class="kpi-value">${fmtINR(totalReceipts)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value">${fmtINR(data.closing_balance||0)}</div></div>
   </div>`;
   html+='<div id="cust-sales-print"><h3 style="font-size:16px;margin:8px 0;color:#1565c0">Sales Data</h3>';
   html+='<table><thead><tr>'+thSort('custSales','date','Date','renderCustLedger')+thSort('custSales','ticket_no','Ticket','renderCustLedger')+thSort('custSales','vehicle_no','Vehicle','renderCustLedger')+thSort('custSales','material','Material','renderCustLedger')+thSort('custSales','mdp_ton','MDP Ton','renderCustLedger')+thSort('custSales','qty_mt','Qty MT','renderCustLedger')+thSort('custSales','rate_per_mt','Rate','renderCustLedger')+thSort('custSales','amount','Amount','renderCustLedger')+thSort('custSales','payment_mode','Mode','renderCustLedger')+'</tr></thead><tbody>';
-  sales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
-  if(!sales.length)html+='<tr><td colspan="9" class="empty">No sales data for this customer</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${sales.length})</strong></td><td>${fmtINR(totalSales)}</td><td></td></tr></tfoot></table></div>`;
+  rangeSales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
+  if(!rangeSales.length)html+='<tr><td colspan="9" class="empty">No sales data for this customer</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${rangeSales.length})</strong></td><td>${fmtINR(totalSales)}</td><td></td></tr></tfoot></table></div>`;
   html+='<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Summary</h3>';
   html+='<table><thead><tr>'+thSort('custLedger','date','Date','renderCustLedger')+thSort('custLedger','type','Type','renderCustLedger')+thSort('custLedger','description','Description','renderCustLedger')+thSort('custLedger','debit','Debit (Sale)','renderCustLedger')+thSort('custLedger','credit','Credit (Receipt)','renderCustLedger')+thSort('custLedger','balance','Balance','renderCustLedger')+'</tr></thead><tbody>';
-  ledger.forEach(r=>{
+  rangeLedger.forEach(r=>{
     const isSale=r.type==='sale', isReceipt=r.type==='receipt';
     const label=isSale?'Sale':isReceipt?'Receipt':'Opening';
     html+=`<tr><td>${r.date||'—'}</td><td><span class="badge ${isSale?'b-credit':isReceipt?'b-paid':'b-pending'}">${label}</span></td><td>${esc(r.description||'')}</td><td>${isSale?fmtINR(r.debit||r.amount||0):'—'}</td><td>${isReceipt?fmtINR(r.credit||r.amount||0):'—'}</td><td style="font-weight:600">${fmtINR(r.balance||0)}</td></tr>`;
   });
-  if(!ledger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
+  if(!rangeLedger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
   html+='</tbody></table></div>';
   document.getElementById('cust-ledger-tbl').innerHTML=html;
 }
