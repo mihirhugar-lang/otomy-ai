@@ -345,6 +345,35 @@ def verify_customer_page_guard() -> None:
     print("Customer page guard passed: range-aware customer table and detail are wired in.")
 
 
+def verify_pdf_export_guard() -> None:
+    root_html = (ROOT / "index.html").read_text()
+    required = (
+        "downloadCurrentPagePdf()",
+        "function downloadCurrentPagePdf()",
+        "function buildPdfBytes(report)",
+        "function pdfBuildPayload(title,root,subtitle='')",
+        "function pdfFullTableForId(id)",
+        "function pdfDataTablesForRoot(root)",
+        "function downloadPdfReport(payload)",
+        "Download PDF",
+        "OTOMY_APP_VERSION='2026-07-01-pdf-export-v1'",
+    )
+    for needle in required:
+        if needle not in root_html:
+            fail(f"PDF export guard missing {needle!r}")
+    forbidden = (
+        "fetch('/api/report/table-pdf'",
+        'fetch("/api/report/table-pdf"',
+        "openMobilePrintPage(",
+        "setTimeout(()=>window.print()",
+        "setTimeout(function(){try{window.print();}",
+    )
+    for needle in forbidden:
+        if needle in root_html:
+            fail(f"PDF export must not depend on old print/backend path: found {needle!r}")
+    print("PDF export guard passed: all pages use the built-in A4 PDF downloader.")
+
+
 def verify_customer_page_presets() -> None:
     checked = 0
     for preset, (start, end) in required_preset_ranges().items():
@@ -464,6 +493,7 @@ def main() -> None:
     verify_archive_balance_guard()
     verify_payment_split_guard()
     verify_customer_page_guard()
+    verify_pdf_export_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return

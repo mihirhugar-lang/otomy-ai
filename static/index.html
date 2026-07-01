@@ -41,6 +41,7 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:12px 26px;border-bottom:1px solid rgba(228,231,236,.75);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 10px 30px rgba(17,24,39,.05)}
 .topbar-title{font-size:17px;font-weight:900;color:#1f2937}
+.topbar-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
 .topbar-date{font-size:12px;color:#777}
 .install-btn{display:none;border:0;border-radius:999px;background:linear-gradient(135deg,#38aeea,#8ee7ff);color:#073f63;font-size:12px;font-weight:900;padding:8px 13px;box-shadow:0 8px 20px rgba(56,174,234,.28);cursor:pointer;white-space:nowrap}
 .install-btn.show{display:inline-flex;align-items:center;gap:6px}
@@ -225,6 +226,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .main{margin-left:0;width:100%;min-width:0}
   .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
   .topbar-title{font-size:16px;line-height:1.2;flex:1;min-width:0}
+  .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
   .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
@@ -411,8 +413,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 <div class="topbar">
   <button class="mobile-menu-btn no-print" type="button" onclick="toggleMobileNav(true)" aria-label="Open menu">☰</button>
   <div class="topbar-title" id="page-title">Dashboard</div>
-  <button class="install-btn no-print" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
-  <div class="topbar-date" id="topbar-date"></div>
+  <div class="topbar-actions no-print">
+    <button class="print-btn" style="margin-left:0" onclick="downloadCurrentPagePdf()">Download PDF</button>
+    <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
+    <div class="topbar-date" id="topbar-date"></div>
+  </div>
 </div>
 <div id="flash"></div>
 <div class="content">
@@ -433,7 +438,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
-    <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
+    <button class="print-btn" onclick="printDashboard()">Download PDF</button>
   </div>
   <div id="dash-profit-bar"></div>
   <div class="kpi-row">
@@ -465,7 +470,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')">
         <button class="pbtn" onclick="loadSales()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Download PDF</button>
     </div>
     <div class="tbl-wrap" id="sales-tbl"></div>
     <div id="sales-pager" class="no-print"></div>
@@ -490,7 +495,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="e-to" onchange="clearPresetBtns('expenses')">
         <button class="pbtn" onclick="loadExpenses()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Download PDF</button>
     </div>
     <div class="tbl-wrap" id="exp-tbl"></div>
     <div id="exp-pager" class="no-print"></div>
@@ -512,7 +517,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')">
     </div>
-    <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
+    <button class="print-btn" onclick="printSection('Customers - Outstanding Balances','cust-tbl')">Download PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
@@ -525,8 +530,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
   <div class="card" id="cust-ledger-card" style="display:none">
     <h3>Customer Ledger: <span id="cust-ledger-name"></span>
-      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Customer Sales - '+document.getElementById('cust-ledger-name').textContent,'cust-sales-print')">Print Sales</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Customer Ledger - '+document.getElementById('cust-ledger-name').textContent,'cust-ledger-summary-print')">Print Ledger</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Customer Sales - '+document.getElementById('cust-ledger-name').textContent,'cust-sales-print')">PDF Sales</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Customer Ledger - '+document.getElementById('cust-ledger-name').textContent,'cust-ledger-summary-print')">PDF Ledger</button>
     </h3>
     <div class="tbl-wrap" id="cust-ledger-tbl"></div>
   </div>
@@ -547,7 +552,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
       <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')">
     </div>
-    <button class="print-btn" onclick="printSection('Vendors — Payable Balances','vend-tbl')">Print / PDF</button>
+    <button class="print-btn" onclick="printSection('Vendors - Payable Balances','vend-tbl')">Download PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Payable</div><div class="kpi-value" id="v-total-pay">—</div></div>
@@ -560,9 +565,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
   <div class="card" id="vend-ledger-card" style="display:none">
     <h3>Vendor Ledger: <span id="vend-ledger-name"></span>
-      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Vendor Bills - '+document.getElementById('vend-ledger-name').textContent,'vend-bills-print')">Print Bills</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Payments - '+document.getElementById('vend-ledger-name').textContent,'vend-payments-print')">Print Payments</button>
-      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Ledger - '+document.getElementById('vend-ledger-name').textContent,'vend-ledger-summary-print')">Print Ledger</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:12px;font-size:11px" onclick="printSection('Vendor Bills - '+document.getElementById('vend-ledger-name').textContent,'vend-bills-print')">PDF Bills</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Payments - '+document.getElementById('vend-ledger-name').textContent,'vend-payments-print')">PDF Payments</button>
+      <button class="print-btn" style="display:inline-flex;margin-left:8px;font-size:11px" onclick="printSection('Vendor Ledger - '+document.getElementById('vend-ledger-name').textContent,'vend-ledger-summary-print')">PDF Ledger</button>
     </h3>
     <div class="tbl-wrap" id="vend-ledger-tbl"></div>
   </div>
@@ -589,7 +594,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')">
         <button class="pbtn" onclick="loadErpBank()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Download PDF</button>
     </div>
     <div class="tbl-wrap" id="erp-bank-tbl"></div>
     <div id="erp-bank-pager" class="no-print"></div>
@@ -611,7 +616,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')">
         <button class="pbtn" onclick="loadErpCash()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Download PDF</button>
     </div>
     <div class="tbl-wrap" id="erp-cash-tbl"></div>
     <div id="erp-cash-pager" class="no-print"></div>
@@ -633,6 +638,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
       <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
     </div>
+    <button class="print-btn" onclick="printCurrentOpsTab()">Download PDF</button>
   </div>
 
   <div class="card">
@@ -658,7 +664,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="document.getElementById('ledger-month').value=monthNow();loadLedgerView()">This Month</button>
       <button class="pbtn" onclick="document.getElementById('ledger-month').value=lastMonthYM();loadLedgerView()">Last Month</button>
       <div class="preset-dates"><input type="month" id="ledger-month" onchange="loadLedgerView()"></div>
-      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Download PDF</button>
     </div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
@@ -1341,7 +1347,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-01-customer-page-v1';
+const OTOMY_APP_VERSION='2026-07-01-pdf-export-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
@@ -1577,119 +1583,379 @@ function opsReload(){loadBoulders();loadMachines();}
 function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
 function setTallyDates(f,t){document.getElementById('tally-from').value=f;document.getElementById('tally-to').value=t;}
 
-// ── Print ──────────────────────────────────────────────────────────────────
+// ── PDF download ───────────────────────────────────────────────────────────
 function isMobilePrint(){
   return window.matchMedia('(max-width: 760px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
-function printStyles(){
-  return document.querySelector('style')?.textContent || '';
+function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
+function pdfClean(value){
+  return String(value??'')
+    .replace(/₹/g,'Rs ')
+    .replace(/[–—]/g,'-')
+    .replace(/[“”]/g,'"')
+    .replace(/[‘’]/g,"'")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g,'')
+    .replace(/\s+/g,' ')
+    .trim();
 }
-function openMobilePrintPage(title, content, className=''){
-  const safeTitle=esc(title);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
-  const win=window.open('', '_blank');
-  if(!win){
-    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
-    return false;
+function pdfSlug(value){
+  return pdfClean(value).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,70)||'crusherops_report';
+}
+function pdfLiteral(value){
+  return pdfClean(value).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+function pdfTextWidth(text,size,bold=false){
+  let units=0;
+  for(const ch of pdfClean(text)){
+    if(ch===' ')units+=0.28;
+    else if('MW@#%&'.includes(ch))units+=0.86;
+    else if('ABCDEFGHKNOPQRSTUVWXYZ'.includes(ch))units+=0.64;
+    else if('ijlI.,:;|!'.includes(ch))units+=0.30;
+    else if('0123456789'.includes(ch))units+=0.55;
+    else units+=0.52;
   }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  return units*size*(bold?1.08:1.04);
+}
+function pdfWrapText(value,maxWidth,size,bold=false,maxLines=6){
+  const text=pdfClean(value);
+  if(!text)return [''];
+  const words=text.split(' ');
+  const lines=[];
+  let line='';
+  function pushLine(){
+    if(line){lines.push(line);line='';}
+  }
+  for(const word of words){
+    const next=line?`${line} ${word}`:word;
+    if(pdfTextWidth(next,size,bold)<=maxWidth){line=next;continue;}
+    pushLine();
+    if(pdfTextWidth(word,size,bold)<=maxWidth){line=word;continue;}
+    let part='';
+    for(const ch of word){
+      const candidate=part+ch;
+      if(pdfTextWidth(candidate,size,bold)>maxWidth && part){lines.push(part);part=ch;}
+      else part=candidate;
+    }
+    line=part;
+  }
+  pushLine();
+  if(lines.length>maxLines){
+    const clipped=lines.slice(0,maxLines);
+    clipped[clipped.length-1]=clipped[clipped.length-1].replace(/\.+$/,'')+'...';
+    return clipped;
+  }
+  return lines.length?lines:[''];
+}
+function pdfIsVisible(el){
+  if(!el || el.classList?.contains('no-print'))return false;
+  const style=getComputedStyle(el);
+  if(style.display==='none'||style.visibility==='hidden')return false;
+  return Boolean(el.offsetWidth||el.offsetHeight||el.getClientRects().length);
+}
+function pdfCellText(cell){
+  const clone=cell.cloneNode(true);
+  clone.querySelectorAll('.no-print,button,input,select,textarea').forEach(n=>n.remove());
+  return pdfClean(clone.innerText||clone.textContent||'');
+}
+function pdfRowsFromTable(table){
+  const rows=[...table.querySelectorAll('tr')].map(tr=>
+    [...tr.children].filter(cell=>pdfIsVisible(cell)).map(pdfCellText)
+  ).filter(row=>row.some(Boolean));
+  if(rows.length<2)return rows;
+  const maxCols=Math.max(...rows.map(r=>r.length));
+  return rows.map(r=>[...r,...Array(Math.max(0,maxCols-r.length)).fill('')]);
+}
+function pdfTablesFromElement(root,title){
+  if(!root)return [];
+  const tableNodes=root.tagName==='TABLE'?[root]:[...root.querySelectorAll('table')];
+  return tableNodes.filter(pdfIsVisible).map((table,idx)=>{
+    const card=table.closest('.card,.print-section');
+    const heading=card?.querySelector('h3')?.innerText || (idx===0?title:`Table ${idx+1}`);
+    return {title:pdfClean(heading),rows:pdfRowsFromTable(table)};
+  }).filter(t=>t.rows.length);
+}
+function pdfMetricRows(root){
+  const rows=[['Metric','Value']];
+  const profit=root.querySelector?.('.profit-bar');
+  if(profit && pdfIsVisible(profit)){
+    const label=profit.querySelector('.pl')?.innerText||'Profit';
+    const value=profit.querySelector('.pv')?.innerText||profit.innerText;
+    rows.push([label,value]);
+  }
+  [...(root.querySelectorAll?.('.kpi,.control-metric')||[])].filter(pdfIsVisible).forEach(card=>{
+    const label=card.querySelector('.kpi-label,span')?.innerText||'Metric';
+    const value=card.querySelector('.kpi-value,strong')?.innerText||'';
+    const note=card.querySelector('.kpi-sub')?.innerText||'';
+    if(label||value)rows.push([label,note?`${value} (${note})`:value]);
+  });
+  return rows.length>1?{title:'Summary',rows}:null;
+}
+function pdfFormRows(root){
+  const rows=[['Field','Value']];
+  [...(root.querySelectorAll?.('.fg')||[])].filter(pdfIsVisible).forEach(fg=>{
+    const label=fg.querySelector('label')?.innerText||'Field';
+    const input=fg.querySelector('input,select,textarea');
+    const value=input?input.value:(fg.innerText||'');
+    if(label||value)rows.push([label,value]);
+  });
+  return rows.length>1?{title:'Page Details',rows}:null;
+}
+function pdfSubtitleFromRoot(root){
+  const f=root?.querySelector?.('input[id$="-from"]');
+  const t=root?.querySelector?.('input[id$="-to"]');
+  const d=root?.querySelector?.('input[id$="-date"]');
+  const m=root?.querySelector?.('input[type="month"]');
+  if(f&&t&&f.value)return `Period: ${f.value} to ${t.value}`;
+  if(d&&d.value)return `Date: ${d.value}`;
+  if(m&&m.value)return `Month: ${m.value}`;
+  return '';
+}
+function pdfTableBlock(title,headers,rows,footer){
+  const body=rows.length?rows:[Array(headers.length).fill('').map((_,i)=>i===0?'No records':'')];
+  return {title,rows:[headers,...body,...(footer?[footer]:[])]};
+}
+function pdfFullTableForId(id){
+  if(id==='sales-tbl'){
+    const rows=sortedRows(_allData.sales,'sales');
+    let tot=0,totTransport=0,totmt=0,totmdp=0;
+    _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
+    return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','GST','Mode','Vehicle','Ticket'],rows.map(r=>{
+      const tax=r.gst_rate>0?Math.round(_saleTotal(r)/(1+r.gst_rate/100)*r.gst_rate/100):0;
+      return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR(_saleTotal(r)),fmtINR(tax),r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
+    }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),'','','','']);
+  }
+  if(id==='exp-tbl'){
+    const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'-'}).name:'-'};
+    const rows=sortedRows(_allData.expenses,'expenses',derived);
+    const tot=_allData.expenses.reduce((s,r)=>s+r.amount,0);
+    return pdfTableBlock('Expenses Ledger',['Date','Category','Vendor','Description','Amount','Mode'],rows.map(r=>[r.date,r.category,derived.vendor(r),r.description,fmtINR(r.amount),r.payment_mode]),[`TOTAL (${_allData.expenses.length})`,'','','',fmtINR(tot),'']);
+  }
+  if(id==='boulders-tbl'){
+    const rows=_allData.boulders||[];
+    const tot=rows.reduce((s,r)=>s+_num(r.total_tonnes),0);
+    return pdfTableBlock('Boulder Input',['Date','Source','Trips','MT/Trip','Total MT'],rows.map(r=>[r.date,r.source,r.trips,r.tonnes_per_trip,`${r.total_tonnes} MT`]),[`TOTAL (${rows.length})`,'','','',`${tot.toFixed(1)} MT`]);
+  }
+  if(id==='machines-tbl'){
+    const rows=_allData.machines||[];
+    return pdfTableBlock('Machine Readings',['Date','Machine','Start Hrs','End Hrs','Run Hrs','Production MT','Fuel L'],rows.map(r=>[r.date,r.machine_name,r.start_hours,r.end_hours,r.running_hours,r.production_mt,r.fuel_liters]));
+  }
+  if(id==='erp-bank-tbl'){
+    const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)});
+    const totC=_allData.erpbank.reduce((s,r)=>s+_num(r.credit),0),totD=_allData.erpbank.reduce((s,r)=>s+_num(r.debit),0);
+    return pdfTableBlock('ERP Bank Transactions',['Date','Bank','Description','Credit (In)','Debit (Out)'],rows.map(r=>[r.date,r.bank_name||'-',r.description||'-',r.credit>0?fmtINR(r.credit):'-',r.debit>0?fmtINR(r.debit):'-']),[`TOTAL (${_allData.erpbank.length})`,'','',fmtINR(totC),fmtINR(totD)]);
+  }
+  if(id==='erp-cash-tbl'){
+    const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)});
+    const totR=_allData.erpcash.reduce((s,r)=>s+_num(r.received),0),totP=_allData.erpcash.reduce((s,r)=>s+_num(r.paid),0);
+    return pdfTableBlock('ERP Cash Ledger',['Date','Ledger','Description','Received (In)','Paid (Out)','Balance'],rows.map(r=>[r.date,r.ledger||'-',r.description||'-',r.received>0?fmtINR(r.received):'-',r.paid>0?fmtINR(r.paid):'-',r.balance!=null?fmtINR(r.balance):'-']),[`TOTAL (${_allData.erpcash.length})`,'','',fmtINR(totR),fmtINR(totP),'']);
+  }
+  return null;
+}
+function pdfDataTablesForRoot(root){
+  const direct=root?.id?pdfFullTableForId(root.id):null;
+  if(direct)return [direct];
+  const ids=root?.id==='section-bank'?['erp-bank-tbl','erp-cash-tbl']
+    :root?.id==='section-ops'?['boulders-tbl','machines-tbl']
+    :[...(root?.querySelectorAll?.('.tbl-wrap[id]')||[])].map(el=>el.id);
+  return ids.map(pdfFullTableForId).filter(Boolean);
+}
+function pdfBuildPayload(title,root,subtitle=''){
+  const tables=[];
+  const metrics=pdfMetricRows(root);
+  if(metrics)tables.push(metrics);
+  const dataTables=pdfDataTablesForRoot(root);
+  if(dataTables.length)tables.push(...dataTables);
+  else tables.push(...pdfTablesFromElement(root,title));
+  if(!tables.length){
+    const form=pdfFormRows(root);
+    if(form)tables.push(form);
+  }
+  if(!tables.length)tables.push({title:'No printable data',rows:[['Message'],['No table or summary is available on this page yet.']]});
+  const sub=[subtitle||pdfSubtitleFromRoot(root),`Generated: ${pdfGeneratedStamp()}`].filter(Boolean).join(' | ');
+  return {title:pdfClean(`CrusherOps - ${title}`),subtitle:pdfClean(sub),tables};
+}
+function pdfColumnWidths(rows,available,fontSize){
+  const cols=Math.max(...rows.map(r=>r.length));
+  const min=cols>10?34:cols>8?42:52;
+  const max=cols>10?92:cols>7?118:160;
+  const raw=Array(cols).fill(0).map((_,col)=>{
+    let need=0;
+    rows.slice(0,90).forEach((r,idx)=>{
+      need=Math.max(need,Math.min(max,pdfTextWidth(r[col]||'',fontSize,idx===0)+10));
+    });
+    return Math.max(min,Math.min(max,need));
+  });
+  let total=raw.reduce((a,b)=>a+b,0);
+  if(total>available){
+    const minTotal=min*cols;
+    const scale=Math.max(0,(available-minTotal)/(total-minTotal));
+    const scaled=raw.map(w=>min+(w-min)*scale);
+    total=scaled.reduce((a,b)=>a+b,0);
+    if(total>available){
+      const factor=available/total;
+      return scaled.map(w=>w*factor);
+    }
+    return scaled;
+  }
+  return raw;
+}
+function buildPdfBytes(report){
+  const pageW=841.89,pageH=595.28,margin=24,usableW=pageW-margin*2;
+  let pages=[],cmds=[],y=0;
+  const num=n=>Number(n).toFixed(2);
+  const rgb=hex=>{
+    const m=String(hex).replace('#','');
+    return [parseInt(m.slice(0,2),16)/255,parseInt(m.slice(2,4),16)/255,parseInt(m.slice(4,6),16)/255].map(v=>v.toFixed(3)).join(' ');
+  };
+  const textCmd=(text,x,base,size,bold=false,color='#111827')=>`${rgb(color)} rg BT ${bold?'/F2':'/F1'} ${num(size)} Tf 1 0 0 1 ${num(x)} ${num(base)} Tm (${pdfLiteral(text)}) Tj ET`;
+  const drawText=(text,x,base,size,bold=false,color='#111827',align='left')=>{
+    let tx=x;
+    if(align==='center')tx=x-pdfTextWidth(text,size,bold)/2;
+    if(align==='right')tx=x-pdfTextWidth(text,size,bold);
+    cmds.push(textCmd(text,tx,base,size,bold,color));
+  };
+  const rect=(x,yb,w,h,fill,stroke='#d8dee8')=>{
+    if(fill)cmds.push(`${rgb(fill)} rg ${num(x)} ${num(yb)} ${num(w)} ${num(h)} re f`);
+    if(stroke)cmds.push(`${rgb(stroke)} RG 0.35 w ${num(x)} ${num(yb)} ${num(w)} ${num(h)} re S`);
+  };
+  const line=(x1,y1,x2,y2,color='#d8dee8')=>cmds.push(`${rgb(color)} RG 0.6 w ${num(x1)} ${num(y1)} m ${num(x2)} ${num(y2)} l S`);
+  function startPage(){
+    if(cmds.length)pages.push(cmds.join('\n'));
+    cmds=[];y=pageH-margin;
+    drawText(report.title||'CrusherOps Report',pageW/2,y-3,16,true,'#17202a','center');
+    y-=20;
+    if(report.subtitle){drawText(report.subtitle,pageW/2,y,8.8,false,'#667085','center');y-=12;}
+    line(margin,y,pageW-margin,y,'#d8dee8');y-=12;
+  }
+  function ensureSpace(height){
+    if(y-height<margin+20)startPage();
+  }
+  function drawTable(block){
+    const rows=(block.rows||[]).filter(r=>Array.isArray(r)&&r.some(Boolean));
+    if(!rows.length)return;
+    const cols=Math.max(...rows.map(r=>r.length));
+    const normalized=rows.map(r=>[...r,...Array(Math.max(0,cols-r.length)).fill('')].slice(0,cols));
+    const fontSize=cols>10?7.8:cols>8?8.25:8.9;
+    const headSize=Math.max(7.2,fontSize-0.2);
+    const lineH=fontSize*1.22,pad=2.8,widths=pdfColumnWidths(normalized,usableW,fontSize);
+    const tableW=widths.reduce((a,b)=>a+b,0);
+    function rowHeight(row,isHead){
+      const size=isHead?headSize:fontSize;
+      const maxLines=isHead?2:(cols>10?4:5);
+      return Math.max(...row.map((cell,i)=>pdfWrapText(cell,widths[i]-pad*2,size,isHead,maxLines).length))*lineH+pad*2;
+    }
+    function drawRow(row,isHead,index){
+      const size=isHead?headSize:fontSize;
+      const maxLines=isHead?2:(cols>10?4:5);
+      const total=/total/i.test(row.join(' '));
+      const h=rowHeight(row,isHead);
+      if(!isHead && y-h<margin+20){startPage();drawRow(normalized[0],true,0);}
+      const fill=isHead?'#17202a':total?'#e8eaf6':(index%2?'#fff7ed':'#ffffff');
+      rect(margin,y-h,tableW,h,fill,'#d8dee8');
+      let x=margin;
+      row.forEach((cell,i)=>{
+        rect(x,y-h,widths[i],h,null,'#d8dee8');
+        const lines=pdfWrapText(cell,widths[i]-pad*2,size,isHead,maxLines);
+        let base=y-pad-size;
+        const isNum=!isHead && /^[-+]?(\(?Rs\s*)?[\d,]+(\.\d+)?\)?\s*(MT|L|%)?$/.test(pdfClean(cell));
+        lines.forEach(part=>{
+          const color=isHead?'#ffffff':'#111827';
+          const bold=isHead||total;
+          const tx=isNum?x+widths[i]-pad:x+pad;
+          drawText(part,tx,base,size,bold,color,isNum?'right':'left');
+          base-=lineH;
+        });
+        x+=widths[i];
+      });
+      y-=h;
+    }
+    ensureSpace(24);
+    if(block.title){drawText(block.title,margin,y,11.5,true,'#92400e');y-=14;}
+    drawRow(normalized[0],true,0);
+    normalized.slice(1).forEach((row,idx)=>drawRow(row,false,idx));
+    y-=10;
+  }
+  startPage();
+  (report.tables||[]).forEach(drawTable);
+  if(cmds.length)pages.push(cmds.join('\n'));
+  const total=pages.length;
+  pages=pages.map((content,idx)=>content+'\n'+textCmd(`Page ${idx+1} of ${total}`,pageW-margin,pageH-14,8,false,'#667085').replace(` ${num(pageW-margin)} `,` ${num(pageW-margin-pdfTextWidth(`Page ${idx+1} of ${total}`,8,false))} `));
+  const objects={};
+  objects[1]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objects[2]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  const kids=[];
+  pages.forEach((stream,idx)=>{
+    const pageId=5+idx*2,contentId=pageId+1;
+    kids.push(`${pageId} 0 R`);
+    objects[contentId]=`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    objects[pageId]=`<< /Type /Page /Parent 3 0 R /MediaBox [0 0 ${num(pageW)} ${num(pageH)}] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents ${contentId} 0 R >>`;
+  });
+  objects[3]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>`;
+  objects[4]='<< /Type /Catalog /Pages 3 0 R >>';
+  const maxId=Math.max(...Object.keys(objects).map(Number));
+  let out='%PDF-1.4\n',offsets=[0];
+  for(let id=1;id<=maxId;id++){
+    offsets[id]=out.length;
+    out+=`${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+  const xref=out.length;
+  out+=`xref\n0 ${maxId+1}\n0000000000 65535 f \n`;
+  for(let id=1;id<=maxId;id++)out+=`${String(offsets[id]).padStart(10,'0')} 00000 n \n`;
+  out+=`trailer\n<< /Size ${maxId+1} /Root 4 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return out;
+}
+function downloadPdfReport(payload){
+  const pdf=buildPdfBytes(payload);
+  const blob=new Blob([pdf],{type:'application/pdf'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  flash('PDF downloaded');
   return true;
 }
-function openPdfUrl(url){
-  const win=window.open(url,'_blank');
-  if(!win){
-    window.location.href=url;
-  }
-}
-async function openTablePdf(title, el, subtitle){
-  if(!el){flash('Nothing to print',false);return false;}
-  const popup=window.open('', '_blank');
-  if(popup){
-    popup.document.write('<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px"><h3>Preparing PDF...</h3><p>Please wait.</p></body></html>');
-  }
-  const tables=[...el.querySelectorAll('table')].map((table, idx)=>{
-    const rows=[...table.querySelectorAll('tr')].map(tr=>[...tr.children].map(td=>td.innerText.trim().replace(/\s+/g,' '))).filter(r=>r.some(Boolean));
-    const heading=table.closest('.card')?.querySelector('h3')?.innerText || (idx===0?title:`Table ${idx+1}`);
-    return {title:heading, rows};
-  }).filter(t=>t.rows.length);
-  if(!tables.length){
-    if(popup)popup.close();
-    flash('No table found for PDF',false);
-    return false;
-  }
-  try{
-    const res=await fetch('/api/report/table-pdf',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,subtitle,tables})
-    });
-    if(!res.ok)throw new Error((await res.json()).detail||'PDF failed');
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    if(popup)popup.location.href=url;
-    else window.location.href=url;
-    return true;
-  }catch(e){
-    if(popup)popup.close();
-    flash('PDF error: '+e.message,false);
-    return false;
-  }
-}
-function runPrint(title, content, className=''){
-  const pa=document.getElementById('print-area');
-  pa.className=className;
-  pa.innerHTML=content;
-  if(isMobilePrint()){
-    openMobilePrintPage(title, content, className);
-    return;
-  }
-  setTimeout(()=>window.print(), 50);
+async function openTablePdf(title,el,subtitle){
+  if(!el){flash('Nothing to download',false);return false;}
+  return downloadPdfReport(pdfBuildPayload(title,el,subtitle));
 }
 function printSection(title,tableContainerId){
   const el=document.getElementById(tableContainerId);
-  if(!el){flash('Nothing to print',false);return;}
+  if(!el){flash('Nothing to download',false);return;}
   const section=document.querySelector('.section.active');
-  let dateRange='';
-  if(section){
-    const f=section.querySelector('input[id$="-from"]');
-    const t=section.querySelector('input[id$="-to"]');
-    const s=section.querySelector('input[id$="-date"]');
-    if(f&&t&&f.value)dateRange=`Period: ${f.value} to ${t.value}`;
-    else if(s&&s.value)dateRange=`Date: ${s.value}`;
-  }
-  if(isMobilePrint()){
-    openTablePdf(title, el, `${dateRange} | Generated: ${new Date().toLocaleString('en-IN')}`);
-    return;
-  }
-  const content=`<div class="print-ph"><h1>CrusherOps — ${title}</h1><p>${dateRange} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${el.outerHTML}`;
-  runPrint(title, content);
+  openTablePdf(title,el,pdfSubtitleFromRoot(section));
 }
 function printDashboard(doPrint=true){
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
-  const profit=document.getElementById('dash-profit-bar');
-  const kpis=document.querySelector('#section-dashboard .kpi-row');
-  const body=document.getElementById('dash-print-area');
-  if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
-  const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
-  if(doPrint)runPrint('Dashboard Daily Report', content, 'dashboard-print');
-  else{const pa=document.getElementById('print-area');pa.className='dashboard-print';pa.innerHTML=content;}
-}
-function printCurrentOpsTab(){
-  const act=document.querySelector('.subtab-content.active');
-  if(!act)return;
-  const tbl=act.querySelector('.tbl-wrap');
-  const h3=act.querySelector('h3')?.textContent||'Operations';
-  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  if(isMobilePrint()){
-    openTablePdf(h3, tbl, `Period: ${f} to ${t} | Generated: ${new Date().toLocaleString('en-IN')}`);
+  const root=document.getElementById('section-dashboard');
+  if(!root){flash('Dashboard PDF content not ready',false);return;}
+  if(doPrint===false){
+    const pa=document.getElementById('print-area');
+    const profit=document.getElementById('dash-profit-bar');
+    const kpis=document.querySelector('#section-dashboard .kpi-row');
+    const body=document.getElementById('dash-print-area');
+    pa.className='dashboard-print';
+    pa.innerHTML=`<div class="print-ph"><h1>CrusherOps - Dashboard Daily Report</h1><p>Day: ${d} | Period: ${f} to ${t} | Printed: ${pdfGeneratedStamp()}</p></div>${profit?.outerHTML||''}${kpis?.outerHTML||''}${body?.outerHTML||''}`;
     return;
   }
-  const content=`<div class="print-ph"><h1>CrusherOps — ${h3}</h1><p>Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${new Date().toLocaleString('en-IN')}</p></div>${tbl?tbl.outerHTML:''}`;
-  runPrint(h3, content);
+  downloadPdfReport(pdfBuildPayload('Dashboard Daily Report',root,`Day: ${d} | Period: ${f} to ${t}`));
+}
+function printCurrentOpsTab(){
+  const root=document.getElementById('section-ops');
+  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
+  openTablePdf('Operations',root,`Period: ${f} to ${t}`);
+}
+function downloadCurrentPagePdf(){
+  const name=_activeSectionName();
+  if(name==='dashboard'){printDashboard();return;}
+  if(name==='ops'){printCurrentOpsTab();return;}
+  const root=document.getElementById(`section-${name}`);
+  const title=TITLES[name]||document.getElementById('page-title')?.textContent||'Report';
+  openTablePdf(title,root,pdfSubtitleFromRoot(root));
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
