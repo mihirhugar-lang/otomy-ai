@@ -29,7 +29,6 @@ ERP_PASS = os.environ.get("ERP_PASS", "")
 _TR  = re.compile(r"<tr[^>]*>(.*?)</tr>",  re.DOTALL | re.IGNORECASE)
 _TD  = re.compile(r"<td[^>]*>(.*?)</td>",  re.DOTALL | re.IGNORECASE)
 _PAY = {"CASH", "CREDIT", "CARD/UPI", "SPLIT", "UPI"}
-ERP_CREDIT_REPAYMENT_EPSILON = 10.0
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -298,9 +297,7 @@ def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
 def archive_receipts_to_repayments(receipts):
     rows = []
     for receipt in receipts or []:
-        if _is_small_erp_credit_receipt(receipt):
-            continue
-        amount = _receipt_payment_received(receipt)
+        amount = _num(receipt.get("payment_received", receipt.get("amount")))
         if amount <= 0:
             amount = _num(receipt.get("amount"))
         mode = receipt.get("mode") or "Cash"
@@ -318,28 +315,6 @@ def archive_receipts_to_repayments(receipts):
             "source": "Archive Customer Receipt",
         })
     return rows
-
-
-def _is_small_erp_credit_receipt(row):
-    notes = str((row or {}).get("notes") or (row or {}).get("reference") or "")
-    return notes.startswith("ERP credit balance repayment") and _num((row or {}).get("amount")) <= ERP_CREDIT_REPAYMENT_EPSILON
-
-
-def _is_small_credit_repayment(row):
-    return _num((row or {}).get("amount")) <= ERP_CREDIT_REPAYMENT_EPSILON
-
-
-def _receipt_note_amount(row, key):
-    notes = str((row or {}).get("notes") or "")
-    match = re.search(rf"{re.escape(key)}=([\d.]+)", notes)
-    return _num(match.group(1)) if match else None
-
-
-def _receipt_payment_received(row):
-    noted = _receipt_note_amount(row, "payment_received")
-    if noted is not None:
-        return noted
-    return _num((row or {}).get("payment_received", (row or {}).get("amount")))
 
 # ─── auth ────────────────────────────────────────────────────────────────────
 
@@ -845,7 +820,7 @@ def compute_repayments(debtors_prev, debtors_curr, as_of_date):
         if not prev:
             continue
         delta = round(prev["outstanding"] - curr["outstanding"], 2)
-        if delta <= ERP_CREDIT_REPAYMENT_EPSILON:
+        if delta <= 0:
             continue
         received_delta = round(curr["received"] - prev["received"], 2)
         repayments.append({
@@ -964,8 +939,6 @@ def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debt
             ("Bank", bank_amt, round(credit_by_channel["bank"], 2), bank_sa),
         ):
             if payment_received <= 0:
-                continue
-            if amount <= ERP_CREDIT_REPAYMENT_EPSILON:
                 continue
             result.append({
                 "date": str(day),
@@ -1166,7 +1139,7 @@ def build_control(sales, expenses, from_d, to_d,
             total_payable += c["payable"]
 
     # repayments
-    rp = [r for r in (repayments or []) if not _is_small_credit_repayment(r)]
+    rp = repayments or []
     rp_total        = round(sum(r["amount"]            for r in rp), 2)
     rp_pay_total    = round(sum(r["payment_received"]  for r in rp), 2)
     rp_bank_total   = round(sum(r["bank_received"]     for r in rp), 2)
@@ -1275,33 +1248,6 @@ def _erp_credit_ref(row):
     if match and match.group(1) != "1":
         return match.group(1)
     return ""
-
-def _credit_payment_bank_amount(row):
-    amount = _num((row or {}).get("bank_received"))
-    if amount <= 0 and _payment_channel((row or {}).get("mode") or (row or {}).get("payment_mode") or "") != "cash":
-        amount = _receipt_payment_received(row)
-    return round(amount, 2)
-
-def _valid_credit_payment_bank_keys(rows):
-    keys = set()
-    for row in rows or []:
-        ref = _erp_credit_ref(row)
-        amount = _credit_payment_bank_amount(row)
-        if not ref or amount <= 0:
-            continue
-        keys.add((str(row.get("date", ""))[:10], ref, amount))
-    return keys
-
-def _is_orphan_credit_payment_bank_row(row, valid_keys):
-    source = str((row or {}).get("source") or "").strip()
-    bank_name = str((row or {}).get("bank_name") or "").strip()
-    if source != "Credit Payment" and bank_name != "UPI/Bank Credit Payment":
-        return False
-    ref = _erp_credit_ref(row)
-    if not ref:
-        return False
-    key = (str(row.get("date", ""))[:10], ref, round(_num(row.get("credit")), 2))
-    return key not in valid_keys
 
 def _bank_dedupe_key(row):
     source = str(row.get("source") or "").strip()
@@ -1530,15 +1476,10 @@ def _bank_key(row):
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
     # Drop archived "Sale" rows so they re-derive fresh with the current split amount
     # (otherwise a sale whose UPI portion changed shows twice — old full + new split).
-    # Preserve expenses, but keep only credit-payment bank rows that still have
-    # a matching non-small receipt in the repayment set.
-    valid_credit_payment_keys = _valid_credit_payment_bank_keys(repayments)
+    # Other derived sources (Expense / Credit Payment) are unaffected by
+    # the split and are preserved to avoid dropping rows the recent window can't re-derive.
     rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if (
-                row.get("source") != "Sale"
-                and not _is_vendor_payment_bank_row(row)
-                and not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
-            )]
+            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
         # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
@@ -1576,8 +1517,6 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
             seen.add(_bank_key(r))
             rows.append(r)
     for idx, receipt in enumerate(repayments or []):
-        if _is_small_credit_repayment(receipt):
-            continue
         bank_received = _num(receipt.get("bank_received"))
         if bank_received <= 0 and _payment_channel(receipt.get("mode") or "") != "cash":
             bank_received = _num(receipt.get("payment_received", receipt.get("amount")))
@@ -1615,8 +1554,6 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
             by_month.setdefault(month, {}).setdefault(section, []).append(row)
 
     for idx, row in enumerate(repayments or []):
-        if _is_small_credit_repayment(row):
-            continue
         day = str(row.get("date", ""))[:10]
         month = day[:7]
         if not month:
@@ -1669,22 +1606,6 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         if path.exists():
             with open(path, "r") as f:
                 payload = json.load(f)
-            payload["receipts"] = [
-                row for row in (payload.get("receipts") or [])
-                if not _is_small_erp_credit_receipt(row)
-            ]
-            valid_credit_payment_keys = _valid_credit_payment_bank_keys(
-                (payload.get("receipts") or []) + (sections.get("receipts") or [])
-            )
-            payload["bank"] = [
-                row for row in (payload.get("bank") or [])
-                if not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
-            ]
-            if "bank" in sections:
-                sections["bank"] = [
-                    row for row in (sections.get("bank") or [])
-                    if not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
-                ]
         else:
             payload = {
                 "month": month,
@@ -1815,8 +1736,6 @@ def merge_repayment_rows(*row_sets):
     for rows in row_sets:
         for row in rows or []:
             if not isinstance(row, dict):
-                continue
-            if _is_small_credit_repayment(row):
                 continue
             merged[_repayment_key(row)] = dict(row)
     return sorted(
@@ -1966,8 +1885,6 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
             if s_upi and (cutoff is None or d > cutoff):
                 bank += s_upi
         for r in repayments:
-            if _is_small_credit_repayment(r):
-                continue
             d = str(r.get("date", ""))[:10]
             if not (frm <= d <= to_iso):
                 continue
@@ -2007,7 +1924,6 @@ def build_ledger_view(
     display_end = min(today, (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1))
     if month_start > today:
         return {"year": year, "month": month, "rows": [], "totals": {}}
-    repayments = [r for r in (repayments or []) if not _is_small_credit_repayment(r)]
 
     def by_date(rows, date_key="date"):
         out = {}
@@ -2220,8 +2136,6 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today):
             })
         received = 0.0
         for r in reps_by_name.get(key, []):
-            if _is_small_credit_repayment(r):
-                continue
             amt = _num(r.get("payment_received", r.get("amount")))
             received = round(received + amt, 2)
             entries.append({
@@ -2325,8 +2239,6 @@ def build_customer_range_rows(customers_full, all_sales, range_sales, range_repa
         metric["range_total_sales"] += amount
         metric["range_credit_sales"] += sale_credit
     for repayment in range_repayments or []:
-        if _is_small_credit_repayment(repayment):
-            continue
         name = str(repayment.get("customer_name") or "").strip()
         if not name:
             continue
@@ -3053,8 +2965,6 @@ def main():
     ]
     repayment_map = {}
     for row in archive_repayments + repayments_last_month + repayments_mtd:
-        if _is_small_credit_repayment(row):
-            continue
         key = (
             row.get("date", ""),
             row.get("customer_name", ""),

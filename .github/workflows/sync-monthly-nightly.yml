@@ -42,10 +42,6 @@ jobs:
           git restore --staged data/meta.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
-          elif ! python3 scripts/staged_data_has_meaningful_changes.py; then
-            echo "Only volatile sync timestamps changed; skipping commit"
-            git restore --staged data/
-            git checkout -- data/
           else
             git commit -m "erp monthly: $(date -u +%H:%M)"
             for attempt in 1 2 3; do

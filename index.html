@@ -827,13 +827,7 @@ function _receiptNoteAmount(notes,key){
   const m=String(notes||'').match(new RegExp(`${key}=([\\d.]+)`));
   return m?Number(m[1]):null;
 }
-const ERP_CREDIT_REPAYMENT_EPSILON=10;
-function _isSmallErpCreditRepayment(row){
-  const notes=String(row?.notes||row?.reference||'');
-  return notes.startsWith('ERP credit balance repayment')&&_num(row?.amount)<=ERP_CREDIT_REPAYMENT_EPSILON;
-}
 function _receiptPaymentAmount(row){
-  if(_isSmallErpCreditRepayment(row))return 0;
   const noted=_receiptNoteAmount(row.notes,'payment_received');
   return noted==null?_num(row.amount!=null?row.amount:row.credit):_num(noted);
 }
@@ -895,7 +889,7 @@ async function _archiveOperatingBalances(toDate=today()){
       cash+=ch.cash;
       if(ch.upi&&inBank(s.date))bank+=ch.upi;
     });
-    _rowsInRange(months,'receipts',from,to).filter(r=>!_isSmallErpCreditRepayment(r)).forEach(r=>{
+    _rowsInRange(months,'receipts',from,to).forEach(r=>{
       const amount=_receiptPaymentAmount(r);
       if(_payChannel(r.mode)==='cash')cash+=amount;
       else if(inBank(r.date))bank+=amount;
@@ -1026,7 +1020,7 @@ async function _archiveControl(from,to){
   if(!months.length)return null;
   const sales=_rowsInRange(months,'sales',from,to);
   const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to).filter(r=>!_isSmallErpCreditRepayment(r));
+  const receipts=_rowsInRange(months,'receipts',from,to);
   const boulders=_rowsInRange(months,'boulders',from,to);
   const labour=_rowsInRange(months,'labour',from,to);
   const parts=_rowsInRange(months,'parts',from,to);
@@ -1108,7 +1102,7 @@ async function archiveFetch(url){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance){
       const months=from&&to?await _loadArchiveRange(from,to):[];
-      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf).filter(r=>!_isSmallErpCreditRepayment(r)));
+      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf));
     }
   }
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
@@ -1368,7 +1362,7 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-02-small-repayment-guard-v1';
+const OTOMY_APP_VERSION='2026-07-01-print-pdf-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
