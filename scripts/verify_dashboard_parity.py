@@ -451,7 +451,7 @@ def verify_pdf_export_guard() -> None:
         "Print / PDF",
         "CrusherOps — Dashboard Daily Report",
         "&nbsp;|&nbsp; Printed:",
-        "OTOMY_APP_VERSION='2026-07-01-print-pdf-v1'",
+        "OTOMY_APP_VERSION='2026-07-02-small-repayment-guard-v1'",
     )
     for needle in required:
         if needle not in root_html:
@@ -464,6 +464,30 @@ def verify_pdf_export_guard() -> None:
         if needle in root_html:
             fail(f"PDF print guard found direct downloader path: {needle!r}")
     print("PDF print guard passed: all page PDF buttons use the browser print flow.")
+
+
+def verify_small_repayment_guard() -> None:
+    root_html = (ROOT / "index.html").read_text()
+    sync_script = (ROOT / "scripts" / "gha_sync.py").read_text()
+    html_required = (
+        "const ERP_CREDIT_REPAYMENT_EPSILON=10;",
+        "function _isSmallErpCreditRepayment(row)",
+        "if(_isSmallErpCreditRepayment(row))return 0;",
+        ".filter(r=>!_isSmallErpCreditRepayment(r))",
+    )
+    sync_required = (
+        "ERP_CREDIT_REPAYMENT_EPSILON = 10.0",
+        "def _is_small_erp_credit_receipt(row):",
+        "def _is_small_credit_repayment(row):",
+        "if amount <= ERP_CREDIT_REPAYMENT_EPSILON:",
+    )
+    for needle in html_required:
+        if needle not in root_html:
+            fail(f"small repayment guard missing frontend rule {needle!r}")
+    for needle in sync_required:
+        if needle not in sync_script:
+            fail(f"small repayment guard missing sync rule {needle!r}")
+    print("Small repayment guard passed: ERP credit repayment residue <= Rs 10 is ignored.")
 
 
 def verify_customer_page_presets() -> None:
@@ -591,6 +615,7 @@ def main() -> None:
     verify_no_vendor_payment_bank_guard()
     verify_customer_page_guard()
     verify_pdf_export_guard()
+    verify_small_repayment_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return
