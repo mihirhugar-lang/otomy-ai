@@ -480,6 +480,7 @@ def verify_small_repayment_guard() -> None:
         "def _is_small_erp_credit_receipt(row):",
         "def _is_small_credit_repayment(row):",
         "if amount <= ERP_CREDIT_REPAYMENT_EPSILON:",
+        "payload[\"receipts\"] = [",
     )
     for needle in html_required:
         if needle not in root_html:

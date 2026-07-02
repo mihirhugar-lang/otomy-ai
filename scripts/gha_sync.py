@@ -1624,6 +1624,10 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         if path.exists():
             with open(path, "r") as f:
                 payload = json.load(f)
+            payload["receipts"] = [
+                row for row in (payload.get("receipts") or [])
+                if not _is_small_erp_credit_receipt(row)
+            ]
         else:
             payload = {
                 "month": month,
