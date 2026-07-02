@@ -300,7 +300,7 @@ def archive_receipts_to_repayments(receipts):
     for receipt in receipts or []:
         if _is_small_erp_credit_receipt(receipt):
             continue
-        amount = _num(receipt.get("payment_received", receipt.get("amount")))
+        amount = _receipt_payment_received(receipt)
         if amount <= 0:
             amount = _num(receipt.get("amount"))
         mode = receipt.get("mode") or "Cash"
@@ -327,6 +327,19 @@ def _is_small_erp_credit_receipt(row):
 
 def _is_small_credit_repayment(row):
     return _num((row or {}).get("amount")) <= ERP_CREDIT_REPAYMENT_EPSILON
+
+
+def _receipt_note_amount(row, key):
+    notes = str((row or {}).get("notes") or "")
+    match = re.search(rf"{re.escape(key)}=([\d.]+)", notes)
+    return _num(match.group(1)) if match else None
+
+
+def _receipt_payment_received(row):
+    noted = _receipt_note_amount(row, "payment_received")
+    if noted is not None:
+        return noted
+    return _num((row or {}).get("payment_received", (row or {}).get("amount")))
 
 # ─── auth ────────────────────────────────────────────────────────────────────
 
@@ -1263,6 +1276,33 @@ def _erp_credit_ref(row):
         return match.group(1)
     return ""
 
+def _credit_payment_bank_amount(row):
+    amount = _num((row or {}).get("bank_received"))
+    if amount <= 0 and _payment_channel((row or {}).get("mode") or (row or {}).get("payment_mode") or "") != "cash":
+        amount = _receipt_payment_received(row)
+    return round(amount, 2)
+
+def _valid_credit_payment_bank_keys(rows):
+    keys = set()
+    for row in rows or []:
+        ref = _erp_credit_ref(row)
+        amount = _credit_payment_bank_amount(row)
+        if not ref or amount <= 0:
+            continue
+        keys.add((str(row.get("date", ""))[:10], ref, amount))
+    return keys
+
+def _is_orphan_credit_payment_bank_row(row, valid_keys):
+    source = str((row or {}).get("source") or "").strip()
+    bank_name = str((row or {}).get("bank_name") or "").strip()
+    if source != "Credit Payment" and bank_name != "UPI/Bank Credit Payment":
+        return False
+    ref = _erp_credit_ref(row)
+    if not ref:
+        return False
+    key = (str(row.get("date", ""))[:10], ref, round(_num(row.get("credit")), 2))
+    return key not in valid_keys
+
 def _bank_dedupe_key(row):
     source = str(row.get("source") or "").strip()
     date_value, credit, debit = _bank_amount_key(row)
@@ -1490,10 +1530,15 @@ def _bank_key(row):
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
     # Drop archived "Sale" rows so they re-derive fresh with the current split amount
     # (otherwise a sale whose UPI portion changed shows twice — old full + new split).
-    # Other derived sources (Expense / Credit Payment) are unaffected by
-    # the split and are preserved to avoid dropping rows the recent window can't re-derive.
+    # Preserve expenses, but keep only credit-payment bank rows that still have
+    # a matching non-small receipt in the repayment set.
+    valid_credit_payment_keys = _valid_credit_payment_bank_keys(repayments)
     rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
+            if (
+                row.get("source") != "Sale"
+                and not _is_vendor_payment_bank_row(row)
+                and not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
+            )]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
         # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
@@ -1628,6 +1673,18 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 row for row in (payload.get("receipts") or [])
                 if not _is_small_erp_credit_receipt(row)
             ]
+            valid_credit_payment_keys = _valid_credit_payment_bank_keys(
+                (payload.get("receipts") or []) + (sections.get("receipts") or [])
+            )
+            payload["bank"] = [
+                row for row in (payload.get("bank") or [])
+                if not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
+            ]
+            if "bank" in sections:
+                sections["bank"] = [
+                    row for row in (sections.get("bank") or [])
+                    if not _is_orphan_credit_payment_bank_row(row, valid_credit_payment_keys)
+                ]
         else:
             payload = {
                 "month": month,

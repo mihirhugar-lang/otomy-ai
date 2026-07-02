@@ -369,7 +369,7 @@ def verify_no_vendor_payment_bank_guard() -> None:
     for needle in (
         "def _is_vendor_payment_bank_row(row):",
         "if _is_vendor_payment_bank_row(row):\n            continue",
-        'if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)',
+        'and not _is_vendor_payment_bank_row(row)',
         'if section == "bank" and _is_vendor_payment_bank_row(row):',
     ):
         if needle not in source:
@@ -479,8 +479,11 @@ def verify_small_repayment_guard() -> None:
         "ERP_CREDIT_REPAYMENT_EPSILON = 10.0",
         "def _is_small_erp_credit_receipt(row):",
         "def _is_small_credit_repayment(row):",
+        "def _is_orphan_credit_payment_bank_row(row, valid_keys):",
         "if amount <= ERP_CREDIT_REPAYMENT_EPSILON:",
         "payload[\"receipts\"] = [",
+        "payload[\"bank\"] = [",
+        "valid_credit_payment_keys = _valid_credit_payment_bank_keys(repayments)",
     )
     for needle in html_required:
         if needle not in root_html:
