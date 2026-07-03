@@ -1383,7 +1383,9 @@ def _bank_row_quality(row):
 def dedupe_bank_rows(rows):
     merged = {}
     for row in rows or []:
-        if _is_vendor_payment_bank_row(row) or _is_excluded_customer_receipt_bank_row(row):
+        if _is_vendor_payment_bank_row(row):
+            continue
+        if _is_excluded_customer_receipt_bank_row(row):
             continue
         key = _bank_dedupe_key(row)
         if key in merged:
@@ -1580,11 +1582,8 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
     # Other derived sources (Expense / Credit Payment) are unaffected by
     # the split and are preserved to avoid dropping rows the recent window can't re-derive.
     rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if (
-                row.get("source") != "Sale"
-                and not _is_vendor_payment_bank_row(row)
-                and not _is_excluded_customer_receipt_bank_row(row)
-            )]
+            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
+    rows = [row for row in rows if not _is_excluded_customer_receipt_bank_row(row)]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
         # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
