@@ -1,12 +1,13 @@
 from calendar import monthrange
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import Optional
 import time
 import re
 import json
+import os
 import threading
 from database import (
     get_db,
@@ -17,8 +18,10 @@ from database import (
     Labour,
     Part,
     Customer,
+    CustomerBalanceSnapshot,
     CustomerReceipt,
     Vendor,
+    VendorBalanceSnapshot,
     VendorPayment,
     BankAccount,
     BankTransaction,
@@ -26,7 +29,7 @@ from database import (
     CashLedgerEntry,
     IOTMovement,
 )
-from routers.erp_sync import load_config, erp_auth
+from routers.erp_sync import load_config, erp_auth, sale_channels
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 _ERP_INPUT_CACHE = {}
@@ -42,6 +45,49 @@ def _amount(value) -> float:
     return float(value or 0)
 
 
+def _sale_total(sale: Sale) -> float:
+    return _amount(sale.amount) + _amount(getattr(sale, "transport_charge", 0.0))
+
+
+def _ticket_no_from_text(*values) -> str:
+    text = " ".join(str(value or "") for value in values)
+    match = re.search(r"Ticket\s*Number\s*:?\s*(\d+)", text, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _cash_received_by_ticket(db: Session, start: date, end: date) -> dict[str, float]:
+    rows = (
+        db.query(CashLedgerEntry)
+        .filter(
+            CashLedgerEntry.entry_date >= start,
+            CashLedgerEntry.entry_date <= end,
+            CashLedgerEntry.received > 0,
+        )
+        .all()
+    )
+    by_ticket: dict[str, float] = {}
+    for row in rows:
+        ticket_no = _ticket_no_from_text(row.ledger_name, row.description)
+        if ticket_no:
+            by_ticket[ticket_no] = round(by_ticket.get(ticket_no, 0.0) + _amount(row.received), 2)
+    return by_ticket
+
+
+def _sale_payment_split(sale: Sale, cash_by_ticket: dict[str, float]) -> tuple[float, float]:
+    """Return (bank_received, cash_received) for a non-credit sale."""
+    total = round(_sale_total(sale), 2)
+    mode = sale.payment_mode or "Credit"
+    if mode.lower() == "credit" or total <= 0:
+        return 0.0, 0.0
+    ticket_no = str(sale.ticket_no or "").strip()
+    cash_received = min(round(cash_by_ticket.get(ticket_no, 0.0), 2), total) if ticket_no else 0.0
+    if cash_received > 0:
+        return round(max(total - cash_received, 0.0), 2), cash_received
+    if _payment_channel(mode) == "cash":
+        return 0.0, total
+    return total, 0.0
+
+
 def _safe_pct(numerator: float, denominator: float) -> float:
     return round((numerator / denominator * 100), 1) if denominator else 0.0
 
@@ -50,7 +96,7 @@ def _customer_receivable_balance(customer: Customer, db: Session) -> float:
     if customer.erp_balance_as_of is not None:
         return _amount(customer.erp_debit_balance) - _amount(customer.erp_credit_balance)
 
-    customer_sales = db.query(func.coalesce(func.sum(Sale.amount), 0.0)).filter(
+    customer_sales = db.query(func.coalesce(func.sum(Sale.amount + func.coalesce(Sale.transport_charge, 0.0)), 0.0)).filter(
         Sale.customer_id == customer.id
     ).scalar()
     receipts = db.query(func.coalesce(func.sum(CustomerReceipt.amount), 0.0)).filter(
@@ -238,6 +284,29 @@ def _fetch_erp_customer_balance_snapshot(sess, erp_base: str, as_of: date) -> di
     return balances
 
 
+def _fetch_erp_supplier_balance_snapshot(sess, erp_base: str, as_of: date) -> dict:
+    ds = as_of.strftime("%d-%m-%Y")
+    balances = {}
+    response = sess.get(
+        f"{erp_base}/crusher/ListSupplierBalance",
+        params={"date": ds, "type": 1},
+        timeout=35,
+        verify=True,
+    )
+    payload = json.loads(response.text)
+    for row in payload.get("data", []) or []:
+        cells = [_clean_html_cell(col) for col in row]
+        if not cells or not cells[0]:
+            continue
+        name = cells[0].strip()
+        if name.upper() in ("SUPPLIER", "TOTAL", "NAME", ""):
+            continue
+        credit = _num(cells[1]) if len(cells) > 1 else 0
+        debit = _num(cells[2]) if len(cells) > 2 else 0
+        balances[name] = {"name": name[:200], "payable": round(debit - credit, 2)}
+    return balances
+
+
 def _fetch_erp_customer_ledger_rows(sess, erp_base: str, start: date, end: date, erp_customer_id: int) -> list:
     response = sess.get(
         f"{erp_base}/crusher/ViewLedgerTransactions",
@@ -290,12 +359,197 @@ def _receipt_payment_amount(receipt: CustomerReceipt) -> float:
     return _amount(receipt.amount)
 
 
+def _local_receivables_as_of(db: Session, as_of: date) -> list:
+    snapshot_rows = db.query(CustomerBalanceSnapshot).filter(CustomerBalanceSnapshot.as_of == as_of).all()
+    if snapshot_rows:
+        rows = [
+            {"id": row.customer_id, "name": row.name, "balance": round(_amount(row.outstanding), 2)}
+            for row in snapshot_rows
+            if _amount(row.outstanding) > 0
+        ]
+        rows.sort(key=lambda row: row["balance"], reverse=True)
+        return rows
+
+    sales_map = dict(
+        db.query(Sale.customer_id, func.coalesce(func.sum(Sale.amount + func.coalesce(Sale.transport_charge, 0.0)), 0.0))
+        .filter(Sale.customer_id.isnot(None), Sale.date <= as_of)
+        .group_by(Sale.customer_id)
+        .all()
+    )
+    receipt_map = dict(
+        db.query(CustomerReceipt.customer_id, func.coalesce(func.sum(CustomerReceipt.amount), 0.0))
+        .filter(
+            CustomerReceipt.date <= as_of,
+            CustomerReceipt.mode != "ERP Snapshot",
+        )
+        .group_by(CustomerReceipt.customer_id)
+        .all()
+    )
+    rows = []
+    for customer in db.query(Customer).filter(Customer.active == True).all():
+        if customer.erp_balance_as_of is not None and customer.erp_balance_as_of <= as_of:
+            balance = _amount(customer.erp_debit_balance) - _amount(customer.erp_credit_balance)
+        else:
+            balance = (
+                _amount(customer.opening_balance)
+                + _amount(sales_map.get(customer.id))
+                - _amount(receipt_map.get(customer.id))
+            )
+        if balance > 0:
+            rows.append({"id": customer.id, "name": customer.name, "balance": round(balance, 2)})
+    rows.sort(key=lambda row: row["balance"], reverse=True)
+    return rows
+
+
+def _local_payables_as_of(db: Session, as_of: date) -> list:
+    snapshot_rows = db.query(VendorBalanceSnapshot).filter(VendorBalanceSnapshot.as_of == as_of).all()
+    if snapshot_rows:
+        rows = [
+            {"id": row.vendor_id, "name": row.name, "balance": round(_amount(row.payable), 2)}
+            for row in snapshot_rows
+            if _amount(row.payable) > 0
+        ]
+        rows.sort(key=lambda row: row["balance"], reverse=True)
+        return rows
+
+    expense_map = dict(
+        db.query(Expense.vendor_id, func.coalesce(func.sum(Expense.amount), 0.0))
+        .filter(Expense.vendor_id.isnot(None), Expense.date <= as_of)
+        .group_by(Expense.vendor_id)
+        .all()
+    )
+    payment_map = {}
+    payments = db.query(VendorPayment).filter(VendorPayment.date <= as_of).all()
+    for payment in payments:
+        if _is_erp_vendor_payment(payment):
+            continue
+        payment_map[payment.vendor_id] = payment_map.get(payment.vendor_id, 0.0) + _amount(payment.amount)
+
+    rows = []
+    for vendor in db.query(Vendor).filter(Vendor.active == True).all():
+        balance = _amount(vendor.opening_balance) + _amount(expense_map.get(vendor.id)) - _amount(payment_map.get(vendor.id))
+        if balance > 0:
+            rows.append({"id": vendor.id, "name": vendor.name, "balance": round(balance, 2)})
+    rows.sort(key=lambda row: row["balance"], reverse=True)
+    return rows
+
+
+def _control_balances_as_of(db: Session, as_of: date, allow_live: bool = False) -> tuple[list, list]:
+    if not allow_live:
+        return _local_receivables_as_of(db, as_of), _local_payables_as_of(db, as_of)
+
+    cfg = load_config()
+    erp_base = (cfg.get("erp_base") or "").strip()
+    erp_org = (cfg.get("erp_org") or "").strip()
+    erp_user = (cfg.get("erp_username") or "").strip()
+    erp_password = cfg.get("erp_password") or ""
+    if all([erp_base, erp_org, erp_user, erp_password]):
+        try:
+            session = erp_auth(erp_base, erp_org, erp_user, erp_password)
+            debtors = _fetch_erp_customer_balance_snapshot(session, erp_base, as_of)
+            creditors = _fetch_erp_supplier_balance_snapshot(session, erp_base, as_of)
+            receivables = [
+                {"id": None, "name": row["name"], "balance": round(row["outstanding"], 2)}
+                for row in debtors.values()
+                if row.get("outstanding", 0) > 0
+            ]
+            payables = [
+                {"id": None, "name": row["name"], "balance": round(row["payable"], 2)}
+                for row in creditors.values()
+                if row.get("payable", 0) > 0
+            ]
+            receivables.sort(key=lambda row: row["balance"], reverse=True)
+            payables.sort(key=lambda row: row["balance"], reverse=True)
+            return receivables, payables
+        except Exception as exc:
+            print(f"[dashboard] ERP balance snapshot failed for {as_of}: {exc}")
+    return _local_receivables_as_of(db, as_of), _local_payables_as_of(db, as_of)
+
+
 def _is_director_payment(*values) -> bool:
     text = " ".join(str(value or "") for value in values).upper()
     return "PRASHANT" in text or "KUMAR" in text
 
 
+_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+_BAL_CFG_CACHE = None
+_BANK_STMT_CACHE = None
+
+
+def _balance_config() -> dict:
+    """Downstream balance-correction overlay (loctell is never edited). Shared with otomy."""
+    global _BAL_CFG_CACHE
+    if _BAL_CFG_CACHE is None:
+        try:
+            with open(os.path.join(_DATA_DIR, "balance_anchors.json")) as f:
+                _BAL_CFG_CACHE = json.load(f)
+        except Exception:
+            _BAL_CFG_CACHE = {}
+    return _BAL_CFG_CACHE
+
+
+def _bank_statement_data() -> dict:
+    global _BANK_STMT_CACHE
+    if _BANK_STMT_CACHE is None:
+        _BANK_STMT_CACHE = {}
+        fn = _balance_config().get("bank_statement_file")
+        if fn:
+            try:
+                with open(os.path.join(_DATA_DIR, fn)) as f:
+                    _BANK_STMT_CACHE = json.load(f)
+            except Exception:
+                _BANK_STMT_CACHE = {}
+    return _BANK_STMT_CACHE
+
+
+def _latest_anchor(to_date: date):
+    """Latest verified {date,bank,cash} truth point on/before to_date, or None."""
+    iso = to_date.isoformat()
+    applicable = [a for a in _balance_config().get("anchors", []) if str(a.get("date")) <= iso]
+    if not applicable:
+        return None
+    return sorted(applicable, key=lambda a: str(a.get("date")))[-1]
+
+
+def _statement_bank(to_date: date):
+    """(exact bank balance from ICICI statement on/before to_date, statement_end_date) or (None,None)."""
+    stmt = _bank_statement_data()
+    rows = stmt.get("rows") if isinstance(stmt, dict) else None
+    if not rows:
+        return None, None
+    iso = to_date.isoformat()
+    le = [r for r in rows if str(r.get("date")) <= iso]
+    if not le:
+        return None, None
+    return _amount(le[-1].get("balance")), str(stmt.get("to"))
+
+
+def _mode_override_channel(amount, text: str, date_str: str):
+    """Return 'cash'/'bank' if a mode-correction matches this expense, else None."""
+    hay = (text or "").upper()
+    for c in _balance_config().get("mode_corrections", []):
+        if abs(_amount(amount) - _amount(c.get("amount"))) < 1 \
+           and (not c.get("contains") or str(c["contains"]).upper() in hay) \
+           and (not c.get("date_from") or date_str >= c["date_from"]) \
+           and (not c.get("date_to") or date_str <= c["date_to"]):
+            return c.get("force")
+    return None
+
+
 def _operating_balance_opening() -> dict:
+    # Use the EARLIEST verified anchor as the opening base (for full trajectory); fall back to config.
+    anchors = sorted(_balance_config().get("anchors", []), key=lambda a: str(a.get("date")))
+    if anchors:
+        base = anchors[0]
+        try:
+            as_of_date = date.fromisoformat(str(base.get("date")))
+        except Exception:
+            as_of_date = date.today() - timedelta(days=1)
+        return {
+            "as_of_date": as_of_date,
+            "bank_balance": _amount(base.get("bank")),
+            "cash_balance_office": _amount(base.get("cash")),
+        }
     cfg = load_config()
     opening = cfg.get("operating_balance_opening") or {}
     try:
@@ -309,6 +563,24 @@ def _operating_balance_opening() -> dict:
         "bank_balance": _amount(opening.get("bank_balance")),
         "cash_balance_office": _amount(opening.get("cash_balance_office")),
     }
+
+
+def _latest_bank_statement_balance(db: Session, as_of: date) -> Optional[float]:
+    row = (
+        db.query(ERPBankEntry)
+        .filter(ERPBankEntry.entry_date <= as_of)
+        .order_by(ERPBankEntry.entry_date.desc(), ERPBankEntry.id.desc())
+        .first()
+    )
+    if not row:
+        return None
+    try:
+        payload = json.loads(row.raw_cols or "{}")
+    except Exception:
+        payload = {}
+    if payload.get("balance") is None:
+        return None
+    return round(_amount(payload.get("balance")), 2)
 
 
 def _fetch_erp_credit_repayments(start: date, end: date, allow_live: bool = True) -> Optional[list]:
@@ -390,7 +662,7 @@ def _fetch_erp_credit_repayments(start: date, end: date, allow_live: bool = True
                 }
             )
 
-        repayments.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
+        repayments.sort(key=lambda row: (row["date"], row["amount"], row.get("customer_name", ""), row.get("mode", "")), reverse=True)
         _ERP_REPAYMENT_CACHE[cache_key] = {"ts": time.time(), "data": repayments}
         return repayments
     except Exception as exc:
@@ -406,9 +678,9 @@ def _day_summary(db: Session, d: date) -> dict:
     boulders = db.query(BoulderInput).filter(BoulderInput.date == d).all()
     machines = db.query(MachineReading).filter(MachineReading.date == d).all()
 
-    total_sales = sum(_amount(s.amount) for s in sales)
-    cash_sales = sum(_amount(s.amount) for s in sales if s.payment_mode == "Cash")
-    credit_sales = sum(_amount(s.amount) for s in sales if s.payment_mode != "Cash")
+    total_sales = sum(_sale_total(s) for s in sales)
+    cash_sales = sum(_sale_total(s) for s in sales if s.payment_mode == "Cash")
+    credit_sales = sum(_sale_total(s) for s in sales if s.payment_mode != "Cash")
 
     total_expenses = sum(_amount(e.amount) for e in expenses)
     total_labour = sum(_amount(l.amount) for l in labour)
@@ -427,7 +699,7 @@ def _day_summary(db: Session, d: date) -> dict:
         if s.material not in by_material:
             by_material[s.material] = {"qty_mt": 0, "amount": 0}
         by_material[s.material]["qty_mt"] += _amount(s.qty_mt)
-        by_material[s.material]["amount"] += _amount(s.amount)
+        by_material[s.material]["amount"] += _sale_total(s)
 
     by_machine = {}
     for m in machines:
@@ -514,11 +786,6 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
         CustomerReceipt.date <= scan_end,
         CustomerReceipt.mode != "ERP Snapshot",
     ).all()
-    vendor_payments = db.query(VendorPayment).filter(
-        VendorPayment.date >= scan_start,
-        VendorPayment.date <= scan_end,
-    ).all()
-
     def bucket(rows, key):
         out = {}
         for row in rows:
@@ -530,75 +797,68 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
     labour_by_date = bucket(labour, "date")
     parts_by_date = bucket(parts, "date")
     receipts_by_date = bucket(receipts, "date")
-    vendor_payments_by_date = bucket(vendor_payments, "date")
     boulders_by_date = bucket(boulders, "date")
 
-    bank_balance = opening["bank_balance"]
-    cash_balance = opening["cash_balance_office"]
-    rows = []
-    pre_current = movement_start
-    while pre_current < month_start:
-        for sale in sales_by_date.get(pre_current, []):
-            mode = sale.payment_mode or "Credit"
-            if mode.lower() != "credit":
-                if _payment_channel(mode) == "cash":
-                    cash_balance += _amount(sale.amount)
-                else:
-                    bank_balance += _amount(sale.amount)
-        for receipt in receipts_by_date.get(pre_current, []):
-            amount = _receipt_payment_amount(receipt)
-            if _payment_channel(receipt.mode or "Cash") == "cash":
-                cash_balance += amount
-            else:
-                bank_balance += amount
-        for expense in expenses_by_date.get(pre_current, []):
-            if _payment_channel(expense.payment_mode or "Cash") == "cash":
-                cash_balance -= _amount(expense.amount)
-            else:
-                bank_balance -= _amount(expense.amount)
-        for payment in vendor_payments_by_date.get(pre_current, []):
-            if _payment_channel(payment.mode or "Cash") == "cash":
-                cash_balance -= _amount(payment.amount)
-            else:
-                bank_balance -= _amount(payment.amount)
-        pre_current += timedelta(days=1)
-    day_count = (scan_end - month_start).days + 1
-    for offset in range(max(day_count, 0)):
-        current = month_start + timedelta(days=offset)
-        if current >= movement_start:
+    def balances_as_of(as_of: date) -> tuple[float, float]:
+        bank_balance = opening["bank_balance"]
+        cash_balance = opening["cash_balance_office"]
+
+        stmt_bank, stmt_cutoff = _statement_bank(as_of)
+        if stmt_bank is not None:
+            bank_balance = stmt_bank
+
+        cash_anchor = _latest_anchor(as_of)
+        cash_cutoff = str(cash_anchor.get("date")) if cash_anchor else None
+        if cash_anchor is not None:
+            cash_balance = _amount(cash_anchor.get("cash"))
+
+        def bank_open(d: date) -> bool:
+            return stmt_cutoff is None or d.isoformat() > stmt_cutoff
+
+        def cash_open(d: date) -> bool:
+            return cash_cutoff is None or d.isoformat() > cash_cutoff
+
+        current = movement_start
+        while current <= as_of:
             for sale in sales_by_date.get(current, []):
-                mode = sale.payment_mode or "Credit"
-                if mode.lower() == "credit":
-                    continue
-                if _payment_channel(mode) == "cash":
-                    cash_balance += _amount(sale.amount)
-                else:
-                    bank_balance += _amount(sale.amount)
+                s_cash, _s_credit, s_upi = sale_channels(sale)
+                if s_cash and cash_open(sale.date):
+                    cash_balance += s_cash
+                if s_upi and bank_open(sale.date):
+                    bank_balance += s_upi
             for receipt in receipts_by_date.get(current, []):
                 amount = _receipt_payment_amount(receipt)
                 if _payment_channel(receipt.mode or "Cash") == "cash":
-                    cash_balance += amount
-                else:
+                    if cash_open(receipt.date):
+                        cash_balance += amount
+                elif bank_open(receipt.date):
                     bank_balance += amount
             for expense in expenses_by_date.get(current, []):
-                if _payment_channel(expense.payment_mode or "Cash") == "cash":
-                    cash_balance -= _amount(expense.amount)
-                else:
+                ch = _mode_override_channel(
+                    expense.amount,
+                    f"{expense.category or ''} {expense.description or ''} {expense.notes or ''}",
+                    expense.date.isoformat(),
+                ) or _payment_channel(expense.payment_mode or "Cash")
+                if ch == "cash":
+                    if cash_open(expense.date):
+                        cash_balance -= _amount(expense.amount)
+                elif bank_open(expense.date):
                     bank_balance -= _amount(expense.amount)
-            for payment in vendor_payments_by_date.get(current, []):
-                if _payment_channel(payment.mode or "Cash") == "cash":
-                    cash_balance -= _amount(payment.amount)
-                else:
-                    bank_balance -= _amount(payment.amount)
+            current += timedelta(days=1)
+        return round(bank_balance, 2), round(cash_balance, 2)
 
+    rows = []
+    day_count = (scan_end - month_start).days + 1
+    for offset in range(max(day_count, 0)):
+        current = month_start + timedelta(days=offset)
         if current < month_start or current > display_end:
             continue
 
+        bank_balance, cash_balance = balances_as_of(current)
         day_sales = sales_by_date.get(current, [])
         day_expenses = expenses_by_date.get(current, [])
         day_labour = labour_by_date.get(current, [])
         day_parts = parts_by_date.get(current, [])
-        day_vendor_payments = vendor_payments_by_date.get(current, [])
         day_boulders = boulders_by_date.get(current, [])
         day_receipts = receipts_by_date.get(current, [])
         erp_input = _fetch_erp_input_summary(current, current, allow_live=False)
@@ -612,19 +872,15 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
             if erp_input
             else sum(_amount(row.trips) for row in day_boulders)
         )
-        sale_amount = sum(_amount(sale.amount) for sale in day_sales)
-        spot_sale_amount = sum(
-            _amount(sale.amount)
-            for sale in day_sales
-            if (sale.payment_mode or "").lower() != "credit"
-        )
-        credit_sale_amount = sale_amount - spot_sale_amount
+        sale_amount = sum(_sale_total(sale) for sale in day_sales)
+        sale_splits = [sale_channels(sale) for sale in day_sales]
+        spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
+        credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
         credit_repayment = sum(_receipt_payment_amount(receipt) for receipt in day_receipts)
         expense_total = (
             sum(_amount(expense.amount) for expense in day_expenses)
             + sum(_amount(row.amount) for row in day_labour)
             + sum(_amount(row.total_amount) for row in day_parts)
-            + sum(_amount(payment.amount) for payment in day_vendor_payments)
         )
         rows.append(
             {
@@ -648,6 +904,7 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
 def control_room(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    live_erp: bool = False,
     db: Session = Depends(get_db),
 ):
     """Owner-level business control room for crusher/quarry decisions."""
@@ -670,15 +927,14 @@ def control_room(
     customers_by_id_obj = {customer.id: customer for customer in customer_rows}
     vendor_map = {vendor.id: vendor.name for vendor in db.query(Vendor).all()}
 
-    total_sales = sum(_amount(s.amount) for s in sales)
+    total_sales = sum(_sale_total(s) for s in sales)
     total_qty = sum(_amount(s.qty_mt) for s in sales)
-    cash_collected = sum(_amount(s.amount) for s in sales if (s.payment_mode or "").lower() != "credit")
+    cash_collected = sum(_sale_total(s) for s in sales if (s.payment_mode or "").lower() != "credit")
     credit_sales = total_sales - cash_collected
     expense_direct = sum(_amount(e.amount) for e in expenses)
     labour_total = sum(_amount(l.amount) for l in labour)
     parts_total = sum(_amount(p.total_amount) for p in parts)
-    vendor_payment_total = sum(_amount(payment.amount) for payment in vendor_payments)
-    total_outflow = expense_direct + labour_total + parts_total + vendor_payment_total
+    total_outflow = expense_direct + labour_total + parts_total
     director_expense_total = (
         sum(
             _amount(e.amount)
@@ -695,21 +951,11 @@ def control_room(
             for p in parts
             if _is_director_payment(p.machine_name, p.part_name, p.supplier, p.notes)
         )
-        + sum(
-            _amount(payment.amount)
-            for payment in vendor_payments
-            if _is_director_payment(
-                vendor_map.get(payment.vendor_id),
-                payment.mode,
-                payment.reference,
-                payment.notes,
-            )
-        )
     )
     operating_outflow = total_outflow - director_expense_total
     local_boulder_tonnes = sum(_amount(b.total_tonnes) for b in boulders)
     local_boulder_trips = sum(_amount(b.trips) for b in boulders)
-    erp_input = _fetch_erp_input_summary(start, end, allow_live=True)
+    erp_input = _fetch_erp_input_summary(start, end, allow_live=live_erp)
     boulder_tonnes = erp_input["total_tonnes"] if erp_input else local_boulder_tonnes
     boulder_trips = erp_input["total_trips"] if erp_input else local_boulder_trips
     machine_hours = sum(_amount(m.running_hours) for m in machines)
@@ -745,30 +991,65 @@ def control_room(
     ).all()
     operating_bank_balance = opening["bank_balance"]
     operating_cash_balance = opening["cash_balance_office"]
+    # BANK: drive from the actual ICICI statement (exact). After statement end, add later bank movements.
+    stmt_bank, stmt_cutoff = _statement_bank(movement_end)
+    if stmt_bank is not None:
+        operating_bank_balance = stmt_bank
+    # CASH: re-base to the latest verified cash count (anchor); add only movements after that date.
+    cash_anchor = _latest_anchor(movement_end)
+    cash_cutoff = str(cash_anchor.get("date")) if cash_anchor else None
+    if cash_anchor is not None:
+        operating_cash_balance = _amount(cash_anchor.get("cash"))
+
+    def _bank_open(d) -> bool:
+        return stmt_cutoff is None or d.isoformat() > stmt_cutoff
+
+    def _cash_open(d) -> bool:
+        return cash_cutoff is None or d.isoformat() > cash_cutoff
+
+    # Same-day spot receipts are captured by the sale channels below; subtract the same-day,
+    # same-channel overlap from ledger repayments so spot payments aren't double-counted
+    # (a spot ticket carrying any credit/outstanding otherwise gets added as sale AND repayment).
+    spot_cash_by, spot_bank_by = {}, {}
     for sale in movement_sales:
-        mode = sale.payment_mode or "Credit"
-        if mode.lower() == "credit":
-            continue
-        if _payment_channel(mode) == "cash":
-            operating_cash_balance += _amount(sale.amount)
-        else:
-            operating_bank_balance += _amount(sale.amount)
+        s_cash, _c, s_upi = sale_channels(sale)
+        if s_cash and _cash_open(sale.date):
+            spot_cash_by[(sale.customer_id, sale.date)] = spot_cash_by.get((sale.customer_id, sale.date), 0.0) + s_cash
+        if s_upi and _bank_open(sale.date):
+            spot_bank_by[(sale.customer_id, sale.date)] = spot_bank_by.get((sale.customer_id, sale.date), 0.0) + s_upi
+    for sale in movement_sales:
+        # Split each sale by its real channels: cash portion -> Cash-in-office tile,
+        # UPI/bank portion -> Bank tile (handles SPLIT payments correctly).
+        s_cash, _s_credit, s_upi = sale_channels(sale)
+        if s_cash and _cash_open(sale.date):
+            operating_cash_balance += s_cash
+        if s_upi and _bank_open(sale.date):
+            operating_bank_balance += s_upi
     for receipt in movement_receipts:
         receipt_amount = _receipt_payment_amount(receipt)
+        key = (receipt.customer_id, receipt.date)
         if _payment_channel(receipt.mode or "Cash") == "cash":
-            operating_cash_balance += receipt_amount
-        else:
-            operating_bank_balance += receipt_amount
+            if _cash_open(receipt.date):
+                overlap = min(receipt_amount, spot_cash_by.get(key, 0.0))
+                spot_cash_by[key] = spot_cash_by.get(key, 0.0) - overlap
+                operating_cash_balance += receipt_amount - overlap
+        elif _bank_open(receipt.date):
+            overlap = min(receipt_amount, spot_bank_by.get(key, 0.0))
+            spot_bank_by[key] = spot_bank_by.get(key, 0.0) - overlap
+            operating_bank_balance += receipt_amount - overlap
     for expense in movement_expenses:
-        if _payment_channel(expense.payment_mode or "Cash") == "cash":
-            operating_cash_balance -= _amount(expense.amount)
-        else:
+        ch = _mode_override_channel(
+            expense.amount,
+            f"{expense.category or ''} {expense.description or ''} {expense.notes or ''}",
+            expense.date.isoformat(),
+        ) or _payment_channel(expense.payment_mode or "Cash")
+        if ch == "cash":
+            if _cash_open(expense.date):
+                operating_cash_balance -= _amount(expense.amount)
+        elif _bank_open(expense.date):
             operating_bank_balance -= _amount(expense.amount)
-    for payment in movement_vendor_payments:
-        if _payment_channel(payment.mode or "Cash") == "cash":
-            operating_cash_balance -= _amount(payment.amount)
-        else:
-            operating_bank_balance -= _amount(payment.amount)
+    # NOTE: vendor/supplier payments are already captured in loctell crusher-expenses,
+    # so they are NOT subtracted again here (doing so double-counts). Matches otomy's expenses-only rule.
 
     by_material = {}
     for sale in sales:
@@ -776,7 +1057,7 @@ def control_room(
         if key not in by_material:
             by_material[key] = {"material": key, "qty_mt": 0.0, "amount": 0.0, "tickets": 0}
         by_material[key]["qty_mt"] += _amount(sale.qty_mt)
-        by_material[key]["amount"] += _amount(sale.amount)
+        by_material[key]["amount"] += _sale_total(sale)
         by_material[key]["tickets"] += 1
 
     by_expense = {}
@@ -787,8 +1068,6 @@ def control_room(
         by_expense["Labour"] = by_expense.get("Labour", 0.0) + labour_total
     if parts_total:
         by_expense["Parts"] = by_expense.get("Parts", 0.0) + parts_total
-    if vendor_payment_total:
-        by_expense["Vendor Payments"] = by_expense.get("Vendor Payments", 0.0) + vendor_payment_total
 
     expense_rows = []
     for expense in expenses:
@@ -827,18 +1106,6 @@ def control_room(
                 "amount": round(_amount(part.total_amount), 2),
             }
         )
-    for payment in vendor_payments:
-        expense_rows.append(
-            {
-                "date": str(payment.date),
-                "type": "Vendor Payment",
-                "category": "Vendor Payment",
-                "description": f"Payment ({payment.mode or 'Payment'})" + (f" Ref: {payment.reference}" if payment.reference else ""),
-                "party": vendor_map.get(payment.vendor_id, ""),
-                "payment_mode": payment.mode or "",
-                "amount": round(_amount(payment.amount), 2),
-            }
-        )
     expense_rows.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
 
     customer_repayments = _fetch_erp_credit_repayments(start, end, allow_live=False)
@@ -875,7 +1142,7 @@ def control_room(
                     "source": "Customer Ledger",
                 }
             )
-        customer_repayments.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
+        customer_repayments.sort(key=lambda row: (row["date"], row["amount"], row.get("customer_name", ""), row.get("mode", "")), reverse=True)
 
     sales_by_customer = {}
     for sale in sorted(
@@ -900,25 +1167,24 @@ def control_room(
                 "tickets": [],
             },
         )
-        sale_amount = _amount(sale.amount)
+        sale_amount = _sale_total(sale)
         payment_mode = sale.payment_mode or "Credit"
         group["ticket_count"] += 1
         group["qty_mt"] += _amount(sale.qty_mt)
         group["amount"] += sale_amount
-        if payment_mode.lower() == "credit":
-            group["credit_sale_amount"] += sale_amount
-        elif _payment_channel(payment_mode) == "cash":
-            group["cash_received"] += sale_amount
-            group["paid_against_sale"] += sale_amount
-        else:
-            group["bank_received"] += sale_amount
-            group["paid_against_sale"] += sale_amount
+        # Split each sale into its real channels (handles SPLIT payments).
+        s_cash, s_credit, s_upi = sale_channels(sale)
+        group["credit_sale_amount"] += s_credit
+        group["cash_received"] += s_cash
+        group["bank_received"] += s_upi
+        group["paid_against_sale"] += s_cash + s_upi
         group["tickets"].append(
             {
                 "date": str(sale.date),
                 "ticket_no": sale.ticket_no or "—",
                 "qty_mt": round(_amount(sale.qty_mt), 2),
                 "amount": round(sale_amount, 2),
+                "transport_charge": round(_amount(getattr(sale, "transport_charge", 0.0)), 2),
                 "payment_mode": payment_mode,
             }
         )
@@ -978,12 +1244,11 @@ def control_room(
     days = (end - start).days + 1
     for offset in range(days):
         d = start + timedelta(days=offset)
-        day_sales = sum(_amount(s.amount) for s in sales if s.date == d)
+        day_sales = sum(_sale_total(s) for s in sales if s.date == d)
         day_expense = (
             sum(_amount(e.amount) for e in expenses if e.date == d)
             + sum(_amount(l.amount) for l in labour if l.date == d)
             + sum(_amount(p.total_amount) for p in parts if p.date == d)
-            + sum(_amount(payment.amount) for payment in vendor_payments if payment.date == d)
         )
         trend.append(
             {
@@ -995,53 +1260,7 @@ def control_room(
             }
         )
 
-    _cust_sales_map = dict(
-        db.query(Sale.customer_id, func.coalesce(func.sum(Sale.amount), 0.0))
-        .filter(Sale.customer_id.isnot(None))
-        .group_by(Sale.customer_id).all()
-    )
-    _cust_rcpt_map = dict(
-        db.query(CustomerReceipt.customer_id, func.coalesce(func.sum(CustomerReceipt.amount), 0.0))
-        .filter(CustomerReceipt.mode != "ERP Snapshot")
-        .group_by(CustomerReceipt.customer_id).all()
-    )
-    receivables = []
-    for customer in db.query(Customer).filter(Customer.active == True).all():
-        if customer.erp_balance_as_of is not None:
-            balance = _amount(customer.erp_debit_balance) - _amount(customer.erp_credit_balance)
-        else:
-            balance = (
-                _amount(customer.opening_balance)
-                + float(_cust_sales_map.get(customer.id, 0.0))
-                - float(_cust_rcpt_map.get(customer.id, 0.0))
-            )
-        if balance > 0:
-            receivables.append({"id": customer.id, "name": customer.name, "balance": round(balance, 2)})
-    receivables.sort(key=lambda row: row["balance"], reverse=True)
-
-    _vend_exp_map = dict(
-        db.query(Expense.vendor_id, func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.vendor_id.isnot(None))
-        .group_by(Expense.vendor_id).all()
-    )
-    _vend_pay_map: dict = {}
-    for _p in db.query(VendorPayment).filter(
-        ~or_(
-            func.coalesce(VendorPayment.reference, "").like("ERP-SUP-%"),
-            func.coalesce(VendorPayment.notes, "").like("%ERP supplier_id=%"),
-        )
-    ).all():
-        _vend_pay_map[_p.vendor_id] = _vend_pay_map.get(_p.vendor_id, 0.0) + _amount(_p.amount)
-    payables = []
-    for vendor in db.query(Vendor).filter(Vendor.active == True).all():
-        balance = (
-            _amount(vendor.opening_balance)
-            + float(_vend_exp_map.get(vendor.id, 0.0))
-            - _vend_pay_map.get(vendor.id, 0.0)
-        )
-        if balance > 0:
-            payables.append({"id": vendor.id, "name": vendor.name, "balance": round(balance, 2)})
-    payables.sort(key=lambda row: row["balance"], reverse=True)
+    receivables, payables = _control_balances_as_of(db, end, allow_live=live_erp)
 
     bank_balance = 0.0
     cash_balance_office = 0.0
@@ -1226,7 +1445,7 @@ def monthly_summary(year: int, month: int, db: Session = Depends(get_db)):
     labour = db.query(Labour).filter(Labour.date >= start, Labour.date <= end).all()
     parts = db.query(Part).filter(Part.date >= start, Part.date <= end).all()
 
-    total_sales = sum(s.amount for s in sales)
+    total_sales = sum(_sale_total(s) for s in sales)
     total_exp = sum(e.amount for e in expenses)
     total_lab = sum(l.amount for l in labour)
     total_parts = sum(p.total_amount for p in parts)
@@ -1237,7 +1456,7 @@ def monthly_summary(year: int, month: int, db: Session = Depends(get_db)):
         if s.material not in by_material:
             by_material[s.material] = {"qty_mt": 0, "amount": 0}
         by_material[s.material]["qty_mt"] += s.qty_mt
-        by_material[s.material]["amount"] += s.amount
+        by_material[s.material]["amount"] += _sale_total(s)
 
     return {
         "period": f"{year}-{month:02d}",
