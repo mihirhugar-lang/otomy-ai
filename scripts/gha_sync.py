@@ -29,6 +29,10 @@ ERP_PASS = os.environ.get("ERP_PASS", "")
 _TR  = re.compile(r"<tr[^>]*>(.*?)</tr>",  re.DOTALL | re.IGNORECASE)
 _TD  = re.compile(r"<td[^>]*>(.*?)</td>",  re.DOTALL | re.IGNORECASE)
 _PAY = {"CASH", "CREDIT", "CARD/UPI", "SPLIT", "UPI"}
+EXCLUDED_CUSTOMER_RECEIPT_REFS = {
+    "ERP-CREDIT-170238-2026-07-02-CASH",
+    "ERP-CREDIT-170238-2026-07-02-BANK",
+}
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -110,6 +114,10 @@ def _pay_channel(p):
 
 def _payment_channel(raw):
     return "cash" if "CASH" in (raw or "").upper() else "bank"
+
+
+def _is_excluded_customer_receipt(row):
+    return str((row or {}).get("reference") or "") in EXCLUDED_CUSTOMER_RECEIPT_REFS
 
 
 def _sale_total(row):
@@ -297,6 +305,8 @@ def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
 def archive_receipts_to_repayments(receipts):
     rows = []
     for receipt in receipts or []:
+        if _is_excluded_customer_receipt(receipt):
+            continue
         amount = _num(receipt.get("payment_received", receipt.get("amount")))
         if amount <= 0:
             amount = _num(receipt.get("amount"))
@@ -940,11 +950,14 @@ def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debt
         ):
             if payment_received <= 0:
                 continue
+            reference = f"ERP-CREDIT-{cid}-{day.isoformat()}-{mode.upper()}"
+            if reference in EXCLUDED_CUSTOMER_RECEIPT_REFS:
+                continue
             result.append({
                 "date": str(day),
                 "customer_name": curr["name"],
                 "mode": mode,
-                "reference": f"ERP-CREDIT-{cid}-{day.isoformat()}-{mode.upper()}",
+                "reference": reference,
                 "payment_received": payment_received,
                 "bank_received": payment_received if mode == "Bank" else 0.0,
                 "cash_received": payment_received if mode == "Cash" else 0.0,
@@ -1517,6 +1530,8 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
             seen.add(_bank_key(r))
             rows.append(r)
     for idx, receipt in enumerate(repayments or []):
+        if _is_excluded_customer_receipt(receipt):
+            continue
         bank_received = _num(receipt.get("bank_received"))
         if bank_received <= 0 and _payment_channel(receipt.get("mode") or "") != "cash":
             bank_received = _num(receipt.get("payment_received", receipt.get("amount")))
@@ -1554,6 +1569,8 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
             by_month.setdefault(month, {}).setdefault(section, []).append(row)
 
     for idx, row in enumerate(repayments or []):
+        if _is_excluded_customer_receipt(row):
+            continue
         day = str(row.get("date", ""))[:10]
         month = day[:7]
         if not month:
@@ -1620,7 +1637,20 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 "machines": [],
                 "balances": [],
             }
+        payload["receipts"] = [
+            row for row in payload.get("receipts", [])
+            if not _is_excluded_customer_receipt(row)
+        ]
         for section, rows in sections.items():
+            if section == "receipts":
+                payload["receipts"] = [
+                    row for row in payload.get("receipts", [])
+                    if not _is_excluded_customer_receipt(row)
+                ]
+                rows = [
+                    row for row in rows
+                    if not _is_excluded_customer_receipt(row)
+                ]
             payload[section] = _merge_archive_rows(payload.get(section, []), rows, section)
         with open(path, "w") as f:
             json.dump(payload, f, default=str, separators=(",", ":"))
@@ -1736,6 +1766,8 @@ def merge_repayment_rows(*row_sets):
     for rows in row_sets:
         for row in rows or []:
             if not isinstance(row, dict):
+                continue
+            if _is_excluded_customer_receipt(row):
                 continue
             merged[_repayment_key(row)] = dict(row)
     return sorted(
@@ -2865,7 +2897,7 @@ def main():
     def require_repayments(label, rows):
         if rows is None:
             raise ErpFetchError(f"{label} repayments unavailable; skipped Otomy write")
-        return rows
+        return [row for row in rows if not _is_excluded_customer_receipt(row)]
 
     debtors_yesterday = _debtors_yest_pre  # already fetched in parallel above
     debtors_cache = {today: debtors_today}
