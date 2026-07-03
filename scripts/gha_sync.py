@@ -33,6 +33,9 @@ EXCLUDED_CUSTOMER_RECEIPT_REFS = {
     "ERP-CREDIT-170238-2026-07-02-CASH",
     "ERP-CREDIT-170238-2026-07-02-BANK",
 }
+EXCLUDED_CUSTOMER_RECEIPT_BANK_IDS = {
+    "receipt-170238-2026-07-02",
+}
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -118,6 +121,91 @@ def _payment_channel(raw):
 
 def _is_excluded_customer_receipt(row):
     return str((row or {}).get("reference") or "") in EXCLUDED_CUSTOMER_RECEIPT_REFS
+
+
+def _is_excluded_customer_receipt_bank_row(row):
+    return str((row or {}).get("id") or "") in EXCLUDED_CUSTOMER_RECEIPT_BANK_IDS
+
+
+def _refresh_repayment_totals(control, removed_rows):
+    repayments = control.get("customer_repayments")
+    if not isinstance(repayments, list) or not removed_rows:
+        return
+    kept = [row for row in repayments if not _is_excluded_customer_receipt(row)]
+    control["customer_repayments"] = kept
+    payment_total = round(sum(_num(row.get("payment_received", row.get("amount"))) for row in kept), 2)
+    amount_total = round(sum(_num(row.get("amount")) for row in kept), 2)
+    bank_total = round(sum(_num(row.get("bank_received")) for row in kept), 2)
+    cash_total = round(sum(_num(row.get("cash_received")) for row in kept), 2)
+    removed_bank = round(sum(_num(row.get("bank_received")) for row in removed_rows), 2)
+    removed_cash = round(sum(_num(row.get("cash_received")) for row in removed_rows), 2)
+    control["customer_repayments_total"] = amount_total
+    control["customer_repayments_payment_total"] = payment_total
+    control["customer_repayments_bank_total"] = bank_total
+    control["customer_repayments_cash_total"] = cash_total
+    summary = control.get("summary")
+    if isinstance(summary, dict):
+        summary["credit_payment_received"] = payment_total
+        if removed_bank and summary.get("bank_balance") is not None:
+            summary["bank_balance"] = round(_num(summary.get("bank_balance")) - removed_bank, 2)
+        if removed_cash and summary.get("cash_balance_office") is not None:
+            summary["cash_balance_office"] = round(_num(summary.get("cash_balance_office")) - removed_cash, 2)
+
+
+def _clean_excluded_customer_receipt_rows(value):
+    if isinstance(value, list):
+        changed = False
+        cleaned_rows = []
+        for row in value:
+            if isinstance(row, dict) and (
+                _is_excluded_customer_receipt(row)
+                or _is_excluded_customer_receipt_bank_row(row)
+            ):
+                changed = True
+                continue
+            cleaned, child_changed = _clean_excluded_customer_receipt_rows(row)
+            changed = changed or child_changed
+            cleaned_rows.append(cleaned)
+        return cleaned_rows, changed
+    if isinstance(value, dict):
+        changed = False
+        result = dict(value)
+        repayments = result.get("customer_repayments")
+        if isinstance(repayments, list):
+            removed = [
+                row for row in repayments
+                if isinstance(row, dict) and _is_excluded_customer_receipt(row)
+            ]
+            if removed:
+                _refresh_repayment_totals(result, removed)
+                changed = True
+        for key, child in list(result.items()):
+            if key == "customer_repayments":
+                continue
+            cleaned, child_changed = _clean_excluded_customer_receipt_rows(child)
+            if child_changed:
+                result[key] = cleaned
+                changed = True
+        return result, changed
+    return value, False
+
+
+def cleanup_excluded_customer_receipt_artifacts():
+    changed_files = 0
+    for path in DATA_DIR.rglob("*.json"):
+        try:
+            with open(path, "r") as f:
+                payload = json.load(f)
+        except Exception:
+            continue
+        cleaned, changed = _clean_excluded_customer_receipt_rows(payload)
+        if not changed:
+            continue
+        with open(path, "w") as f:
+            json.dump(cleaned, f, default=str, separators=(",", ":"))
+        changed_files += 1
+    if changed_files:
+        print(f"  cleaned excluded customer receipt rows from {changed_files} JSON files")
 
 
 def _sale_total(row):
@@ -1295,7 +1383,7 @@ def _bank_row_quality(row):
 def dedupe_bank_rows(rows):
     merged = {}
     for row in rows or []:
-        if _is_vendor_payment_bank_row(row):
+        if _is_vendor_payment_bank_row(row) or _is_excluded_customer_receipt_bank_row(row):
             continue
         key = _bank_dedupe_key(row)
         if key in merged:
@@ -1492,7 +1580,11 @@ def derive_bank_transactions(sales, expenses, repayments, existing=None):
     # Other derived sources (Expense / Credit Payment) are unaffected by
     # the split and are preserved to avoid dropping rows the recent window can't re-derive.
     rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
+            if (
+                row.get("source") != "Sale"
+                and not _is_vendor_payment_bank_row(row)
+                and not _is_excluded_customer_receipt_bank_row(row)
+            )]
     seen = {_bank_key(r) for r in rows}
     for sale in sales:
         # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
@@ -1641,6 +1733,10 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
             row for row in payload.get("receipts", [])
             if not _is_excluded_customer_receipt(row)
         ]
+        payload["bank"] = [
+            row for row in payload.get("bank", [])
+            if not _is_excluded_customer_receipt_bank_row(row)
+        ]
         for section, rows in sections.items():
             if section == "receipts":
                 payload["receipts"] = [
@@ -1650,6 +1746,11 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
                 rows = [
                     row for row in rows
                     if not _is_excluded_customer_receipt(row)
+                ]
+            if section == "bank":
+                rows = [
+                    row for row in rows
+                    if not _is_excluded_customer_receipt_bank_row(row)
                 ]
             payload[section] = _merge_archive_rows(payload.get(section, []), rows, section)
         with open(path, "w") as f:
@@ -3430,6 +3531,7 @@ def main():
         balance_snapshots,
         archive_balances,
     )
+    cleanup_excluded_customer_receipt_artifacts()
 
     today_sales = sales_for(today, today)
     print(f"  Done. Today: ₹{sum(_sale_total(s) for s in today_sales):,.0f} "
