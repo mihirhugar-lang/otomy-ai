@@ -2005,6 +2005,22 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
             cutoff = ov["stmt_to"]
     frm = (date.fromisoformat(anchor_date) + timedelta(days=1)).isoformat()
     corrs = ov["corrections"]
+    # A spot sale's receipt is already captured by the sale's cash/UPI channels below. When that
+    # same customer's payment also surfaces as a ledger "repayment" (because the ticket carried
+    # any credit/outstanding), subtract the same-day, same-channel overlap so the spot payment is
+    # not double-counted in the balance. (Fixes bank/cash over-count vs actual.)
+    def _rcust(row):
+        return str(row.get("customer_name", "")).strip().upper()
+    spot_cash_by, spot_bank_by = {}, {}
+    for s in sales:
+        d = str(s.get("date", ""))[:10]
+        if not (frm <= d <= to_iso):
+            continue
+        s_cash, _c, s_upi = _sale_channels(s)
+        if s_cash:
+            spot_cash_by[(_rcust(s), d)] = spot_cash_by.get((_rcust(s), d), 0.0) + s_cash
+        if s_upi:
+            spot_bank_by[(_rcust(s), d)] = spot_bank_by.get((_rcust(s), d), 0.0) + s_upi
     if to_iso >= frm:
         for s in sales:
             d = str(s.get("date", ""))[:10]
@@ -2021,10 +2037,15 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
             if not (frm <= d <= to_iso):
                 continue
             amt = _num(r.get("payment_received", r.get("amount")))
+            key = (_rcust(r), d)
             if _payment_channel(r.get("mode")) == "cash":
-                cash += amt
+                overlap = min(amt, spot_cash_by.get(key, 0.0))
+                spot_cash_by[key] = spot_cash_by.get(key, 0.0) - overlap
+                cash += amt - overlap
             elif cutoff is None or d > cutoff:
-                bank += amt
+                overlap = min(amt, spot_bank_by.get(key, 0.0))
+                spot_bank_by[key] = spot_bank_by.get(key, 0.0) - overlap
+                bank += amt - overlap
         for e in expenses:
             d = str(e.get("date", ""))[:10]
             if not (frm <= d <= to_iso):

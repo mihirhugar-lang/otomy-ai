@@ -884,15 +884,27 @@ async function _archiveOperatingBalances(toDate=today()){
   if(to>=from){
     const months=await _loadArchiveRange(from,to);
     const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
-    _rowsInRange(months,'sales',from,to).forEach(s=>{
+    const saleRows=_rowsInRange(months,'sales',from,to);
+    // Same-day spot receipts are captured by the sale channels below; subtract the same-day,
+    // same-channel overlap from ledger repayments so spot payments aren't double-counted.
+    const spotCash={}, spotBank={}, rkey=(name,d)=>`${String(name||'').trim().toUpperCase()}|${d}`;
+    saleRows.forEach(s=>{
+      const ch=_saleChannels(s), k=rkey(s.customer_name,s.date);
+      if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;
+      if(ch.upi&&inBank(s.date))spotBank[k]=(spotBank[k]||0)+ch.upi;
+    });
+    saleRows.forEach(s=>{
       const ch=_saleChannels(s);
       cash+=ch.cash;
       if(ch.upi&&inBank(s.date))bank+=ch.upi;
     });
     _rowsInRange(months,'receipts',from,to).forEach(r=>{
-      const amount=_receiptPaymentAmount(r);
-      if(_payChannel(r.mode)==='cash')cash+=amount;
-      else if(inBank(r.date))bank+=amount;
+      const amount=_receiptPaymentAmount(r), k=rkey(r.customer_name,r.date);
+      if(_payChannel(r.mode)==='cash'){
+        const ov=Math.min(amount,spotCash[k]||0); spotCash[k]=(spotCash[k]||0)-ov; cash+=amount-ov;
+      }else if(inBank(r.date)){
+        const ov=Math.min(amount,spotBank[k]||0); spotBank[k]=(spotBank[k]||0)-ov; bank+=amount-ov;
+      }
     });
     _rowsInRange(months,'expenses',from,to).forEach(e=>{
       const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
