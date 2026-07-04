@@ -38,6 +38,13 @@ jobs:
       - name: Verify dashboard parity guard
         run: python3 scripts/verify_dashboard_parity.py
 
+      - name: Push data to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+
       - name: Commit and push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
