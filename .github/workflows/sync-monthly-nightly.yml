@@ -13,8 +13,20 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Restore data state (cache)
+        uses: actions/cache@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: data
+          key: otomy-data-${{ github.run_id }}
+          restore-keys: otomy-data-
+
+      - name: Pull data state from Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
 
       - name: Install dependencies
         run: python3 -m pip install --quiet requests
@@ -37,27 +49,3 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
-
-      - name: Commit and push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}"
-          git add data/
-          git restore --staged data/meta.json 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "erp monthly: $(date -u +%H:%M)"
-            for attempt in 1 2 3; do
-              if git push origin HEAD:main; then
-                exit 0
-              fi
-              echo "Push rejected; fetching latest main and retrying ($attempt/3)"
-              git fetch origin main
-              git rebase -X theirs origin/main
-            done
-            git push origin HEAD:main
-          fi
