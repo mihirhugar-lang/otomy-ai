@@ -377,16 +377,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 </head>
 <body>
 
-<div class="static-login no-print" id="static-login">
-  <form class="static-login-card" id="static-login-form">
-    <div class="static-login-brand"><img src="/static/icons/icon-180.png" alt=""><div><h1>CrusherOps</h1><p>VMIPL Secure Access</p></div></div>
-    <label for="static-login-user">User ID</label><input id="static-login-user" autocomplete="username" autocapitalize="characters" value="VMIPL">
-    <label for="static-login-password">Password</label><input id="static-login-password" type="password" autocomplete="current-password" placeholder="Enter password">
-    <button type="submit">Open Dashboard</button>
-    <div class="static-login-error" id="static-login-error">Wrong user ID or password.</div>
-  </form>
-</div>
-
 <div class="mobile-nav-backdrop no-print" onclick="toggleMobileNav(false)"></div>
 
 <!-- SIDEBAR -->
@@ -1236,19 +1226,10 @@ async function unlockStaticLogin(event){
 }
 
 function enforceLaunchLogin(){
-  if(isStaticSnapshotHost()){
-    if(sessionStorage.getItem('otomy_static_unlocked')==='1'){
-      hideStaticLogin();
-      return;
-    }
-    showStaticLogin();
-    return;
-  }
-  fetch('/api/me').then(r=>r.json()).then(d=>{
-    if(!d.authenticated){window.location.replace('/login');}
-  }).catch(()=>{window.location.replace('/login');});
+  // Access control is handled upstream by Cloudflare Access (email login wall).
+  // The old client-side user/password gate has been removed.
+  hideStaticLogin();
 }
-document.getElementById('static-login-form')?.addEventListener('submit',unlockStaticLogin);
 enforceLaunchLogin();
 
 function isStandaloneApp(){
@@ -2026,10 +2007,6 @@ function downloadCurrentPagePdf(){
 
 // ── Init ───────────────────────────────────────────────────────────────────
 window.onload=async function(){
-  if(isStaticSnapshotHost() && sessionStorage.getItem('otomy_static_unlocked')!=='1'){
-    showStaticLogin();
-    return;
-  }
   const t=today(),ym=monthNow();
   await applyAccessMode();
   refreshInstallButton();
