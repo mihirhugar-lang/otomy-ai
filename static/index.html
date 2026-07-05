@@ -721,6 +721,33 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 
 <script>
 const API='';
+// Graceful re-auth: an Access-gated /data/ request whose login lapsed comes back as the
+// login PAGE (HTTP 200, text/html), so r.json() would throw "doctype is not valid json".
+// Detect that and re-run the full-page login instead of surfacing a parse error.
+(function(){
+  const _fetch=window.fetch;
+  window.fetch=function(input,init){
+    return _fetch.call(this,input,init).then(function(resp){
+      try{
+        const url=typeof input==='string'?input:(input&&input.url)||'';
+        if(url.indexOf('/data/')>=0){
+          const bounced=resp.redirected&&/cloudflareaccess\.com|cdn-cgi\/access/.test(resp.url||'');
+          const isHtml=(resp.headers.get('content-type')||'').indexOf('text/html')>=0;
+          if(bounced||isHtml){
+            if(!sessionStorage.getItem('_otomyReauth')){
+              sessionStorage.setItem('_otomyReauth','1');
+              window.location.replace('/?_reauth='+Date.now());
+              return new Promise(function(){});
+            }
+          }else if(resp.ok){
+            sessionStorage.removeItem('_otomyReauth');
+          }
+        }
+      }catch(e){}
+      return resp;
+    });
+  };
+})();
 const STATIC_SNAPSHOT_HOSTS=new Set(['otomy.ai','www.otomy.ai']);
 function isStaticSnapshotHost(){
   return STATIC_SNAPSHOT_HOSTS.has(window.location.hostname);
