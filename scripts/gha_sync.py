@@ -1986,9 +1986,13 @@ def _overlay_mode(corrs, e):
     return None
 
 
-def _overlay_balance(to_iso, sales, expenses, repayments):
+def _overlay_balance(to_iso, sales, expenses, repayments, vendor_payments=None):
     """Bank/cash as of to_iso: latest anchor + statement bank + corrected movements.
-    Returns (bank, cash) or None if no overlay. Vendor payments live in expenses (not added again)."""
+    Vendor payments are stripped out of `expenses` upstream (_merge_archive_rows), so they are
+    subtracted separately below from the dedicated vendor_payments stream — cash always lowers
+    office cash; bank only after the statement cutoff (pre-cutoff bank payments are already in it).
+    Returns (bank, cash) or None if no overlay."""
+    vendor_payments = vendor_payments or []
     ov = _balance_overlay()
     anchors = [a for a in ov["anchors"] if str(a.get("date")) <= to_iso]
     if not anchors:
@@ -2055,6 +2059,14 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
                 cash -= _num(e.get("amount"))
             elif cutoff is None or d > cutoff:
                 bank -= _num(e.get("amount"))
+        for p in vendor_payments:
+            d = str(p.get("date", ""))[:10]
+            if not (frm <= d <= to_iso):
+                continue
+            if _payment_channel(p.get("mode") or "Cash") == "cash":
+                cash -= _num(p.get("amount"))
+            elif cutoff is None or d > cutoff:
+                bank -= _num(p.get("amount"))
     return round(bank, 2), round(cash, 2)
 
 
@@ -2162,7 +2174,7 @@ def build_ledger_view(
                 + sum(_num(row.get("amount")) for row in day_labour)
                 + sum(_num(row.get("total_amount")) for row in day_parts)
             )
-            _ov = _overlay_balance(key, sales, expenses, repayments)
+            _ov = _overlay_balance(key, sales, expenses, repayments, vendor_payments)
             row_bank = _ov[0] if _ov else round(bank_balance, 2)
             row_cash = _ov[1] if _ov else round(cash_balance, 2)
             rows.append({
@@ -2617,7 +2629,7 @@ def write_snapshot_bundle(
             summary["payables"] = round(_num(archive_balance.get("payables")), 2)
             control["top_receivables"] = archive_balance.get("top_receivables", [])
             control["top_payables"] = archive_balance.get("top_payables", [])
-        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments)
+        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments, vendor_payments)
         if overlay_balance:
             summary = control.setdefault("summary", {})
             summary["bank_balance"] = overlay_balance[0]
@@ -3208,7 +3220,7 @@ def main():
     operating_cash_balance = round(operating_cash_balance, 2)
 
     def operating_balance_for(as_of):
-        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments)
+        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments, vendor_payments)
         if overlay:
             return overlay
         return operating_bank_balance, operating_cash_balance
