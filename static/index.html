@@ -146,18 +146,6 @@ body.readonly .write-only{display:none!important}
 body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 body.static-locked{display:block}
 body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-nav-backdrop{display:none!important}
-.static-login{display:none;position:fixed;inset:0;z-index:10000;align-items:center;justify-content:center;padding:24px;background:
-  radial-gradient(circle at 20% 10%,rgba(245,158,11,.26),transparent 30%),
-  linear-gradient(135deg,#17202a,#3f2507 58%,#fff7ed)}
-.static-login-card{width:min(420px,100%);background:rgba(255,255,255,.94);border:1px solid rgba(255,255,255,.4);border-radius:28px;padding:28px 24px;box-shadow:0 24px 70px rgba(0,0,0,.28)}
-.static-login-brand{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-.static-login-brand img{width:58px;height:58px;border-radius:16px}
-.static-login-brand h1{font-size:27px;margin:0;color:#17202a}
-.static-login-brand p{margin:4px 0 0;color:#8a5a18;font:700 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.8px;text-transform:uppercase}
-.static-login label{display:block;font:800 11px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#667085;margin:14px 0 6px}
-.static-login input{width:100%;font-size:18px;padding:14px 15px;border-radius:14px;border:1.5px solid #e2d7c5;background:#fffaf0}
-.static-login button{width:100%;margin-top:20px;padding:15px;border:0;border-radius:16px;background:linear-gradient(135deg,#17202a,#b45309);color:white;font-size:17px;font-weight:900;letter-spacing:.3px;cursor:pointer}
-.static-login-error{display:none;margin-top:14px;color:#b42318;font:700 13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .pager{display:flex;align-items:center;gap:10px;padding:10px 4px;font-size:13px;color:#555}
 .pager button{padding:5px 14px;border:1.5px solid #1a237e;border-radius:4px;background:#fff;color:#1a237e;cursor:pointer;font-size:13px;font-weight:600}
 .pager button:hover:not(:disabled){background:#e8eaf6}
@@ -1216,42 +1204,12 @@ let _dashLoadSeq=0;
 let _installPromptEvent=null;
 let _dashPrefetched=false;
 let _canWrite=true;
-const STATIC_LOGIN_USER='VMIPL';
-const STATIC_LOGIN_PASSWORD_SHA256='0d257ffbe1cb52846a13a70b63a524af58da69302064e3c3375e0aa9fdf0dad8';
 
-async function sha256Hex(value){
-  const data=new TextEncoder().encode(value);
-  const digest=await crypto.subtle.digest('SHA-256',data);
-  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function showStaticLogin(){
-  document.body.classList.add('static-locked');
-  const box=document.getElementById('static-login');
-  if(box)box.style.display='flex';
-  setTimeout(()=>document.getElementById('static-login-password')?.focus(),50);
-}
 function hideStaticLogin(){
   document.body.classList.remove('static-locked');
   const box=document.getElementById('static-login');
   if(box)box.style.display='none';
 }
-async function unlockStaticLogin(event){
-  event?.preventDefault();
-  const user=(document.getElementById('static-login-user')?.value||'').trim();
-  const password=document.getElementById('static-login-password')?.value||'';
-  const err=document.getElementById('static-login-error');
-  try{
-    const ok=user===STATIC_LOGIN_USER && await sha256Hex(password)===STATIC_LOGIN_PASSWORD_SHA256;
-    if(ok){
-      sessionStorage.setItem('otomy_static_unlocked','1');
-      hideStaticLogin();
-      location.reload();
-      return;
-    }
-  }catch(e){}
-  if(err)err.style.display='block';
-}
-
 function enforceLaunchLogin(){
   // Access control is handled upstream by Cloudflare Access (email login wall).
   // The old client-side user/password gate has been removed.
