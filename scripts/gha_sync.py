@@ -2081,6 +2081,7 @@ def build_ledger_view(
     opening_cash,
     movement_start,
     today,
+    overlay_repayments=None,
 ):
     month_start = date(year, month, 1)
     display_end = min(today, (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1))
@@ -2170,7 +2171,10 @@ def build_ledger_view(
                 + sum(_num(row.get("amount")) for row in day_labour)
                 + sum(_num(row.get("total_amount")) for row in day_parts)
             )
-            _ov = _overlay_balance(key, sales, expenses, repayments)
+            # Balance overlay must see the FULL repayment history from the anchor (mirrors the
+            # tile), not just month-to-date — else pre-month receipts (e.g. 29-30 Jun) are missed
+            # and the ledger cash/bank read low. `repayments` here is only mtd; use all-history.
+            _ov = _overlay_balance(key, sales, expenses, overlay_repayments if overlay_repayments is not None else repayments)
             row_bank = _ov[0] if _ov else round(bank_balance, 2)
             row_cash = _ov[1] if _ov else round(cash_balance, 2)
             rows.append({
@@ -2665,6 +2669,7 @@ def write_snapshot_bundle(
         opening.get("cash_balance_office", 0.0),
         movement_start,
         today,
+        overlay_repayments=repayments,
     )
     latest_summary = (latest_seed_control(local_seed) or {}).get("summary") or {}
     if ledger_current.get("rows") and "bank_balance" in latest_summary and "cash_balance_office" in latest_summary:
