@@ -3238,6 +3238,13 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
+    # --- TEMP DEBUG: ASHWATH double-count diagnosis (remove after) ---
+    _dbg_ash = [e for e in all_expenses if "ASHWATH" in str(e.get("category", "")).upper()]
+    _dbg_recent = [(e.get("date"), e.get("amount"), e.get("payment_mode"), e.get("category"), e.get("erp_key")) for e in _dbg_ash if str(e.get("date")) >= str(yesterday)]
+    print(f"[DBG] today={today} today_cash={today_cash_balance} today_bank={today_bank_balance} yest_cash={yesterday_cash_balance} yest_bank={yesterday_bank_balance}")
+    print(f"[DBG] ASHWATH in all_expenses: total_rows={len(_dbg_ash)} recent(>=yest)={_dbg_recent}")
+    print(f"[DBG] ASHWATH vendor_payments={[(p.get('date'), p.get('amount'), p.get('mode'), p.get('vendor_name'), p.get('reference')) for p in vendor_payments if 'ASHWATH' in str(p.get('vendor_name','')).upper()]}")
+    # --- END TEMP DEBUG ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
