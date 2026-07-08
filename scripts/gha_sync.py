@@ -3238,13 +3238,14 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
-    # --- TEMP DEBUG: per-day cash divergence (remove after) ---
-    for _d in ["2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08"]:
+    # --- TEMP DEBUG: full ASHWATH expense list + per-day balances (remove after) ---
+    _ash_all = sorted([(str(e.get("date")), _num(e.get("amount")), e.get("payment_mode"), e.get("category"), e.get("erp_key")) for e in all_expenses if "ASHWATH" in str(e.get("category", "")).upper() or "ASHWATH" in str(e.get("erp_key", "")).upper()])
+    print(f"[DBG3] ASHWATH all_expenses rows ({len(_ash_all)}):")
+    for _r in _ash_all:
+        print(f"[DBG3]   {_r}")
+    for _d in ["2026-06-30", "2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"]:
         _ob = _overlay_balance(_d, all_sales, all_expenses, all_repayments)
-        _dexp = sum(_num(e.get("amount")) for e in all_expenses if str(e.get("date")) == _d and _payment_channel(e.get("payment_mode") or "Cash") == "cash")
-        _drecv = sum(_num(r.get("payment_received", r.get("amount"))) for r in all_repayments if str(r.get("date")) == _d and _payment_channel(r.get("mode")) == "cash")
-        _dash = [(e.get("amount"), e.get("category"), e.get("erp_key")) for e in all_expenses if str(e.get("date")) == _d and "ASHWATH" in str(e.get("category", "")).upper()]
-        print(f"[DBG2] {_d} otomy_cash={_ob[1] if _ob else None} day_cash_exp={_dexp} day_cash_recv={_drecv} ashwath={_dash}")
+        print(f"[DBG3] {_d} otomy_cash={_ob[1] if _ob else None} otomy_bank={_ob[0] if _ob else None}")
     # --- END TEMP DEBUG ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
