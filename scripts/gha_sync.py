@@ -3238,14 +3238,15 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
-    # --- TEMP DEBUG: full ASHWATH expense list + per-day balances (remove after) ---
-    _ash_all = sorted([(str(e.get("date")), _num(e.get("amount")), e.get("payment_mode"), e.get("category"), e.get("erp_key")) for e in all_expenses if "ASHWATH" in str(e.get("category", "")).upper() or "ASHWATH" in str(e.get("erp_key", "")).upper()])
-    print(f"[DBG3] ASHWATH all_expenses rows ({len(_ash_all)}):")
-    for _r in _ash_all:
-        print(f"[DBG3]   {_r}")
-    for _d in ["2026-06-30", "2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"]:
-        _ob = _overlay_balance(_d, all_sales, all_expenses, all_repayments)
-        print(f"[DBG3] {_d} otomy_cash={_ob[1] if _ob else None} otomy_bank={_ob[0] if _ob else None}")
+    # --- TEMP DEBUG: 06-29/06-30 cash component breakdown (remove after) ---
+    _corrs = _balance_overlay().get("corrections")
+    for _d in ["2026-06-29", "2026-06-30"]:
+        _cs = [(str(s.get("customer_name")), _sale_channels(s)[0]) for s in all_sales if str(s.get("date"))[:10] == _d and _sale_channels(s)[0] > 0]
+        _cr = [(str(r.get("customer_name")), _num(r.get("payment_received", r.get("amount"))), _num(r.get("amount")), r.get("mode")) for r in all_repayments if str(r.get("date"))[:10] == _d and _payment_channel(r.get("mode")) == "cash"]
+        _ce = sum(_num(e.get("amount")) for e in all_expenses if str(e.get("date"))[:10] == _d and (_overlay_mode(_corrs, e) or _payment_channel(e.get("payment_mode") or "Cash")) == "cash")
+        print(f"[DBG4] {_d} cash_sales_total={sum(x[1] for x in _cs)} sales={_cs}")
+        print(f"[DBG4] {_d} cash_receipts(name,pay_recv,amount,mode)={_cr}")
+        print(f"[DBG4] {_d} cash_exp_total={_ce}")
     # --- END TEMP DEBUG ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
