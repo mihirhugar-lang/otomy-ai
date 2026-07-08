@@ -3238,15 +3238,12 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
-    # --- TEMP DEBUG: 06-29/06-30 cash component breakdown (remove after) ---
+    # --- TEMP DEBUG: 06-30 expense rows with channel (remove after) ---
     _corrs = _balance_overlay().get("corrections")
-    for _d in ["2026-06-29", "2026-06-30"]:
-        _cs = [(str(s.get("customer_name")), _sale_channels(s)[0]) for s in all_sales if str(s.get("date"))[:10] == _d and _sale_channels(s)[0] > 0]
-        _cr = [(str(r.get("customer_name")), _num(r.get("payment_received", r.get("amount"))), _num(r.get("amount")), r.get("mode")) for r in all_repayments if str(r.get("date"))[:10] == _d and _payment_channel(r.get("mode")) == "cash"]
-        _ce = sum(_num(e.get("amount")) for e in all_expenses if str(e.get("date"))[:10] == _d and (_overlay_mode(_corrs, e) or _payment_channel(e.get("payment_mode") or "Cash")) == "cash")
-        print(f"[DBG4] {_d} cash_sales_total={sum(x[1] for x in _cs)} sales={_cs}")
-        print(f"[DBG4] {_d} cash_receipts(name,pay_recv,amount,mode)={_cr}")
-        print(f"[DBG4] {_d} cash_exp_total={_ce}")
+    for _e in sorted([e for e in all_expenses if str(e.get("date"))[:10] == "2026-06-30"], key=lambda e: -_num(e.get("amount"))):
+        _ovm = _overlay_mode(_corrs, _e)
+        _rawch = _payment_channel(_e.get("payment_mode") or "Cash")
+        print(f"[DBG5] amt={_num(_e.get('amount'))} raw_mode={_e.get('payment_mode')} raw_ch={_rawch} overlay_mode={_ovm} cat={_e.get('category')} erp_key={_e.get('erp_key')}")
     # --- END TEMP DEBUG ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
