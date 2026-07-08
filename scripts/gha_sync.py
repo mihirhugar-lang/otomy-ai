@@ -1549,10 +1549,13 @@ def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-        # Fresh fetch is authoritative for its window: drop archived expense rows on/after the
-        # sync cutoff so an ERP expense later edited (remark/amount changed) or reordered can't
-        # linger as a stale duplicate beside its refreshed version. Older (protected) dates keep
-        # their archive untouched. Mirrors how the live DB overwrites from the ERP each sync.
+    if section in {"sales", "expenses", "cash", "bank"}:
+        # Fresh fetch is authoritative for its window. Every section we re-pull in full over
+        # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
+        # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
+        # beside its refreshed version — otomy reconciles to the live ERP exactly like the local
+        # DB does. Older (protected) dates keep their archive untouched. (Receipts already do
+        # this via archive_repayments being filtered to < last_month_start.)
         _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
         existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
     protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
@@ -3244,6 +3247,11 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
+    # --- TEMP VERIFY (remove after) ---
+    for _d in ["2026-06-30", "2026-07-07"]:
+        _ob = _overlay_balance(_d, all_sales, all_expenses, all_repayments)
+        print(f"[VERIFY2] {_d} cash={_ob[1] if _ob else None} bank={_ob[0] if _ob else None}")
+    # --- END TEMP VERIFY ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
