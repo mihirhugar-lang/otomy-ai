@@ -3247,11 +3247,6 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
-    # --- TEMP VERIFY (remove after) ---
-    for _d in ["2026-06-30", "2026-07-07"]:
-        _ob = _overlay_balance(_d, all_sales, all_expenses, all_repayments)
-        print(f"[VERIFY2] {_d} cash={_ob[1] if _ob else None} bank={_ob[0] if _ob else None}")
-    # --- END TEMP VERIFY ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
