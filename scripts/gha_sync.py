@@ -2673,10 +2673,6 @@ def write_snapshot_bundle(
         ledger_current["totals"]["bank_balance"] = latest_summary["bank_balance"]
         ledger_current["totals"]["cash_balance_office"] = latest_summary["cash_balance_office"]
     write_snapshot(f"/api/dashboard/ledger-view?year={today.year}&month={today.month}", ledger_current)
-    # --- TEMP VERIFY (remove after) ---
-    for _r in ledger_current.get("rows", []):
-        print(f"[LEDG] {_r.get('date')} sale={_r.get('sale_amount')} spot={_r.get('spot_sale_amount')} credit={_r.get('credit_sale_amount')} cr_repay={_r.get('credit_repayment')} exp={_r.get('expenses')}")
-    # --- END TEMP VERIFY ---
 
     write_snapshot(
         f"/api/dashboard/monthly?year={today.year}&month={today.month}",
