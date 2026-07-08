@@ -1549,6 +1549,12 @@ def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
+        # Fresh fetch is authoritative for its window: drop archived expense rows on/after the
+        # sync cutoff so an ERP expense later edited (remark/amount changed) or reordered can't
+        # linger as a stale duplicate beside its refreshed version. Older (protected) dates keep
+        # their archive untouched. Mirrors how the live DB overwrites from the ERP each sync.
+        _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
+        existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
     protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
     merged = {}
     existing_expense_keys = set()
@@ -3238,6 +3244,13 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
+    # --- TEMP VERIFY (remove after) ---
+    for _d in ["2026-06-30", "2026-07-07", "2026-07-08"]:
+        _ob = _overlay_balance(_d, all_sales, all_expenses, all_repayments)
+        print(f"[VERIFY] {_d} otomy_cash={_ob[1] if _ob else None}")
+    _dmgbatta = [(_num(e.get("amount")), e.get("category")) for e in all_expenses if str(e.get("date"))[:10] == "2026-06-30" and ("DMG OFFICER" in str(e.get("category", "")) or "BATTA" in str(e.get("category", "")))]
+    print(f"[VERIFY] 06-30 DMG/BATTA rows={sorted(_dmgbatta)}")
+    # --- END TEMP VERIFY ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
