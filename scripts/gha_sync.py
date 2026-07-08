@@ -3238,13 +3238,6 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
-    # --- TEMP DEBUG: 06-30 expense rows with channel (remove after) ---
-    _corrs = _balance_overlay().get("corrections")
-    for _e in sorted([e for e in all_expenses if str(e.get("date"))[:10] == "2026-06-30"], key=lambda e: -_num(e.get("amount"))):
-        _ovm = _overlay_mode(_corrs, _e)
-        _rawch = _payment_channel(_e.get("payment_mode") or "Cash")
-        print(f"[DBG5] amt={_num(_e.get('amount'))} raw_mode={_e.get('payment_mode')} raw_ch={_rawch} overlay_mode={_ovm} cat={_e.get('category')} erp_key={_e.get('erp_key')}")
-    # --- END TEMP DEBUG ---
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
