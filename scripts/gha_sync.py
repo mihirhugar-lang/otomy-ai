@@ -2159,7 +2159,12 @@ def build_ledger_view(
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
             sale_amount = sum(_sale_total(row) for row in day_sales)
-            spot_sale_amount = sum(_sale_total(row) for row in day_sales if (row.get("payment_mode") or "").lower() != "credit")
+            # Match localhost ledger: split each sale by its real cash/credit/UPI channels
+            # (spot = cash + UPI, credit = credit channel) instead of a crude payment_mode test,
+            # so split-payment tickets land the right amount in each column.
+            sale_splits = [_sale_channels(row) for row in day_sales]
+            spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
+            credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
             expense_total = (
                 sum(_num(row.get("amount")) for row in day_expenses)
                 + sum(_num(row.get("amount")) for row in day_labour)
@@ -2173,7 +2178,7 @@ def build_ledger_view(
                 "sale_trips": len(day_sales),
                 "sale_amount": round(sale_amount, 2),
                 "spot_sale_amount": round(spot_sale_amount, 2),
-                "credit_sale_amount": round(sale_amount - spot_sale_amount, 2),
+                "credit_sale_amount": round(credit_sale_amount, 2),
                 "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
                 "expenses": round(expense_total, 2),
                 "cash_balance_office": row_cash,
@@ -2668,6 +2673,10 @@ def write_snapshot_bundle(
         ledger_current["totals"]["bank_balance"] = latest_summary["bank_balance"]
         ledger_current["totals"]["cash_balance_office"] = latest_summary["cash_balance_office"]
     write_snapshot(f"/api/dashboard/ledger-view?year={today.year}&month={today.month}", ledger_current)
+    # --- TEMP VERIFY (remove after) ---
+    for _r in ledger_current.get("rows", []):
+        print(f"[LEDG] {_r.get('date')} sale={_r.get('sale_amount')} spot={_r.get('spot_sale_amount')} credit={_r.get('credit_sale_amount')} cr_repay={_r.get('credit_repayment')} exp={_r.get('expenses')}")
+    # --- END TEMP VERIFY ---
 
     write_snapshot(
         f"/api/dashboard/monthly?year={today.year}&month={today.month}",
