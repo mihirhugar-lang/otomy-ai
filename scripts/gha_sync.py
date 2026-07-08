@@ -2116,11 +2116,8 @@ def build_ledger_view(
                 cash_balance -= _num(expense.get("amount"))
             else:
                 bank_balance -= _num(expense.get("amount"))
-        for payment in vendor_payments_by_date.get(key, []):
-            if _payment_channel(payment.get("mode") or "Cash") == "cash":
-                cash_balance -= _num(payment.get("amount"))
-            else:
-                bank_balance -= _num(payment.get("amount"))
+        # Vendor payments are already booked as expenses; never subtract the vendor stream
+        # again (that double-counts a vendor who is also an expense, e.g. ASHWATH SOLING).
         current += timedelta(days=1)
     current = month_start
     while current <= display_end:
@@ -2142,11 +2139,8 @@ def build_ledger_view(
                     cash_balance -= _num(expense.get("amount"))
                 else:
                     bank_balance -= _num(expense.get("amount"))
-            for payment in vendor_payments_by_date.get(key, []):
-                if _payment_channel(payment.get("mode") or "Cash") == "cash":
-                    cash_balance -= _num(payment.get("amount"))
-                else:
-                    bank_balance -= _num(payment.get("amount"))
+            # Vendor payments are already booked as expenses; never subtract the vendor
+            # stream again (that double-counts a vendor who is also an expense).
 
         if current >= month_start:
             day_sales = sales_by_date.get(key, [])
@@ -3193,17 +3187,8 @@ def main():
         "cash_balance":  round(cash_balance, 2),
         "bank_net":      bank_net,
     })
-    for payment in vendor_payments:
-        try:
-            paid_on = datetime.fromisoformat(str(payment.get("date"))).date()
-        except Exception:
-            continue
-        if paid_on < movement_start or paid_on > today:
-            continue
-        if _payment_channel(payment.get("mode") or "Cash") == "cash":
-            operating_cash_balance -= _num(payment.get("amount"))
-        else:
-            operating_bank_balance -= _num(payment.get("amount"))
+    # Vendor payments are already booked as expenses; never subtract the vendor stream
+    # again here (that double-counts a vendor who is also an expense, e.g. ASHWATH SOLING).
     operating_bank_balance = round(operating_bank_balance, 2)
     operating_cash_balance = round(operating_cash_balance, 2)
 
