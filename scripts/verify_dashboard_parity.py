@@ -248,7 +248,7 @@ def verify_sync_tolerance_guard() -> None:
         "using saved non-empty snapshot",
         "vendor payments fetch failed; using archived non-empty rows",
         "vendor payments fetch failed; no saved rows; continuing without vendor-payment rows",
-        "today repayments ERP compute skipped",
+        "window repayments ERP compute skipped",
         "replace_repayment_day(saved_mtd, today, repayments_today)",
         "optional debtor balance snapshot skipped",
         "repayments_movement = seed_for(all_repayments, movement_start, today)",
