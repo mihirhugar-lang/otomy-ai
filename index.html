@@ -2088,6 +2088,7 @@ function renderControlRoom(data){
   const paymentReceivedTile=data.customer_repayments_payment_total!=null?repaymentPaymentTotal:Number(s.credit_payment_received||0);
   const repaymentBankTotal=Number(data.customer_repayments_bank_total||0);
   const repaymentCashTotal=Number(data.customer_repayments_cash_total||0);
+  const repaymentBalanceTotal=(data.customer_repayments||[]).reduce((s,r)=>s+(r.balance==null?0:(Number(r.balance)||0)),0);
   const repaymentRows=(data.customer_repayments||[]).map(r=>`
     <tr>
       <td>${esc(r.date)}</td>
@@ -2170,7 +2171,7 @@ function renderControlRoom(data){
         <table class="report-table payment-table">
           <thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Bank / UPI Received</th><th>Cash Received</th><th>Total Received</th><th>Sale Adjusted</th><th>Credit Repayment</th><th>Balance To Pay</th></tr></thead>
           <tbody>${repaymentRows}</tbody>
-          <tfoot><tr><td colspan="3"><strong>Total</strong></td><td><strong>${fmtINR(repaymentBankTotal)}</strong></td><td><strong>${fmtINR(repaymentCashTotal)}</strong></td><td><strong>${fmtINR(repaymentPaymentTotal)}</strong></td><td></td><td><strong>${fmtINR(repaymentTotal)}</strong></td><td></td></tr></tfoot>
+          <tfoot><tr><td colspan="3"><strong>Total</strong></td><td><strong>${fmtINR(repaymentBankTotal)}</strong></td><td><strong>${fmtINR(repaymentCashTotal)}</strong></td><td><strong>${fmtINR(repaymentPaymentTotal)}</strong></td><td></td><td><strong>${fmtINR(repaymentTotal)}</strong></td><td><strong>${fmtINR(repaymentBalanceTotal)}</strong></td></tr></tfoot>
         </table>
       </div>
     </div>
