@@ -2088,7 +2088,12 @@ function renderControlRoom(data){
   const paymentReceivedTile=data.customer_repayments_payment_total!=null?repaymentPaymentTotal:Number(s.credit_payment_received||0);
   const repaymentBankTotal=Number(data.customer_repayments_bank_total||0);
   const repaymentCashTotal=Number(data.customer_repayments_cash_total||0);
-  const repaymentBalanceTotal=(data.customer_repayments||[]).reduce((s,r)=>s+(r.balance==null?0:(Number(r.balance)||0)),0);
+  // Balance To Pay total: count each customer's outstanding ONCE — a split payment
+  // (same customer, cash + UPI/bank) makes two rows carrying the same balance, and a
+  // customer can recur across days; keep only their most recent balance so it isn't doubled.
+  const _repayBalByCustomer={};
+  (data.customer_repayments||[]).forEach(r=>{if(r.balance==null)return;const k=r.customer_name||'—';const d=String(r.date||'');if(!(k in _repayBalByCustomer)||d>=_repayBalByCustomer[k].date)_repayBalByCustomer[k]={date:d,balance:Number(r.balance)||0};});
+  const repaymentBalanceTotal=Object.values(_repayBalByCustomer).reduce((s,x)=>s+x.balance,0);
   const repaymentRows=(data.customer_repayments||[]).map(r=>`
     <tr>
       <td>${esc(r.date)}</td>
