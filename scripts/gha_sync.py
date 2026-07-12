@@ -3068,42 +3068,71 @@ def main():
     saved_mtd = saved_repayments(month_start, today)
     saved_last_month = saved_repayments(last_month_start, last_month_end)
 
-    repayments_today = None
+    # ── Fresh ERP fetch is authoritative for the whole live window ──────────────
+    # An ERP data-entry correction (an entry edited, or a duplicate removed) can land
+    # on ANY recent day, not just today. The local DB re-reads the ledger every sync,
+    # so it always reconciles; otomy must do the same or a prior day's stale value
+    # sticks (e.g. a receipt duplicated then removed still shows the doubled figure).
+    # So we recompute repayments for every day in the live window [repay_window_start,
+    # today] straight from ERP and keep the saved snapshot only for OLDER days. This is
+    # the same rule already applied to sales/expenses/cash/bank in _merge_archive_rows.
+    repay_window_start = max(month_start, sync_start)
+
+    window_repayments = None
     if debtors_today_fresh and debtors_yesterday_fresh:
         try:
-            repayments_today = compute_repayments_from_erp(
-                _clone_sess(sess),
+            window_repayments = compute_range_repayments(
+                "window",
+                repay_window_start,
                 today,
+                repay_window_start - timedelta(days=1),
                 today,
-                debtors_yesterday,
-                debtors_today,
-                debtors_cache,
             )
-            print(f"  today repayments computed from ERP: {len(repayments_today)} rows")
+            print(f"  window repayments recomputed from ERP ({repay_window_start}..{today}): {len(window_repayments)} rows")
         except ErpFetchError as e:
-            print(f"  today repayments ERP compute failed; using saved snapshot if available: {e}")
-            repayments_today = saved_today
+            print(f"  window repayments ERP compute failed; falling back to saved snapshot: {e}")
+            window_repayments = None
     else:
-        print("  today repayments ERP compute skipped; using saved snapshot because debtor balances are fallback")
+        print("  window repayments ERP compute skipped; using saved snapshot because debtor balances are fallback")
+
+    def _repayments_on(rows, day):
+        day_s = str(day)
+        return [dict(row) for row in rows or [] if str(row.get("date", ""))[:10] == day_s]
+
+    # today
+    if window_repayments is not None:
+        repayments_today = _repayments_on(window_repayments, today)
+    else:
         repayments_today = saved_today
     repayments_today = require_repayments("today", repayments_today)
 
-    repayments_yesterday = saved_yesterday
-    if repayments_yesterday is None:
-        try:
-            repayments_yesterday = compute_range_repayments(
-                "yesterday",
-                yesterday,
-                yesterday,
-                yesterday - timedelta(days=1),
-                yesterday,
-            )
-        except ErpFetchError as e:
-            print(f"  yesterday repayments ERP compute failed; using saved snapshot if available: {e}")
-            repayments_yesterday = saved_yesterday
+    # yesterday (inside the window whenever recent_days >= 2)
+    if window_repayments is not None and repay_window_start <= yesterday:
+        repayments_yesterday = _repayments_on(window_repayments, yesterday)
+    else:
+        repayments_yesterday = saved_yesterday
+        if repayments_yesterday is None:
+            try:
+                repayments_yesterday = compute_range_repayments(
+                    "yesterday",
+                    yesterday,
+                    yesterday,
+                    yesterday - timedelta(days=1),
+                    yesterday,
+                )
+            except ErpFetchError as e:
+                print(f"  yesterday repayments ERP compute failed; using saved snapshot if available: {e}")
+                repayments_yesterday = saved_yesterday
     repayments_yesterday = require_repayments("yesterday", repayments_yesterday)
 
-    if saved_mtd is not None:
+    # month-to-date: fresh window spliced over the saved snapshot for days before the window
+    if window_repayments is not None:
+        older_saved = [
+            dict(row) for row in (saved_mtd or [])
+            if str(row.get("date", ""))[:10] < str(repay_window_start)
+        ]
+        repayments_mtd = merge_repayment_rows(older_saved, window_repayments)
+    elif saved_mtd is not None:
         repayments_mtd = replace_repayment_day(saved_mtd, today, repayments_today)
     else:
         repayments_mtd = compute_range_repayments(
