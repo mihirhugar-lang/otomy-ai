@@ -3125,12 +3125,28 @@ def main():
                 repayments_yesterday = saved_yesterday
     repayments_yesterday = require_repayments("yesterday", repayments_yesterday)
 
-    # month-to-date: fresh window spliced over the saved snapshot for days before the window
+    # month-to-date: the freshly recomputed window is authoritative for its days; the older MTD
+    # days (month_start .. window_start) come from the saved snapshot when it exists. But the MTD
+    # snapshot is keyed by (month_start, today), so on the FIRST run of a new day it hasn't been
+    # written yet (saved_mtd is None) — in that case recompute the pre-window days straight from ERP
+    # instead of dropping them, else the balance silently loses every repayment before the 7-day
+    # window (e.g. 01–06 of the month) until the monthly-nightly full recompute runs.
     if window_repayments is not None:
-        older_saved = [
-            dict(row) for row in (saved_mtd or [])
-            if str(row.get("date", ""))[:10] < str(repay_window_start)
-        ]
+        if saved_mtd is not None:
+            older_saved = [
+                dict(row) for row in saved_mtd
+                if str(row.get("date", ""))[:10] < str(repay_window_start)
+            ]
+        elif repay_window_start > month_start:
+            older_saved = compute_range_repayments(
+                "mtd pre-window",
+                month_start,
+                repay_window_start - timedelta(days=1),
+                month_start - timedelta(days=1),
+                repay_window_start - timedelta(days=1),
+            )
+        else:
+            older_saved = []
         repayments_mtd = merge_repayment_rows(older_saved, window_repayments)
     elif saved_mtd is not None:
         repayments_mtd = replace_repayment_day(saved_mtd, today, repayments_today)
