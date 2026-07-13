@@ -1,9 +1,9 @@
 name: Deploy site to Pages
 
-# Publishes the FRONTEND (index.html + assets) together with the CURRENT data
-# pulled fresh from R2. The 10-minute sync only updates R2; it does NOT publish
-# the Pages site. Run this whenever the frontend changes, or on a schedule to keep
-# the deployed data current.
+# Publishes the FRONTEND + the /data/ Pages Function. Data itself is served LIVE
+# from R2 by functions/data/[[path]].js (binding OTOMY_DATA), so this deploy no
+# longer bundles data and does NOT need to run on a schedule — the 10-min sync keeps
+# R2 current and the site reads it live. Run this only when the frontend/Function changes.
 on:
   workflow_dispatch:
 
@@ -17,19 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pull current data from Cloudflare R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
-
-      - name: Stage deploy bundle (frontend + data, no repo cruft)
+      - name: Stage deploy bundle (frontend + Function, data served live from R2)
         run: |
           mkdir -p _site
           cp index.html service-worker.js CNAME .nojekyll _site/
           cp -R static _site/static
-          cp -R data _site/data
+          cp -R functions _site/functions
           echo "Staged files: $(find _site -type f | wc -l)"
 
       - name: Deploy to Cloudflare Pages
