@@ -375,6 +375,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-section">Financials</div>
   <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
   <div class="nav-item" onclick="nav('expenses')"><span class="icon">📋</span><span>Expenses</span></div>
+  <div class="nav-item" onclick="nav('exptonne')"><span class="icon">⚖️</span><span>Expenses / Tonne</span></div>
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
@@ -477,6 +478,35 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     </div>
     <div class="tbl-wrap" id="exp-tbl"></div>
     <div id="exp-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- EXPENSES / TONNE -->
+<div class="section" id="section-exptonne">
+  <div class="page-header"><h2>Expenses / Tonne</h2></div>
+  <div class="card">
+    <h3>Expense Cost per Tonne Sold</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('exptonne','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('exptonne','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('exptonne','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('exptonne','lastweek',this)">Last Week</button>
+      <button class="pbtn" onclick="preset('exptonne','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('exptonne','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="t-from" onchange="clearPresetBtns('exptonne')">
+        <label>To:</label><input type="date" id="t-to" onchange="clearPresetBtns('exptonne')">
+        <button class="pbtn" onclick="loadExpTonne()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('Expenses per Tonne','ept-tbl')">Print / PDF</button>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="ept-total-exp">—</div></div>
+      <div class="kpi navy"><div class="kpi-label">Sold Tonne</div><div class="kpi-value" id="ept-total-mt">—</div></div>
+      <div class="kpi"><div class="kpi-label">Overall Expense / Tonne</div><div class="kpi-value" id="ept-overall">—</div></div>
+    </div>
+    <div class="tbl-wrap" id="ept-tbl"></div>
   </div>
 </div>
 
@@ -1456,7 +1486,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1490,6 +1520,7 @@ function nav(name){
   if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
   if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
   if(name==='expenses'){resetRangeToToday('expenses');fillVendSelect('e-vendor');loadExpenses();}
+  if(name==='exptonne'){resetRangeToToday('exptonne');loadExpTonne();}
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
@@ -1509,6 +1540,7 @@ const PRESET_CFG={
   dashboard:{from:'dash-from',to:'dash-to',reload:()=>loadDash()},
   sales:{from:'s-from',to:'s-to',reload:()=>loadSales()},
   expenses:{from:'e-from',to:'e-to',reload:()=>loadExpenses()},
+  exptonne:{from:'t-from',to:'t-to',reload:()=>loadExpTonne()},
   customers:{from:'c-from',to:'c-to',reload:()=>loadCustomers()},
   vendors:{from:'v-from',to:'v-to',reload:()=>loadVendors()},
   erpbank:{from:'eb-from',to:'eb-to',reload:()=>loadErpBank()},
@@ -2275,6 +2307,49 @@ function renderExpenses(){
   html+='</tbody></table>';
   document.getElementById('exp-tbl').innerHTML=html;
   document.getElementById('exp-pager').innerHTML=pagerHTML('expenses',_allData.expenses.length);
+}
+async function loadExpTonne(){
+  const from=document.getElementById('t-from').value,to=document.getElementById('t-to').value;
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('t-from').value=f;document.getElementById('t-to').value=t;return loadExpTonne();}
+  try{
+    const [exp,sal]=await Promise.all([
+      api(`/api/expenses/?from_date=${from}&to_date=${to}`),
+      api(`/api/sales/?from_date=${from}&to_date=${to}`)
+    ]);
+    _allData.expTonne={expenses:exp||[],sales:sal||[]};
+    _renderCache.exptonne=()=>renderExpTonne();
+    renderExpTonne();
+  }catch(e){flash(e.message,false);}
+}
+function renderExpTonne(){
+  const d=_allData.expTonne||{expenses:[],sales:[]};
+  const expenses=d.expenses||[],sales=d.sales||[];
+  const soldTonne=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
+  const perT=v=>soldTonne>0?v/soldTonne:0;
+  const ptFmt=v=>soldTonne>0?'₹'+(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})+' /MT':'—';
+  const map=new Map();
+  expenses.forEach(r=>{
+    const cat=((r.category||'').trim())||'Uncategorized';
+    const g=map.get(cat)||{category:cat,total:0,count:0,latest:''};
+    g.total+=_num(r.amount);g.count+=1;
+    if((r.date||'')>g.latest)g.latest=r.date||'';
+    map.set(cat,g);
+  });
+  const arr=[...map.values()].map(g=>({category:g.category,latest:g.latest,count:g.count,total:g.total,per_tonne:perT(g.total)}));
+  const totExp=arr.reduce((s,r)=>s+r.total,0);
+  const overallPT=perT(totExp);
+  document.getElementById('ept-total-exp').textContent=fmtINR(totExp);
+  document.getElementById('ept-total-mt').textContent=fmtNum(soldTonne,2)+' MT';
+  document.getElementById('ept-overall').textContent=ptFmt(overallPT);
+  const sc=_sort['exptonne'];
+  const rows=(sc&&sc.key)?sortedRows(arr,'exptonne'):arr.slice().sort((a,b)=>String(b.latest).localeCompare(String(a.latest))||b.total-a.total);
+  let html='<table><thead><tr>'+thSort('exptonne','category','Expense')+thSort('exptonne','latest','Latest')+thSort('exptonne','count','Entries')+thSort('exptonne','total','Expenses')+thSort('exptonne','per_tonne','₹ / Tonne')+'</tr></thead><tbody>';
+  if(arr.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (all ${arr.length})</td><td>—</td><td>${expenses.length}</td><td>${fmtINR(totExp)}</td><td>${ptFmt(overallPT)}</td></tr>`;
+  rows.forEach(r=>{html+=`<tr><td>${esc(r.category)}</td><td>${r.latest||'—'}</td><td>${r.count}</td><td>${fmtINR(r.total)}</td><td style="font-weight:700;color:#b45309">${ptFmt(r.per_tonne)}</td></tr>`;});
+  if(!arr.length)html+='<tr><td colspan="5" class="empty">No expenses for this period</td></tr>';
+  else if(soldTonne<=0)html+='<tr><td colspan="5" class="empty" style="color:#c62828">No tonnes sold in this range — ₹/tonne cannot be computed</td></tr>';
+  html+='</tbody></table>';
+  document.getElementById('ept-tbl').innerHTML=html;
 }
 async function delExp(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
 
