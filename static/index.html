@@ -378,6 +378,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
   <div class="nav-item" onclick="nav('bank')"><span class="icon">🏦</span><span>Cash & Bank</span></div>
+  <div class="nav-item" onclick="nav('pl')"><span class="icon">🧮</span><span>P&amp;L</span></div>
   <div class="nav-section">Operations</div>
   <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations</span></div>
   <div class="nav-section">Ledger</div>
@@ -605,6 +606,35 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     </div>
     <div class="tbl-wrap" id="erp-cash-tbl"></div>
     <div id="erp-cash-pager" class="no-print"></div>
+  </div>
+</div>
+
+<!-- P&L -->
+<div class="section" id="section-pl">
+  <div class="page-header"><h2>Profit &amp; Loss — Reconciliation</h2></div>
+  <div class="card">
+    <h3>Zero-Balance Cross-Verification</h3>
+    <div class="preset-bar no-print">
+      <span class="preset-label">Period:</span>
+      <button class="pbtn act" onclick="preset('pl','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('pl','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('pl','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('pl','lastweek',this)">Last Week</button>
+      <button class="pbtn" onclick="preset('pl','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('pl','lastmonth',this)">Last Month</button>
+      <div class="preset-dates">
+        <label>From:</label><input type="date" id="pl-from" onchange="clearPresetBtns('pl')">
+        <label>To:</label><input type="date" id="pl-to" onchange="clearPresetBtns('pl')">
+        <button class="pbtn" onclick="loadPL()">Go</button>
+      </div>
+      <button class="print-btn" onclick="printSection('P&L Reconciliation','pl-tbl')">Print / PDF</button>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi" id="pl-net-kpi"><div class="kpi-label">Net (should be ₹0)</div><div class="kpi-value" id="pl-net">—</div><div class="kpi-sub">cross-check total</div></div>
+      <div class="kpi navy"><div class="kpi-label">Total Sale</div><div class="kpi-value" id="pl-sale">—</div></div>
+      <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="pl-exp">—</div></div>
+    </div>
+    <div class="tbl-wrap" id="pl-tbl"></div>
   </div>
 </div>
 
@@ -1377,6 +1407,7 @@ async function _reloadActiveSectionAfterSync(){
   if(section==='customers')return loadCustomers();
   if(section==='vendors')return loadVendors();
   if(section==='bank'){await loadBankSummary();await loadErpBank();return loadErpCash();}
+  if(section==='pl')return loadPL();
   if(section==='ops')return loadOpsDefaults();
   if(section==='ledger')return loadLedgerView();
 }
@@ -1463,7 +1494,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1500,6 +1531,7 @@ function nav(name){
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
+  if(name==='pl'){resetRangeToToday('pl');loadPL();}
   if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
   if(name==='reports'){}
@@ -1521,6 +1553,7 @@ const PRESET_CFG={
   vendors:{from:'v-from',to:'v-to',reload:()=>loadVendors()},
   erpbank:{from:'eb-from',to:'eb-to',reload:()=>loadErpBank()},
   erpcash:{from:'ec-from',to:'ec-to',reload:()=>loadErpCash()},
+  pl:{from:'pl-from',to:'pl-to',reload:()=>loadPL()},
 };
 
 function calcPreset(p){
@@ -2334,6 +2367,48 @@ function renderExpTonne(){
   html+='</tbody></table>';
   html+='<div class="no-print" style="font-size:11px;color:#777;margin-top:8px">Shareholder drawings (Kumar / Prashant) excluded — Director 1 &amp; 2 expenses included. ₹/Tonne = expense ÷ sold tonnes · ₹/Boulder Input = expense ÷ boulder input tonnes.</div>';
   document.getElementById('ept-tbl').innerHTML=html;
+}
+async function loadPL(){
+  const from=document.getElementById('pl-from').value,to=document.getElementById('pl-to').value;
+  if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('pl-from').value=f;document.getElementById('pl-to').value=t;return loadPL();}
+  try{
+    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
+    _allData.pl=data;
+    _renderCache.pl=()=>renderPL();
+    renderPL();
+  }catch(e){flash(e.message,false);}
+}
+function renderPL(){
+  const s=(_allData.pl||{}).summary||{};
+  const sales=_num(s.sales);
+  const expenses=_num(s.expenses);
+  const shareKP=_num(s.expenses_before_director_adjustment)-_num(s.expenses);
+  const receivables=_num(s.receivables);
+  const payables=_num(s.payables);
+  const bank=_num(s.bank_balance);
+  const cash=_num(s.cash_balance_office);
+  const net=sales-expenses+receivables-payables+shareKP+bank+cash;
+  const fmtSigned=v=>(v<0?'−':'')+fmtINR(Math.abs(v));
+  const lines=[
+    {label:'Total Sale',amount:sales,effect:sales},
+    {label:'Total Expenses (real, excl. Kumar / Prashant)',amount:expenses,effect:-expenses},
+    {label:'Receivables',amount:receivables,effect:receivables},
+    {label:'Payables',amount:payables,effect:-payables},
+    {label:'Share Taken by Kumar & Prashant',amount:shareKP,effect:shareKP},
+    {label:'Bank Balance',amount:bank,effect:bank},
+    {label:'Cash in Office',amount:cash,effect:cash},
+  ];
+  const zero=Math.abs(net)<1;
+  document.getElementById('pl-sale').textContent=fmtINR(sales);
+  document.getElementById('pl-exp').textContent=fmtINR(expenses);
+  const netEl=document.getElementById('pl-net');netEl.textContent=fmtSigned(net);netEl.style.color=zero?'#2e7d32':'#c62828';
+  const kpi=document.getElementById('pl-net-kpi');if(kpi)kpi.style.borderLeft='4px solid '+(zero?'#2e7d32':'#c62828');
+  let html='<table><thead><tr><th>Line Item</th><th>Amount</th><th>Effect on Net</th></tr></thead><tbody>';
+  html+=`<tr style="background:#e8eaf6;font-weight:800"><td>NET (target ₹0)</td><td></td><td style="color:${zero?'#2e7d32':'#c62828'}">${fmtSigned(net)}</td></tr>`;
+  lines.forEach(l=>{const pos=l.effect>=0;html+=`<tr><td>${l.label}</td><td>${fmtINR(l.amount)}</td><td style="font-weight:700;color:${pos?'#2e7d32':'#c62828'}">${pos?'+':'−'}${fmtINR(Math.abs(l.effect))}</td></tr>`;});
+  html+='</tbody></table>';
+  html+='<div class="no-print" style="font-size:11px;color:#777;margin-top:8px">Formula: Total Sale − Total Expenses + Receivables − Payables + Kumar/Prashant Share + Bank Balance + Cash in Office = ₹0 when every figure reconciles. Numbers are read from the dashboard control data for the selected range — not expected to be exactly zero yet.</div>';
+  document.getElementById('pl-tbl').innerHTML=html;
 }
 async function delExp(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
 
