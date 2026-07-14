@@ -863,6 +863,7 @@ function _saleCreditAmount(r){return _saleChannels(r).credit;}
 function _saleSpotAmount(r){const ch=_saleChannels(r);return ch.cash+ch.upi;}
 function _isDirectorPayment(...values){
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
+  if(String(values[0]||'').toUpperCase().includes('DIRECTOR'))return false;
   return text.includes('PRASHANT')||text.includes('KUMAR');
 }
 function _receiptNoteAmount(notes,key){
