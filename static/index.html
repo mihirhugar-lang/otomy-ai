@@ -2305,6 +2305,9 @@ async function loadCustomers(){
     };
     const activeRows=sortedRows(active,'customers',derived);
     let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_payment_received','Payment Received','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    const totCredit=active.reduce((s,r)=>s+(r.range_credit_sales??0),0);
+    const totPaid=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#2e7d32">${fmtINR(totPaid)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
