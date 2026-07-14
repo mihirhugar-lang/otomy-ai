@@ -502,9 +502,10 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="print-btn" onclick="printSection('Expenses per Tonne','ept-tbl')">Print / PDF</button>
     </div>
     <div class="kpi-row">
-      <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="ept-total-exp">—</div></div>
+      <div class="kpi red"><div class="kpi-label">Real Expenses</div><div class="kpi-value" id="ept-total-exp">—</div><div class="kpi-sub">excl. Kumar / Prashant</div></div>
       <div class="kpi navy"><div class="kpi-label">Sold Tonne</div><div class="kpi-value" id="ept-total-mt">—</div></div>
       <div class="kpi"><div class="kpi-label">Overall Expense / Tonne</div><div class="kpi-value" id="ept-overall">—</div></div>
+      <div class="kpi green"><div class="kpi-label">Overall Expense / Boulder Input</div><div class="kpi-value" id="ept-overall-boulder">—</div><div class="kpi-sub" id="ept-boulder-mt">—</div></div>
     </div>
     <div class="tbl-wrap" id="ept-tbl"></div>
   </div>
@@ -2312,21 +2313,27 @@ async function loadExpTonne(){
   const from=document.getElementById('t-from').value,to=document.getElementById('t-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('t-from').value=f;document.getElementById('t-to').value=t;return loadExpTonne();}
   try{
-    const [exp,sal]=await Promise.all([
+    const [exp,sal,bld]=await Promise.all([
       api(`/api/expenses/?from_date=${from}&to_date=${to}`),
-      api(`/api/sales/?from_date=${from}&to_date=${to}`)
+      api(`/api/sales/?from_date=${from}&to_date=${to}`),
+      api(`/api/boulders/?from_date=${from}&to_date=${to}`).catch(()=>[])
     ]);
-    _allData.expTonne={expenses:exp||[],sales:sal||[]};
+    _allData.expTonne={expenses:exp||[],sales:sal||[],boulders:bld||[]};
     _renderCache.exptonne=()=>renderExpTonne();
     renderExpTonne();
   }catch(e){flash(e.message,false);}
 }
 function renderExpTonne(){
-  const d=_allData.expTonne||{expenses:[],sales:[]};
-  const expenses=d.expenses||[],sales=d.sales||[];
+  const d=_allData.expTonne||{expenses:[],sales:[],boulders:[]};
+  const rawExp=d.expenses||[],sales=d.sales||[],boulders=d.boulders||[];
+  // Exclude shareholder drawings (Kumar / Prashant); keep Director 1 & 2 operational expenses
+  const expenses=rawExp.filter(r=>!_isDirectorPayment(r.category,r.description,r.payment_mode,r.notes));
   const soldTonne=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
+  const boulderTonne=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
   const perT=v=>soldTonne>0?v/soldTonne:0;
+  const perB=v=>boulderTonne>0?v/boulderTonne:0;
   const ptFmt=v=>soldTonne>0?'₹'+(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})+' /MT':'—';
+  const pbFmt=v=>boulderTonne>0?'₹'+(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})+' /MT':'—';
   const map=new Map();
   expenses.forEach(r=>{
     const cat=((r.category||'').trim())||'Uncategorized';
@@ -2335,20 +2342,22 @@ function renderExpTonne(){
     if((r.date||'')>g.latest)g.latest=r.date||'';
     map.set(cat,g);
   });
-  const arr=[...map.values()].map(g=>({category:g.category,latest:g.latest,count:g.count,total:g.total,per_tonne:perT(g.total)}));
+  const arr=[...map.values()].map(g=>({category:g.category,latest:g.latest,count:g.count,total:g.total,per_tonne:perT(g.total),per_boulder:perB(g.total)}));
   const totExp=arr.reduce((s,r)=>s+r.total,0);
-  const overallPT=perT(totExp);
+  const overallPT=perT(totExp),overallPB=perB(totExp);
   document.getElementById('ept-total-exp').textContent=fmtINR(totExp);
   document.getElementById('ept-total-mt').textContent=fmtNum(soldTonne,2)+' MT';
   document.getElementById('ept-overall').textContent=ptFmt(overallPT);
+  document.getElementById('ept-overall-boulder').textContent=pbFmt(overallPB);
+  const bsub=document.getElementById('ept-boulder-mt');if(bsub)bsub.textContent=fmtNum(boulderTonne,2)+' MT input';
   const sc=_sort['exptonne'];
   const rows=(sc&&sc.key)?sortedRows(arr,'exptonne'):arr.slice().sort((a,b)=>String(b.latest).localeCompare(String(a.latest))||b.total-a.total);
-  let html='<table><thead><tr>'+thSort('exptonne','category','Expense')+thSort('exptonne','latest','Latest')+thSort('exptonne','count','Entries')+thSort('exptonne','total','Expenses')+thSort('exptonne','per_tonne','₹ / Tonne')+'</tr></thead><tbody>';
-  if(arr.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (all ${arr.length})</td><td>—</td><td>${expenses.length}</td><td>${fmtINR(totExp)}</td><td>${ptFmt(overallPT)}</td></tr>`;
-  rows.forEach(r=>{html+=`<tr><td>${esc(r.category)}</td><td>${r.latest||'—'}</td><td>${r.count}</td><td>${fmtINR(r.total)}</td><td style="font-weight:700;color:#b45309">${ptFmt(r.per_tonne)}</td></tr>`;});
-  if(!arr.length)html+='<tr><td colspan="5" class="empty">No expenses for this period</td></tr>';
-  else if(soldTonne<=0)html+='<tr><td colspan="5" class="empty" style="color:#c62828">No tonnes sold in this range — ₹/tonne cannot be computed</td></tr>';
+  let html='<table><thead><tr>'+thSort('exptonne','category','Expense')+thSort('exptonne','latest','Latest')+thSort('exptonne','count','Entries')+thSort('exptonne','total','Expenses')+thSort('exptonne','per_tonne','₹ / Tonne')+thSort('exptonne','per_boulder','₹ / Boulder Input')+'</tr></thead><tbody>';
+  if(arr.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (all ${arr.length})</td><td>—</td><td>${expenses.length}</td><td>${fmtINR(totExp)}</td><td>${ptFmt(overallPT)}</td><td>${pbFmt(overallPB)}</td></tr>`;
+  rows.forEach(r=>{html+=`<tr><td>${esc(r.category)}</td><td>${r.latest||'—'}</td><td>${r.count}</td><td>${fmtINR(r.total)}</td><td style="font-weight:700;color:#b45309">${ptFmt(r.per_tonne)}</td><td style="font-weight:700;color:#1565c0">${pbFmt(r.per_boulder)}</td></tr>`;});
+  if(!arr.length)html+='<tr><td colspan="6" class="empty">No expenses for this period</td></tr>';
   html+='</tbody></table>';
+  html+='<div class="no-print" style="font-size:11px;color:#777;margin-top:8px">Shareholder drawings (Kumar / Prashant) excluded — Director 1 &amp; 2 expenses included. ₹/Tonne = expense ÷ sold tonnes · ₹/Boulder Input = expense ÷ boulder input tonnes.</div>';
   document.getElementById('ept-tbl').innerHTML=html;
 }
 async function delExp(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
