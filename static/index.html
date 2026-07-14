@@ -2269,9 +2269,10 @@ function renderExpenses(){
   const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,size=pageSizeFor('expenses',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
   let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
+  if(_allData.expenses.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="4">TOTAL (all ${_allData.expenses.length})</td><td>${fmtINR(tot)}</td><td></td></tr>`;
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="7" class="empty">No expenses</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="4"><strong>TOTAL (all ${_allData.expenses.length})</strong></td><td>${fmtINR(tot)}</td><td></td></tr></tfoot></table>`;
+  html+='</tbody></table>';
   document.getElementById('exp-tbl').innerHTML=html;
   document.getElementById('exp-pager').innerHTML=pagerHTML('expenses',_allData.expenses.length);
 }
