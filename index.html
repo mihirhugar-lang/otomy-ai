@@ -374,7 +374,6 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="nav-item active" onclick="nav('dashboard')"><span class="icon">⊡</span><span>Dashboard</span></div>
   <div class="nav-section">Financials</div>
   <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
-  <div class="nav-item" onclick="nav('expenses')"><span class="icon">📋</span><span>Expenses</span></div>
   <div class="nav-item" onclick="nav('exptonne')"><span class="icon">⚖️</span><span>Expenses / Tonne</span></div>
   <div class="nav-item" onclick="nav('customers')"><span class="icon">👥</span><span>Customers</span></div>
   <div class="nav-item" onclick="nav('vendors')"><span class="icon">🚛</span><span>Vendors</span></div>
@@ -456,30 +455,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   </div>
 </div>
 
-<!-- EXPENSES -->
-<div class="section" id="section-expenses">
-  <div class="page-header"><h2>Expenses Ledger</h2></div>
-  <div class="card">
-    <h3>Expenses</h3>
-    <div class="preset-bar no-print">
-      <span class="preset-label">Period:</span>
-      <button class="pbtn act" onclick="preset('expenses','today',this)">Today</button>
-      <button class="pbtn" onclick="preset('expenses','yesterday',this)">Yesterday</button>
-      <button class="pbtn" onclick="preset('expenses','week',this)">This Week</button>
-      <button class="pbtn" onclick="preset('expenses','lastweek',this)">Last Week</button>
-      <button class="pbtn" onclick="preset('expenses','mtd',this)">Month Till Date</button>
-      <button class="pbtn" onclick="preset('expenses','lastmonth',this)">Last Month</button>
-      <div class="preset-dates">
-        <label>From:</label><input type="date" id="e-from" onchange="clearPresetBtns('expenses')">
-        <label>To:</label><input type="date" id="e-to" onchange="clearPresetBtns('expenses')">
-        <button class="pbtn" onclick="loadExpenses()">Go</button>
-      </div>
-      <button class="print-btn" onclick="printSection('Expenses Ledger','exp-tbl')">Print / PDF</button>
-    </div>
-    <div class="tbl-wrap" id="exp-tbl"></div>
-    <div id="exp-pager" class="no-print"></div>
-  </div>
-</div>
+<!-- Expenses page removed 2026-07-14 (kept: Dashboard expense block + Expenses / Tonne page) -->
 
 <!-- EXPENSES / TONNE -->
 <div class="section" id="section-exptonne">
@@ -1397,7 +1373,7 @@ async function _reloadActiveSectionAfterSync(){
   const section=_activeSectionName();
   if(section==='dashboard')return loadDash();
   if(section==='sales')return loadSales();
-  if(section==='expenses')return loadExpenses();
+  if(section==='exptonne')return loadExpTonne();
   if(section==='customers')return loadCustomers();
   if(section==='vendors')return loadVendors();
   if(section==='bank'){await loadBankSummary();await loadErpBank();return loadErpCash();}
@@ -1520,7 +1496,6 @@ function nav(name){
   toggleMobileNav(false);
   if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
   if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
-  if(name==='expenses'){resetRangeToToday('expenses');fillVendSelect('e-vendor');loadExpenses();}
   if(name==='exptonne'){resetRangeToToday('exptonne');loadExpTonne();}
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
   if(name==='vendors'){resetRangeToToday('vendors');loadVendors();fillVendSelect('vp-vend');}
@@ -2181,7 +2156,7 @@ function renderControlRoom(data){
         <div class="control-title">Profit, production, cash and risk in one screen.</div>
         <div class="control-grid">
           <div class="control-metric"><span>Period Profit</span><strong>${fmtINR(s.profit)}</strong></div>
-          <div class="control-metric"><span>Margin</span><strong>${fmtNum(s.margin_pct,1)}%</strong></div>
+          <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,1)}</strong></div>
           <div class="control-metric"><span>Avg Rate/MT</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
           <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,1)} MT</strong></div>
