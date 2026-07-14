@@ -446,7 +446,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('sales','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="s-from" onchange="clearPresetBtns('sales')">
-        <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')">
+        <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')"> <label>Day:</label><input type="date" id="s-day" onchange="setDay('sales',this.value)">
         <button class="pbtn" onclick="loadSales()">Go</button>
       </div>
       <button class="print-btn" onclick="printSection('Sales Ledger','sales-tbl')">Print / PDF</button>
@@ -473,7 +473,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('exptonne','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="t-from" onchange="clearPresetBtns('exptonne')">
-        <label>To:</label><input type="date" id="t-to" onchange="clearPresetBtns('exptonne')">
+        <label>To:</label><input type="date" id="t-to" onchange="clearPresetBtns('exptonne')"> <label>Day:</label><input type="date" id="t-day" onchange="setDay('exptonne',this.value)">
         <button class="pbtn" onclick="loadExpTonne()">Go</button>
       </div>
       <button class="print-btn" onclick="printSection('Expenses per Tonne','ept-tbl')">Print / PDF</button>
@@ -501,7 +501,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('customers','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
-      <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')">
+      <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')"> <label>Day:</label><input type="date" id="c-day" onchange="setDay('customers',this.value)">
     </div>
     <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
   </div>
@@ -536,7 +536,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('vendors','lastmonth',this)">Last Month</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
-      <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')">
+      <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')"> <label>Day:</label><input type="date" id="v-day" onchange="setDay('vendors',this.value)">
     </div>
     <button class="print-btn" onclick="printSection('Vendors — Payable Balances','vend-tbl')">Print / PDF</button>
   </div>
@@ -577,7 +577,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('erpbank','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="eb-from" onchange="clearPresetBtns('erpbank')">
-        <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')">
+        <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')"> <label>Day:</label><input type="date" id="eb-day" onchange="setDay('erpbank',this.value)">
         <button class="pbtn" onclick="loadErpBank()">Go</button>
       </div>
       <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Print / PDF</button>
@@ -599,7 +599,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('erpcash','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="ec-from" onchange="clearPresetBtns('erpcash')">
-        <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')">
+        <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')"> <label>Day:</label><input type="date" id="ec-day" onchange="setDay('erpcash',this.value)">
         <button class="pbtn" onclick="loadErpCash()">Go</button>
       </div>
       <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Print / PDF</button>
@@ -624,7 +624,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('pl','lastmonth',this)">Last Month</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="pl-from" onchange="clearPresetBtns('pl')">
-        <label>To:</label><input type="date" id="pl-to" onchange="clearPresetBtns('pl')">
+        <label>To:</label><input type="date" id="pl-to" onchange="clearPresetBtns('pl')"> <label>Day:</label><input type="date" id="pl-day" onchange="setDay('pl',this.value)">
         <button class="pbtn" onclick="loadPL()">Go</button>
       </div>
       <button class="print-btn" onclick="printSection('P&L Reconciliation','pl-tbl')">Print / PDF</button>
@@ -651,7 +651,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
-      <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()">
+      <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()"> <label>Day:</label><input type="date" id="op-day" onchange="setDay('ops',this.value)">
     </div>
     <button class="print-btn" onclick="printCurrentOpsTab()">Print / PDF</button>
   </div>
@@ -1555,6 +1555,7 @@ const PRESET_CFG={
   erpbank:{from:'eb-from',to:'eb-to',reload:()=>loadErpBank()},
   erpcash:{from:'ec-from',to:'ec-to',reload:()=>loadErpCash()},
   pl:{from:'pl-from',to:'pl-to',reload:()=>loadPL()},
+  ops:{from:'op-from',to:'op-to',reload:()=>opsReload()},
 };
 
 function calcPreset(p){
@@ -1584,6 +1585,16 @@ function preset(section,p,btn){
   cfg.reload();
 }
 
+function setDay(section,d){
+  if(!d)return;
+  const cfg=PRESET_CFG[section];
+  if(!cfg)return;
+  if(cfg.from)document.getElementById(cfg.from).value=d;
+  if(cfg.to)document.getElementById(cfg.to).value=d;
+  clearPresetBtns(section);
+  if(_page[section]!==undefined)_page[section]=1;
+  cfg.reload();
+}
 function setDashboardDay(d){
   if(!d)return;
   document.getElementById('dash-from').value=d;
