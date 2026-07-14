@@ -630,9 +630,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="print-btn" onclick="printSection('P&L Reconciliation','pl-tbl')">Print / PDF</button>
     </div>
     <div class="kpi-row">
-      <div class="kpi" id="pl-net-kpi"><div class="kpi-label">Net (should be ₹0)</div><div class="kpi-value" id="pl-net">—</div><div class="kpi-sub">cross-check total</div></div>
-      <div class="kpi navy"><div class="kpi-label">Total Sale</div><div class="kpi-value" id="pl-sale">—</div></div>
-      <div class="kpi red"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="pl-exp">—</div></div>
+      <div class="kpi navy"><div class="kpi-label">Left — Sale − Exp − Share</div><div class="kpi-value" id="pl-left">—</div></div>
+      <div class="kpi navy"><div class="kpi-label">Right — Recv − Pay + Bank + Cash</div><div class="kpi-value" id="pl-right">—</div></div>
+      <div class="kpi" id="pl-diff-kpi"><div class="kpi-label">Match (Left − Right)</div><div class="kpi-value" id="pl-diff">—</div><div class="kpi-sub">should match</div></div>
     </div>
     <div class="tbl-wrap" id="pl-tbl"></div>
   </div>
@@ -2387,27 +2387,40 @@ function renderPL(){
   const payables=_num(s.payables);
   const bank=_num(s.bank_balance);
   const cash=_num(s.cash_balance_office);
-  const net=sales-expenses+receivables-payables+shareKP+bank+cash;
+  const left=sales-expenses-shareKP;
+  const right=receivables-payables+bank+cash;
+  const diff=left-right;
+  const match=Math.abs(diff)<1;
   const fmtSigned=v=>(v<0?'−':'')+fmtINR(Math.abs(v));
-  const lines=[
-    {label:'Total Sale',amount:sales,effect:sales},
-    {label:'Total Expenses (real, excl. Kumar / Prashant)',amount:expenses,effect:-expenses},
-    {label:'Receivables',amount:receivables,effect:receivables},
-    {label:'Payables',amount:payables,effect:-payables},
-    {label:'Share Taken by Kumar & Prashant',amount:shareKP,effect:shareKP},
-    {label:'Bank Balance',amount:bank,effect:bank},
-    {label:'Cash in Office',amount:cash,effect:cash},
+  document.getElementById('pl-left').textContent=fmtSigned(left);
+  document.getElementById('pl-right').textContent=fmtSigned(right);
+  const diffEl=document.getElementById('pl-diff');diffEl.textContent=match?'✓ Match':fmtSigned(diff);diffEl.style.color=match?'#2e7d32':'#c62828';
+  const dk=document.getElementById('pl-diff-kpi');if(dk)dk.style.borderLeft='4px solid '+(match?'#2e7d32':'#c62828');
+  const leftRows=[
+    {label:'Total Sale',effect:sales},
+    {label:'Total Expenses (real, excl. Kumar / Prashant)',effect:-expenses},
+    {label:'Total Share (Kumar & Prashant)',effect:-shareKP},
   ];
-  const zero=Math.abs(net)<1;
-  document.getElementById('pl-sale').textContent=fmtINR(sales);
-  document.getElementById('pl-exp').textContent=fmtINR(expenses);
-  const netEl=document.getElementById('pl-net');netEl.textContent=fmtSigned(net);netEl.style.color=zero?'#2e7d32':'#c62828';
-  const kpi=document.getElementById('pl-net-kpi');if(kpi)kpi.style.borderLeft='4px solid '+(zero?'#2e7d32':'#c62828');
-  let html='<table><thead><tr><th>Line Item</th><th>Amount</th><th>Effect on Net</th></tr></thead><tbody>';
-  html+=`<tr style="background:#e8eaf6;font-weight:800"><td>NET (target ₹0)</td><td></td><td style="color:${zero?'#2e7d32':'#c62828'}">${fmtSigned(net)}</td></tr>`;
-  lines.forEach(l=>{const pos=l.effect>=0;html+=`<tr><td>${l.label}</td><td>${fmtINR(l.amount)}</td><td style="font-weight:700;color:${pos?'#2e7d32':'#c62828'}">${pos?'+':'−'}${fmtINR(Math.abs(l.effect))}</td></tr>`;});
-  html+='</tbody></table>';
-  html+='<div class="no-print" style="font-size:11px;color:#777;margin-top:8px">Formula: Total Sale − Total Expenses + Receivables − Payables + Kumar/Prashant Share + Bank Balance + Cash in Office = ₹0 when every figure reconciles. Numbers are read from the dashboard control data for the selected range — not expected to be exactly zero yet.</div>';
+  const rightRows=[
+    {label:'Receivables',effect:receivables},
+    {label:'Payables',effect:-payables},
+    {label:'Bank Balance',effect:bank},
+    {label:'Cash in Hand',effect:cash},
+  ];
+  const blk=(title,rows,total)=>{
+    let h=`<div style="flex:1;min-width:280px;border:1px solid #e4e7ec;border-radius:12px;padding:14px;background:#fff">`;
+    h+=`<div style="font-weight:800;color:#92400e;font-size:12px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">${title}</div>`;
+    h+='<table><thead><tr><th>Line Item</th><th>Amount</th></tr></thead><tbody>';
+    h+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL</td><td style="color:${match?'#2e7d32':'#1a237e'}">${fmtSigned(total)}</td></tr>`;
+    rows.forEach(r=>{const pos=r.effect>=0;h+=`<tr><td>${r.label}</td><td style="font-weight:700;color:${pos?'#2e7d32':'#c62828'}">${pos?'+':'−'}${fmtINR(Math.abs(r.effect))}</td></tr>`;});
+    h+='</tbody></table></div>';
+    return h;
+  };
+  let html='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">';
+  html+=blk('Left · Sale − Expenses − Share',leftRows,left);
+  html+=blk('Right · Receivables − Payables + Bank + Cash',rightRows,right);
+  html+='</div>';
+  html+=`<div class="no-print" style="font-size:11px;color:#777;margin-top:8px">When every figure across the site is correct, the <strong>Left</strong> total should match the <strong>Right</strong> total. Current difference (Left − Right): ${fmtSigned(diff)}. Numbers read from dashboard control data — not tuned to match yet.</div>`;
   document.getElementById('pl-tbl').innerHTML=html;
 }
 async function delExp(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
