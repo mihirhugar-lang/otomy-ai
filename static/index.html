@@ -423,6 +423,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="kpi-row">
     <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
     <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value" id="d-cash">—</div></div>
+    <div class="kpi navy"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value" id="d-credit-repay">—</div></div>
     <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
     <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
   </div>
@@ -2129,6 +2130,7 @@ function renderDashSummary(data,d){
   bar.innerHTML=`<div><div class="pl">Gross Profit — ${esc(label)}</div><div class="pv">${fmtINR(profit)}</div></div><div style="text-align:right"><div class="pl">Margin</div><div style="font-size:22px;font-weight:800">${fmtNum(s.margin_pct||0,1)}%</div></div>`;
   document.getElementById('d-sales').textContent=fmtINR(s.sales);
   document.getElementById('d-cash').textContent=fmtINR(s.cash_collected);
+  document.getElementById('d-credit-repay').textContent=fmtINR(data.customer_repayments_payment_total!=null?data.customer_repayments_payment_total:(s.credit_payment_received||0));
   document.getElementById('d-exp').textContent=fmtINR(s.expenses);
   document.getElementById('d-profit-mt').textContent=fmtINR(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
