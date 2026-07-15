@@ -1224,7 +1224,7 @@ function applyTableRangeMode(key,wrapId){
   const el=document.getElementById(wrapId);
   if(!el)return;
   const days=_rangeDaysForKey(key);
-  el.classList.toggle('no-side-scroll',key!=='sales'&&days!==null&&days<=2);
+  el.classList.toggle('no-side-scroll',!['sales','erpbank','erpcash'].includes(key)&&days!==null&&days<=2);
 }
 
 function pagerHTML(key,total){
