@@ -2115,6 +2115,27 @@ async function loadControlRoom(){
   }
 }
 
+// Reclassify sales by what was actually PAID on the sale day (not how loctell booked it):
+//   Spot Sale        = same-day-paid portion of every sale (moves the paid part of a credit sale to spot)
+//   Credit Sale      = the unpaid remainder
+//   Payment Received = ONLY payments against an OLDER balance (net "amount")
+// Per customer, the paid-same-day portion of their credit sales = min(credit_sale_amount, sale_adjusted);
+// summing that "shift" moves it Credit->Spot. SURESH-type (credit_sale_amount 0) shift to 0 automatically,
+// so nothing double-counts. DISPLAY ONLY — the cash/bank balance is computed separately (physical count +
+// movements with its own same-day dedup) and is NOT touched here, so balances are unaffected.
+function _reclassifySales(data){
+  const s=data.summary||{};
+  const num=x=>{const v=Number(x);return isFinite(v)?v:0;};
+  const norm=x=>String(x==null?'-':x).trim().toUpperCase();
+  const saByCust={}; let oldDues=0;
+  (data.customer_repayments||[]).forEach(r=>{const k=norm(r.customer_name);saByCust[k]=(saByCust[k]||0)+num(r.sale_adjusted);oldDues+=num(r.amount);});
+  const creditByCust={};
+  (data.customer_sales||[]).forEach(r=>{const k=norm(r.customer_name);creditByCust[k]=(creditByCust[k]||0)+num(r.credit_sale_amount);});
+  let shift=0;
+  Object.keys(creditByCust).forEach(k=>{shift+=Math.min(creditByCust[k]||0,saByCust[k]||0);});
+  return {spot:Math.round((num(s.cash_collected)+shift)*100)/100,credit:Math.round((num(s.credit_sales)-shift)*100)/100,paymentReceived:Math.round(oldDues*100)/100};
+}
+
 function renderDashSummary(data,d){
   const s=data.summary||{};
   const period=data.period||{};
@@ -2130,9 +2151,10 @@ function renderDashSummary(data,d){
   bar.className='profit-bar '+(profit>=0?'pos':'neg');
   bar.innerHTML=`<div><div class="pl">Gross Profit — ${esc(label)}</div><div class="pv">${fmtINR(profit)}</div></div><div style="text-align:right"><div class="pl">Margin</div><div style="font-size:22px;font-weight:800">${fmtNum(s.margin_pct||0,1)}%</div></div>`;
   document.getElementById('d-sales').textContent=fmtINR(s.sales);
-  document.getElementById('d-cash').textContent=fmtINR(s.cash_collected);
-  document.getElementById('d-credit-sale').textContent=fmtINR(s.credit_sales!=null?s.credit_sales:(Number(s.sales||0)-Number(s.cash_collected||0)));
-  document.getElementById('d-credit-repay').textContent=fmtINR(data.customer_repayments_payment_total!=null?data.customer_repayments_payment_total:(s.credit_payment_received||0));
+  const _rc=_reclassifySales(data);
+  document.getElementById('d-cash').textContent=fmtINR(_rc.spot);
+  document.getElementById('d-credit-sale').textContent=fmtINR(_rc.credit);
+  document.getElementById('d-credit-repay').textContent=fmtINR(_rc.paymentReceived);
   document.getElementById('d-exp').textContent=fmtINR(s.expenses);
   document.getElementById('d-profit-mt').textContent=fmtINR(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
@@ -2140,18 +2162,23 @@ function renderDashSummary(data,d){
 function renderControlRoom(data){
   const s=data.summary||{};
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
-  const repaymentTotal=Number(data.customer_repayments_total||0);
-  const repaymentPaymentTotal=Number(data.customer_repayments_payment_total||0);
-  const paymentReceivedTile=data.customer_repayments_payment_total!=null?repaymentPaymentTotal:Number(s.credit_payment_received||0);
-  const repaymentBankTotal=Number(data.customer_repayments_bank_total||0);
-  const repaymentCashTotal=Number(data.customer_repayments_cash_total||0);
+  const _rc=_reclassifySales(data);
+  // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). A same-day
+  // settlement is counted under Spot Sale by the reclassification above, so its net "amount" is 0 —
+  // hide those rows here so the table matches the tile and nothing double-counts against Spot Sale.
+  const _repayShown=(data.customer_repayments||[]).filter(r=>Math.round((Number(r.amount)||0)*100)/100>0);
+  const repaymentTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.amount)||0),0);
+  const repaymentPaymentTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.payment_received)||0),0);
+  const repaymentBankTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.bank_received)||0),0);
+  const repaymentCashTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.cash_received)||0),0);
+  const paymentReceivedTile=_rc.paymentReceived;
   // Balance To Pay total: count each customer's outstanding ONCE — a split payment
   // (same customer, cash + UPI/bank) makes two rows carrying the same balance, and a
   // customer can recur across days; keep only their most recent balance so it isn't doubled.
   const _repayBalByCustomer={};
-  (data.customer_repayments||[]).forEach(r=>{if(r.balance==null)return;const k=r.customer_name||'—';const d=String(r.date||'');if(!(k in _repayBalByCustomer)||d>=_repayBalByCustomer[k].date)_repayBalByCustomer[k]={date:d,balance:Number(r.balance)||0};});
+  _repayShown.forEach(r=>{if(r.balance==null)return;const k=r.customer_name||'—';const d=String(r.date||'');if(!(k in _repayBalByCustomer)||d>=_repayBalByCustomer[k].date)_repayBalByCustomer[k]={date:d,balance:Number(r.balance)||0};});
   const repaymentBalanceTotal=Object.values(_repayBalByCustomer).reduce((s,x)=>s+x.balance,0);
-  const repaymentRows=(data.customer_repayments||[]).map(r=>`
+  const repaymentRows=_repayShown.map(r=>`
     <tr>
       <td>${esc(r.date)}</td>
       <td>${esc(r.customer_name||'—')}</td>
@@ -2220,8 +2247,8 @@ function renderControlRoom(data){
       </div>
       <div class="card cash-card"><h3>Cash Position</h3>
         <div class="cash-grid">
-          <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value">${fmtINR(s.cash_collected)}</div></div>
-          <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(s.credit_sales)}</div></div>
+          <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value">${fmtINR(_rc.spot)}</div></div>
+          <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(_rc.credit)}</div></div>
           <div class="kpi red"><div class="kpi-label">Receivables</div><div class="kpi-value">${fmtINR(s.receivables)}</div></div>
           <div class="kpi navy"><div class="kpi-label">Payables</div><div class="kpi-value">${fmtINR(s.payables)}</div></div>
         </div>
@@ -2670,11 +2697,11 @@ async function loadBankSummary(){
   try{
     const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
     const s=data.summary||{};
-    const paymentReceivedTile=data.customer_repayments_payment_total!=null?Number(data.customer_repayments_payment_total||0):Number(s.credit_payment_received||0);
+    const paymentReceivedTile=_reclassifySales(data).paymentReceived;
     sumDiv.innerHTML=`
       <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
       <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
-      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Total received before sale adjustment</div></div>
+      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Credit repayment on older dues (same-day counts as Spot)</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
     sumDiv.innerHTML=`<div class="alert-banner alert-red"><strong>Cash & Bank summary error</strong><span>${esc(e.message)}</span></div>`;
