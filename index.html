@@ -3012,16 +3012,26 @@ async function loadErpBank(){
     loadBankSummary();
   }catch(e){flash(e.message,false);}
 }
+// A spot sale's UPI/bank portion appears both as a "Sale" row and (because the payment posts to the
+// customer's ledger) as a "Credit Payment" row for the SAME money. Show it once: drop the Credit Payment
+// row when a same-day "Sale" row exists for the same customer & amount. Display only — balance is separate.
+function _dedupeSpotBank(rows){
+  const cust=d=>{const m=String(d||'').match(/bank\/UPI - (.+?)(?: - Ticket|$)/i);return m?m[1].trim().toUpperCase():'';};
+  const saleKeys=new Set();
+  (rows||[]).forEach(r=>{if((r.source||'')==='Sale')saleKeys.add(cust(r.description)+'|'+String(r.date)+'|'+Math.round(Number(r.credit)||0));});
+  return (rows||[]).filter(r=>(r.source||'')!=='Credit Payment'||!saleKeys.has(cust(r.description)+'|'+String(r.date)+'|'+Math.round(Number(r.credit)||0)));
+}
 function renderErpBank(){
   applyTableRangeMode('erpbank','erp-bank-tbl');
-  const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let totC=0,totD=0;_allData.erpbank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
+  const _bank=_dedupeSpotBank(_allData.erpbank);
+  const rows=sortedRows(_bank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
+  let totC=0,totD=0;_bank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
   let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
   slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.bank_name||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.credit>0?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit>0?fmtINR(r.debit):'—'}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="5" class="empty">No bank transactions</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.erpbank.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totC)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totD)}</strong></td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_bank.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totC)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totD)}</strong></td></tr></tfoot></table>`;
   document.getElementById('erp-bank-tbl').innerHTML=html;
-  document.getElementById('erp-bank-pager').innerHTML=pagerHTML('erpbank',_allData.erpbank.length);
+  document.getElementById('erp-bank-pager').innerHTML=pagerHTML('erpbank',_bank.length);
 }
 
 // ── ERP Cash Ledger ───────────────────────────────────────────────────────────
