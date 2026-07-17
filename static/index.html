@@ -796,7 +796,11 @@ function fiveMinuteCacheBust(){
 }
 function _archiveAllowedForRange(from,to){
   if(!to)return false;
-  return String(to)<today();
+  // Allow ranges ending today too: the monthly archive is refreshed every sync (so it holds today's
+  // rows), and _archiveOperatingBalances derives the as-of-today balance from the same anchor+statement
+  // logic as the live snapshot. Without this, an arbitrary custom range ending today has no snapshot and
+  // errors ("Snapshot missing"). Future dates still fall through to the snapshot path.
+  return String(to)<=today();
 }
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
