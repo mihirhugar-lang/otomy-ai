@@ -1146,11 +1146,11 @@ async function _archiveLedger(year,month){
   for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
     const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
-    const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0), credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0);
+    const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0), credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0), spotCash=ds.reduce((s,r)=>s+_saleChannels(r).cash,0), spotBank=ds.reduce((s,r)=>s+_saleChannels(r).upi,0), qty=ds.reduce((s,r)=>s+_num(r.qty_mt),0);
     const operating=await _archiveOperatingBalances(day);
-    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,credit_sale_amount:Math.round(credit*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
+    rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,spot_sale_cash:Math.round(spotCash*100)/100,spot_sale_bank:Math.round(spotBank*100)/100,qty_mt:Math.round(qty*100)/100,credit_sale_amount:Math.round(credit*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
   }
-  const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
+  const totals={sale_trips:rows.reduce((s,r)=>s+r.sale_trips,0),sale_amount:rows.reduce((s,r)=>s+r.sale_amount,0),spot_sale_amount:rows.reduce((s,r)=>s+r.spot_sale_amount,0),spot_sale_cash:rows.reduce((s,r)=>s+r.spot_sale_cash,0),spot_sale_bank:rows.reduce((s,r)=>s+r.spot_sale_bank,0),qty_mt:rows.reduce((s,r)=>s+r.qty_mt,0),credit_sale_amount:rows.reduce((s,r)=>s+r.credit_sale_amount,0),credit_repayment:rows.reduce((s,r)=>s+r.credit_repayment,0),expenses:rows.reduce((s,r)=>s+r.expenses,0),boulder_input_mt:0,boulder_trips:0,cash_balance_office:rows.length?rows[rows.length-1].cash_balance_office:0,bank_balance:rows.length?rows[rows.length-1].bank_balance:0};
   totals.boulder_input_mt=Math.round(rows.reduce((s,r)=>s+r.boulder_input_mt,0)*100)/100;
   totals.boulder_trips=Math.round(rows.reduce((s,r)=>s+r.boulder_trips,0)*100)/100;
   return {year,month,rows,totals};
@@ -2749,42 +2749,52 @@ function renderLedgerView(data){
   const rows=data.rows||[];
   const t=data.totals||{};
   document.getElementById('ledger-summary').innerHTML=`
-    <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value">${fmtINR(t.spot_sale_amount||0)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Spot Sale Cash</div><div class="kpi-value">${fmtINR(t.spot_sale_cash||0)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Spot Sale Bank/UPI</div><div class="kpi-value">${fmtINR(t.spot_sale_bank||0)}</div></div>
     <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
     <div class="kpi navy"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
     <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
-  let html='<table><thead><tr><th>Date</th><th>Sale Trips</th><th>Sale Amount</th><th>Spot Sale (Bank+Cash)</th><th>Credit Sale</th><th>Payment Received From Customer</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Trips That Day</th></tr></thead><tbody>';
+  const per=(n,d)=>d?fmtINR(n/d):'—';
+  let html='<table><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Payment Received From Customer</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Expenses / Tonne Sale</th><th>Expenses / Boulder Input</th><th>Profit / Tonne Sale</th><th>Profit / Boulder Input</th></tr></thead><tbody>';
   rows.forEach(r=>{
+    const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
       <td>${esc(r.date)}</td>
-      <td>${fmtNum(r.sale_trips||0,0)}</td>
       <td>${fmtINR(r.sale_amount||0)}</td>
-      <td>${fmtINR(r.spot_sale_amount||0)}</td>
+      <td>${fmtINR(r.spot_sale_cash||0)}</td>
+      <td>${fmtINR(r.spot_sale_bank||0)}</td>
       <td>${fmtINR(r.credit_sale_amount||0)}</td>
       <td>${fmtINR(r.credit_repayment||0)}</td>
       <td>${fmtINR(r.expenses||0)}</td>
       <td><strong>${fmtINR(r.cash_balance_office||0)}</strong></td>
       <td><strong>${fmtINR(r.bank_balance||0)}</strong></td>
       <td>${fmtNum(r.boulder_input_mt||0,1)} MT</td>
-      <td>${fmtNum(r.boulder_trips||0,0)}</td>
+      <td>${per(_num(r.expenses),_num(r.qty_mt))}</td>
+      <td>${per(_num(r.expenses),_num(r.boulder_input_mt))}</td>
+      <td>${per(profit,_num(r.qty_mt))}</td>
+      <td>${per(profit,_num(r.boulder_input_mt))}</td>
     </tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="11" class="empty">No ledger data for this month</td></tr>';
+  if(!rows.length)html+='<tr><td colspan="14" class="empty">No ledger data for this month</td></tr>';
+  const tProfit=_num(t.sale_amount)-_num(t.expenses);
   html+=`</tbody><tfoot><tr>
     <td><strong>Total</strong></td>
-    <td><strong>${fmtNum(t.sale_trips||0,0)}</strong></td>
     <td><strong>${fmtINR(t.sale_amount||0)}</strong></td>
-    <td><strong>${fmtINR(t.spot_sale_amount||0)}</strong></td>
+    <td><strong>${fmtINR(t.spot_sale_cash||0)}</strong></td>
+    <td><strong>${fmtINR(t.spot_sale_bank||0)}</strong></td>
     <td><strong>${fmtINR(t.credit_sale_amount||0)}</strong></td>
     <td><strong>${fmtINR(t.credit_repayment||0)}</strong></td>
     <td><strong>${fmtINR(t.expenses||0)}</strong></td>
     <td><strong>${fmtINR(t.cash_balance_office||0)}</strong></td>
     <td><strong>${fmtINR(t.bank_balance||0)}</strong></td>
     <td><strong>${fmtNum(t.boulder_input_mt||0,1)} MT</strong></td>
-    <td><strong>${fmtNum(t.boulder_trips||0,0)}</strong></td>
+    <td><strong>${per(_num(t.expenses),_num(t.qty_mt))}</strong></td>
+    <td><strong>${per(_num(t.expenses),_num(t.boulder_input_mt))}</strong></td>
+    <td><strong>${per(tProfit,_num(t.qty_mt))}</strong></td>
+    <td><strong>${per(tProfit,_num(t.boulder_input_mt))}</strong></td>
   </tr></tfoot></table>`;
   document.getElementById('ledger-tbl').innerHTML=html;
 }

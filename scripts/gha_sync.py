@@ -2165,7 +2165,10 @@ def build_ledger_view(
             # so split-payment tickets land the right amount in each column.
             sale_splits = [_sale_channels(row) for row in day_sales]
             spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
+            spot_sale_cash = sum(s_cash for s_cash, _s_credit, _s_upi in sale_splits)
+            spot_sale_bank = sum(s_upi for _s_cash, _s_credit, s_upi in sale_splits)
             credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
+            qty_mt = sum(_num(row.get("qty_mt")) for row in day_sales)
             expense_total = (
                 sum(_num(row.get("amount")) for row in day_expenses)
                 + sum(_num(row.get("amount")) for row in day_labour)
@@ -2182,7 +2185,10 @@ def build_ledger_view(
                 "sale_trips": len(day_sales),
                 "sale_amount": round(sale_amount, 2),
                 "spot_sale_amount": round(spot_sale_amount, 2),
+                "spot_sale_cash": round(spot_sale_cash, 2),
+                "spot_sale_bank": round(spot_sale_bank, 2),
                 "credit_sale_amount": round(credit_sale_amount, 2),
+                "qty_mt": round(qty_mt, 2),
                 "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
                 "expenses": round(expense_total, 2),
                 "cash_balance_office": row_cash,
@@ -2196,6 +2202,9 @@ def build_ledger_view(
         "sale_trips": sum(row["sale_trips"] for row in rows),
         "sale_amount": round(sum(row["sale_amount"] for row in rows), 2),
         "spot_sale_amount": round(sum(row["spot_sale_amount"] for row in rows), 2),
+        "spot_sale_cash": round(sum(row.get("spot_sale_cash", 0) for row in rows), 2),
+        "spot_sale_bank": round(sum(row.get("spot_sale_bank", 0) for row in rows), 2),
+        "qty_mt": round(sum(row.get("qty_mt", 0) for row in rows), 2),
         "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
         "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
         "expenses": round(sum(row["expenses"] for row in rows), 2),
