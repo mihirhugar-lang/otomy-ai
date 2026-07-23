@@ -1010,7 +1010,7 @@ function _formatArchiveMaterials(materials){
   if(rows.length>4)parts.push(`+${rows.length-4} more`);
   return parts.join(', ');
 }
-function _archiveCustomerRows(balance,sales=[],receipts=[]){
+function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={}){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
   const byName=new Map();
   function ensure(name){
@@ -1032,7 +1032,7 @@ function _archiveCustomerRows(balance,sales=[],receipts=[]){
     g.outstanding=_num(row.balance);
   });
   return [...byName.values()].map((row,idx)=>({
-    id:row.id||`archive-customer-${idx}`,
+    id:idByName[String(row.name||'').trim().toUpperCase()]||row.id||`archive-customer-${idx}`,
     name:row.name||'Customer',
     gstin:'',
     phone:'',
@@ -1058,10 +1058,23 @@ function _archiveCustomerRows(balance,sales=[],receipts=[]){
     latest_sale_date:row.latest_sale_date||null,
   })).sort((a,b)=>String(b.range_latest_sale_date||b.latest_sale_date||'').localeCompare(String(a.range_latest_sale_date||a.latest_sale_date||'')) || _num(b.total_outstanding)-_num(a.total_outstanding));
 }
-function _archiveVendorRows(balance){
+// The customers/vendors PAGE on otomy is built from the archive, whose rows carry ERP/balance ids
+// (or none) — but the per-entity LEDGER snapshots are keyed by the customer/vendor LIST id. Match the
+// archive rows to that list id BY NAME (the lists are snapshotted with matching ids) so the name links
+// point at a real ledger snapshot, exactly like localhost.
+let _custIdByNameCache=null,_vendIdByNameCache=null;
+async function _idByNameFromSnapshot(path){
+  const m={};
+  try{const r=await fetch(`/data/snapshot/api/${snapshotKey(path)}.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'});
+    if(r.ok){(await r.json()||[]).forEach(x=>{if(x&&x.name!=null&&x.id!=null)m[String(x.name).trim().toUpperCase()]=x.id;});}}catch(e){}
+  return m;
+}
+async function _customerIdByName(){if(!_custIdByNameCache)_custIdByNameCache=await _idByNameFromSnapshot('/api/customers/');return _custIdByNameCache;}
+async function _vendorIdByName(){if(!_vendIdByNameCache)_vendIdByNameCache=await _idByNameFromSnapshot('/api/vendors/');return _vendIdByNameCache;}
+function _archiveVendorRows(balance,idByName={}){
   const rows=(balance?.payables_rows||balance?.top_payables||[]);
   return rows.map((row,idx)=>({
-    id:row.id||`archive-vendor-${idx}`,
+    id:idByName[String(row.name||'').trim().toUpperCase()]||row.id||`archive-vendor-${idx}`,
     name:row.name||'Vendor',
     gstin:'',
     phone:'',
@@ -1163,12 +1176,12 @@ async function archiveFetch(url){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance){
       const months=from&&to?await _loadArchiveRange(from,to):[];
-      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf));
+      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName());
     }
   }
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
     const balance=await _archiveBalanceForDate(asOf);
-    if(balance)return _archiveVendorRows(balance);
+    if(balance)return _archiveVendorRows(balance, await _vendorIdByName());
   }
   if(from&&to){
     if(!_archiveAllowedForRange(from,to))return null;
