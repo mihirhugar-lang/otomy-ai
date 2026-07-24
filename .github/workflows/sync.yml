@@ -49,6 +49,8 @@ jobs:
           ERP_PASS: ${{ secrets.ERP_PASS }}
           OTOMY_SYNC_MODE: recent
           OTOMY_RECENT_DAYS: "7"
+          # Heavy full customer-ledger fetch (~99 calls): only on the daily 00:00 UTC run or manual dispatch.
+          OTOMY_FETCH_CUST_LEDGERS: ${{ (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 0 * * *') && '1' || '' }}
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
           OTOMY_DEBTOR_WORKERS: "4"

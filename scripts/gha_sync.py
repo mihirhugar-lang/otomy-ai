@@ -2438,6 +2438,13 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today, full_le
 
         # Prefer the FULL reconciling loctell ledger (Sale=Debit, Receipt=Credit incl. spot receipts).
         full_entries = full_ledgers.get(_norm_name(name))
+        if not full_entries:
+            # No fresh fetch this run: reuse the last reconciling snapshot from R2 rather than
+            # overwriting it with the (inflated) archive build.
+            prev = read_snapshot(f"/api/customers/ledger/{cust.get('id')}")
+            if isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries"):
+                ledgers[str(cust.get("id"))] = prev
+                continue
         if full_entries:
             es = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "sale" else 1))
             window_net = round(sum(e["debit"] - e["credit"] for e in es), 2)
@@ -3428,12 +3435,18 @@ def main():
     except Exception as e:
         print(f"  full vendor ledgers unavailable; using lightweight fallback: {e}")
         vendor_ledgers_full = {}
-    try:
-        customer_ledgers_full = fetch_customer_ledgers_full(sess, debtors_today, CUST_LEDGER_START, today)
-        print(f"  {len(customer_ledgers_full)} full customer ledgers")
-    except Exception as e:
-        print(f"  full customer ledgers unavailable; using archive fallback: {e}")
+    # Heavy: ~99 customer ledger fetches (~9 min). Only refresh on the daily run (env-gated); other
+    # runs reuse the previous reconciling snapshot from R2, keeping the 10-min sync fast.
+    if os.environ.get("OTOMY_FETCH_CUST_LEDGERS", "").strip() not in ("", "0", "false"):
+        try:
+            customer_ledgers_full = fetch_customer_ledgers_full(sess, debtors_today, CUST_LEDGER_START, today)
+            print(f"  {len(customer_ledgers_full)} full customer ledgers")
+        except Exception as e:
+            print(f"  full customer ledgers unavailable; using reuse/archive fallback: {e}")
+            customer_ledgers_full = {}
+    else:
         customer_ledgers_full = {}
+        print("  customer ledger full-fetch skipped (reusing previous snapshots)")
     bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
