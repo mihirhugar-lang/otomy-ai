@@ -14,9 +14,16 @@
 <title>CrusherOps ERP</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-.tally-ledger th{background:#2e7d32;color:#fff}
-.tally-ledger td{font-variant-numeric:tabular-nums}
-.tally-ledger tfoot td{border-top:2px solid #2e7d32}
+/* Tally-style ledger look (cream paper, blue header, monospace). Revert this block to undo. */
+.tally-ledger{font-family:'Consolas','Menlo','Courier New',monospace;font-size:12.5px;background:#fdfbf0;color:#12233f;border:1px solid #bfa974}
+.tally-ledger th{background:#1f4e79;color:#fff;font-weight:600;font-size:12px;padding:5px 9px;border:1px solid #163a5c}
+.tally-ledger td{padding:3px 9px;border-bottom:1px dotted #d8c9a2;color:#12233f;font-variant-numeric:tabular-nums}
+.tally-ledger tbody tr{background:transparent!important}
+.tally-ledger tbody tr:first-child{background:#f6efd6!important}
+.tally-ledger tbody tr:hover td{background:#f3ead0}
+.tally-ledger tfoot tr{background:#f2e7c9!important}
+.tally-ledger tfoot td{border-top:2px solid #1f4e79;font-weight:700;padding:5px 9px}
+.tally-ledger em{font-style:italic;color:#6b5628}
 :root{
   --ink:#111827;--muted:#667085;--line:#e4e7ec;--panel:#fffaf0;--paper:#fff;
   --nav:#17202a;--nav2:#2b1708;--amber:#d97706;--amber2:#f59e0b;
