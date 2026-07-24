@@ -415,6 +415,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('dashboard','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('dashboard','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('dashboard','lastmonth',this)">Last Month</button>
+    <button class="pbtn" onclick="preset('dashboard','fytd',this)">This FY</button>
+    <button class="pbtn" onclick="preset('dashboard','lastfy',this)">Last FY</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="dash-from" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
       <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
@@ -449,6 +451,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('sales','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('sales','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('sales','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('sales','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('sales','lastfy',this)">Last FY</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="s-from" onchange="clearPresetBtns('sales')">
         <label>To:</label><input type="date" id="s-to" onchange="clearPresetBtns('sales')"> <label>Day:</label><input type="date" id="s-day" onchange="setDay('sales',this.value)">
@@ -476,6 +480,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('exptonne','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('exptonne','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('exptonne','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('exptonne','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('exptonne','lastfy',this)">Last FY</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="t-from" onchange="clearPresetBtns('exptonne')">
         <label>To:</label><input type="date" id="t-to" onchange="clearPresetBtns('exptonne')"> <label>Day:</label><input type="date" id="t-day" onchange="setDay('exptonne',this.value)">
@@ -504,6 +510,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('customers','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('customers','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('customers','lastmonth',this)">Last Month</button>
+    <button class="pbtn" onclick="preset('customers','fytd',this)">This FY</button>
+    <button class="pbtn" onclick="preset('customers','lastfy',this)">Last FY</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')"> <label>Day:</label><input type="date" id="c-day" onchange="setDay('customers',this.value)">
@@ -539,6 +547,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="preset('vendors','lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="preset('vendors','mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="preset('vendors','lastmonth',this)">Last Month</button>
+    <button class="pbtn" onclick="preset('vendors','fytd',this)">This FY</button>
+    <button class="pbtn" onclick="preset('vendors','lastfy',this)">Last FY</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
       <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')"> <label>Day:</label><input type="date" id="v-day" onchange="setDay('vendors',this.value)">
@@ -580,6 +590,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('erpbank','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpbank','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpbank','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('erpbank','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('erpbank','lastfy',this)">Last FY</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="eb-from" onchange="clearPresetBtns('erpbank')">
         <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')"> <label>Day:</label><input type="date" id="eb-day" onchange="setDay('erpbank',this.value)">
@@ -602,6 +614,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('erpcash','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('erpcash','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('erpcash','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('erpcash','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('erpcash','lastfy',this)">Last FY</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="ec-from" onchange="clearPresetBtns('erpcash')">
         <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')"> <label>Day:</label><input type="date" id="ec-day" onchange="setDay('erpcash',this.value)">
@@ -627,6 +641,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
       <button class="pbtn" onclick="preset('pl','lastweek',this)">Last Week</button>
       <button class="pbtn" onclick="preset('pl','mtd',this)">Month Till Date</button>
       <button class="pbtn" onclick="preset('pl','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('pl','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('pl','lastfy',this)">Last FY</button>
       <div class="preset-dates">
         <label>From:</label><input type="date" id="pl-from" onchange="clearPresetBtns('pl')">
         <label>To:</label><input type="date" id="pl-to" onchange="clearPresetBtns('pl')"> <label>Day:</label><input type="date" id="pl-day" onchange="setDay('pl',this.value)">
@@ -654,6 +670,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
     <button class="pbtn" onclick="opsPreset('lastweek',this)">Last Week</button>
     <button class="pbtn" onclick="opsPreset('mtd',this)">Month Till Date</button>
     <button class="pbtn" onclick="opsPreset('lastmonth',this)">Last Month</button>
+    <button class="pbtn" onclick="opsPreset('fytd',this)">This FY</button>
+    <button class="pbtn" onclick="opsPreset('lastfy',this)">Last FY</button>
     <div class="preset-dates">
       <label>From:</label><input type="date" id="op-from" onchange="clearOpsBtns();opsReload()">
       <label>To:</label><input type="date" id="op-to" onchange="clearOpsBtns();opsReload()"> <label>Day:</label><input type="date" id="op-day" onchange="setDay('ops',this.value)">
@@ -1377,6 +1395,9 @@ function weekStart(){const d=new Date();const day=d.getDay();const diff=d.getDat
 function mtdStart(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`}
 function lastMonthStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return localISO(d)}
 function lastMonthEnd(){const d=new Date();d.setDate(0);return localISO(d)}
+function fyStart(){const d=new Date();const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1;return `${y}-04-01`}
+function lastFyStart(){const d=new Date();const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1;return `${y-1}-04-01`}
+function lastFyEnd(){const d=new Date();const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1;return `${y}-03-31`}
 function lastWeekStart(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-7);return localISO(d)}
 function lastWeekEnd(){const d=new Date(weekStart()+'T00:00:00');d.setDate(d.getDate()-1);return localISO(d)}
 function monthNow(){return today().substring(0,7)}
@@ -1590,6 +1611,8 @@ function calcPreset(p){
     case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
+    case'fytd':return[fyStart(),today()];
+    case'lastfy':return[lastFyStart(),lastFyEnd()];
     default:return[today(),today()];
   }
 }
