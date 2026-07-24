@@ -2586,29 +2586,39 @@ function renderCustLedger(){
   });
   const materialSold=_formatArchiveMaterials(materialMap);
   const totalSales=rangeSales.reduce((s,r)=>s+_saleTotal(r),0);
-  const totalCreditSales=rangeSales.reduce((s,r)=>s+_saleCreditAmount(r),0);
   const totalReceipts=rangeReceipts.reduce((s,r)=>s+_receiptPaymentAmount(r),0);
+  // Range-aware carried-forward opening: receivable balance brought INTO the range.
+  const _cvd=r=>String(r.date||'').slice(0,10);
+  const cBefore=rangeFrom?rows.filter(r=>_cvd(r)&&_cvd(r)<rangeFrom):[];
+  const cOpening=cBefore.length?(cBefore[cBefore.length-1].balance||0):(data.opening_balance||0);
+  const cInRange=rows.filter(r=>_cvd(r)&&inCustomerRange(r));   // date-ordered, reconciling running balance
+  const cClosing=cInRange.length?(cInRange[cInRange.length-1].balance||0):cOpening;
+  const cSrcNote=data.source==='erp'?'full history from loctell ERP':'local records only';
+  const cRangeNote=(rangeFrom&&rangeFrom!==rangeTo)?`${rangeFrom} → ${rangeTo}`:`on ${rangeTo}`;
   let html=`<div class="kpi-row" style="margin-bottom:12px">
     <div class="kpi blue"><div class="kpi-label">Sales Tickets</div><div class="kpi-value">${rangeSales.length}</div></div>
     <div class="kpi green"><div class="kpi-label">Material Sold</div><div class="kpi-value" style="font-size:18px;line-height:1.25">${esc(materialSold)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Credit Sale</div><div class="kpi-value">${fmtINR(totalCreditSales)}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Opening</div><div class="kpi-value">${_fmtDrCr(cOpening,false)}</div></div>
     <div class="kpi green"><div class="kpi-label">Payment Received</div><div class="kpi-value">${fmtINR(totalReceipts)}</div></div>
-    <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value">${fmtINR(data.closing_balance||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Closing (Outstanding)</div><div class="kpi-value">${_fmtDrCr(cClosing,false)}</div></div>
   </div>`;
   html+='<div id="cust-sales-print"><h3 style="font-size:16px;margin:8px 0;color:#1565c0">Sales Data</h3>';
   html+='<table><thead><tr>'+thSort('custSales','date','Date','renderCustLedger')+thSort('custSales','ticket_no','Ticket','renderCustLedger')+thSort('custSales','vehicle_no','Vehicle','renderCustLedger')+thSort('custSales','material','Material','renderCustLedger')+thSort('custSales','mdp_ton','MDP Ton','renderCustLedger')+thSort('custSales','qty_mt','Qty MT','renderCustLedger')+thSort('custSales','rate_per_mt','Rate','renderCustLedger')+thSort('custSales','amount','Amount','renderCustLedger')+thSort('custSales','payment_mode','Mode','renderCustLedger')+'</tr></thead><tbody>';
   rangeSales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
   if(!rangeSales.length)html+='<tr><td colspan="9" class="empty">No sales data for this customer</td></tr>';
   html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${rangeSales.length})</strong></td><td>${fmtINR(totalSales)}</td><td></td></tr></tfoot></table></div>`;
-  html+='<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Summary</h3>';
-  html+='<table><thead><tr>'+thSort('custLedger','date','Date','renderCustLedger')+thSort('custLedger','type','Type','renderCustLedger')+thSort('custLedger','description','Description','renderCustLedger')+thSort('custLedger','debit','Debit (Sale)','renderCustLedger')+thSort('custLedger','credit','Credit (Receipt)','renderCustLedger')+thSort('custLedger','balance','Balance','renderCustLedger')+'</tr></thead><tbody>';
-  rangeLedger.forEach(r=>{
+  // ── Tally-style Ledger Account (Sale=Debit, Receipt=Credit; balance is receivable = Dr), range-aware ──
+  const cTotDebit=cInRange.reduce((s,r)=>s+(r.type==='sale'?(r.debit||r.amount||0):0),0);
+  const cTotCredit=cInRange.reduce((s,r)=>s+(r.type==='receipt'?(r.credit||r.amount||0):0),0);
+  html+=`<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(cRangeNote)} · ${esc(cSrcNote)})</span></h3>`;
+  html+='<table class="tally-ledger"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
+  html+=`<tr style="background:#f4f7f4"><td>—</td><td><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${_fmtDrCr(cOpening,false)}</td></tr>`;
+  cInRange.forEach(r=>{
     const isSale=r.type==='sale', isReceipt=r.type==='receipt';
-    const label=isSale?'Sale':isReceipt?'Receipt':'Opening';
-    html+=`<tr><td>${r.date||'—'}</td><td><span class="badge ${isSale?'b-credit':isReceipt?'b-paid':'b-pending'}">${label}</span></td><td>${esc(r.description||'')}</td><td>${isSale?fmtINR(r.debit||r.amount||0):'—'}</td><td>${isReceipt?fmtINR(r.credit||r.amount||0):'—'}</td><td style="font-weight:600">${fmtINR(r.balance||0)}</td></tr>`;
+    html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td>${isSale?'Sale':isReceipt?'Receipt':'Journal'}</td><td style="text-align:right">${isSale?fmtINR(r.debit||r.amount||0):''}</td><td style="text-align:right">${isReceipt?fmtINR(r.credit||r.amount||0):''}</td><td style="text-align:right;font-weight:600">${_fmtDrCr(r.balance,false)}</td></tr>`;
   });
-  if(!rangeLedger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
-  html+='</tbody></table></div>';
+  if(!cInRange.length)html+='<tr><td colspan="6" class="empty">No transactions in this range</td></tr>';
+  html+=`</tbody><tfoot><tr style="background:#eef3ee"><td colspan="3"><strong>Closing Balance</strong></td><td style="text-align:right"><strong>${fmtINR(cTotDebit)}</strong></td><td style="text-align:right"><strong>${fmtINR(cTotCredit)}</strong></td><td style="text-align:right;font-weight:700">${_fmtDrCr(cClosing,false)}</td></tr></tfoot></table></div>`;
   document.getElementById('cust-ledger-tbl').innerHTML=html;
 }
 async function addReceipt(){

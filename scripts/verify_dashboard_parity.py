@@ -423,11 +423,12 @@ def verify_customer_page_guard() -> None:
     detail_required = (
         "rangeSales",
         "rangeReceipts",
-        "rangeLedger",
+        "cInRange",
         "Material Sold",
-        "Credit Sale",
+        "Opening",
         "Payment Received",
-        "Total Outstanding",
+        "Closing (Outstanding)",
+        "Ledger Account",
     )
     for needle in detail_required:
         if needle not in detail:

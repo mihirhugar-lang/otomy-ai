@@ -964,6 +964,68 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d):
     return result
 
 
+CUST_LEDGER_START = date(2025, 2, 15)  # full itemized customer history begins here
+CUST_LEDGER_WORKERS = _env_int("OTOMY_CUST_LEDGER_WORKERS", 6, min_value=1, max_value=12)
+
+
+def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=True):
+    """Full itemized customer ledgers (every sale + receipt, incl. same-day spot receipts) for a
+    reconciling Tally view, keyed by normalised name. ViewLedgerTransactions cols: [0]=date,
+    [1]=material, [2]=vehicle, [11]=Debit (sale), [12]=Credit (receipt), [13]=mode. Sale=Debit
+    (raises receivable), Receipt=Credit (lowers it). Limited to debtors with an outstanding balance
+    to bound sync load. Resilient: a customer that errors just yields no entries (its ledger falls
+    back to the archive-based build) — never aborts the sync."""
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    targets = [d for d in debtors
+               if d.get("erp_customer_id") and (not only_outstanding or _num(d.get("outstanding")) > 0)]
+    if not targets:
+        return {}
+
+    def _one(d):
+        cid, name = d.get("erp_customer_id"), d.get("name", "")
+        entries = []
+        try:
+            data = json.loads(_clone_sess(sess).get(
+                f"{ERP_BASE}/crusher/ViewLedgerTransactions",
+                params={"start": fs, "end": ts, "customerId": cid, "materialId": -1,
+                        "transactionType": -1, "marketingPersonId": -1, "orderType": 2, "type": 1},
+                timeout=45, verify=True).text)
+            for row in data.get("data", []):
+                cells = [_clean(c) for c in row]
+                if not cells or not cells[0]:
+                    continue
+                if not re.match(r"\d{1,2}-\d{1,2}-\d{4}", cells[0]):
+                    continue  # skip the trailing TOTAL row
+                dt = _parse_date(cells[0], to_d)
+                debit = _num(cells[11]) if len(cells) > 11 else 0.0
+                credit = _num(cells[12]) if len(cells) > 12 else 0.0
+                material = cells[1] if len(cells) > 1 else ""
+                vehicle = cells[2] if len(cells) > 2 else ""
+                mode = cells[13] if len(cells) > 13 else ""
+                if debit > 0:
+                    entries.append({"type": "sale", "date": str(dt), "vch_type": "Sale",
+                                    "description": (f"{material} — {vehicle}".strip(" —")) or "Sale",
+                                    "debit": round(debit, 2), "credit": 0.0,
+                                    "material": material, "vehicle_no": vehicle,
+                                    "qty_mt": _num(cells[5]) if len(cells) > 5 else 0.0,
+                                    "rate_per_mt": _num(cells[6]) if len(cells) > 6 else 0.0})
+                if credit > 0:
+                    entries.append({"type": "receipt", "date": str(dt), "vch_type": "Receipt",
+                                    "description": f"Receipt ({mode})" if mode else "Receipt",
+                                    "debit": 0.0, "credit": round(credit, 2)})
+        except Exception as e:
+            print(f"  customer ledger fetch error ({name}); using fallback: {e}")
+            return (name, [])
+        return (name, entries)
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=min(len(targets), CUST_LEDGER_WORKERS)) as pool:
+        for name, entries in pool.map(_one, targets):
+            if entries:
+                result[_norm_name(name)] = entries
+    return result
+
+
 def compute_repayments(debtors_prev, debtors_curr, as_of_date):
     """
     Credit repayments = customers whose outstanding balance DECREASED between
@@ -2351,11 +2413,13 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
 
 
-def build_customer_ledgers(customers_full, all_sales, repayments, today):
+def build_customer_ledgers(customers_full, all_sales, repayments, today, full_ledgers=None):
     """Per-customer ledger from sales + receipts, linked by NAME (sale customer_id does NOT
-    match the customer list id). Loads the full archive window from LEDGER_HISTORY_START so
-    older dues show detail too; receipts exist only from that date, so anything before it
-    is captured in the opening balance. Mirrors localhost's ledger shape."""
+    match the customer list id). When a reconciling FULL loctell ledger (sales + receipts incl.
+    same-day spot receipts) is available it is used and reconciles to the ERP outstanding; else
+    it falls back to the archive-based build (whose running balance can be inflated because spot
+    receipts are missing). Mirrors localhost's ledger shape."""
+    full_ledgers = full_ledgers or {}
     hist = load_archive_window(LEDGER_HISTORY_START, today)
     sales_src = hist.get("sales") or all_sales or []
     reps_src = hist.get("receipts") or repayments or []
@@ -2371,6 +2435,32 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today):
         name = cust.get("name", "")
         key = str(name).strip().upper()
         closing = round(_num(cust.get("outstanding", cust.get("balance"))), 2)
+
+        # Prefer the FULL reconciling loctell ledger (Sale=Debit, Receipt=Credit incl. spot receipts).
+        full_entries = full_ledgers.get(_norm_name(name))
+        if full_entries:
+            es = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "sale" else 1))
+            window_net = round(sum(e["debit"] - e["credit"] for e in es), 2)
+            opening = round(closing - window_net, 2)
+            if abs(opening) < 100:
+                opening = 0.0  # rounding residual on a fully-captured history, not a real prior balance
+            received = round(sum(e["credit"] for e in es), 2)
+            erp_entries = []
+            running = opening
+            for idx, e in enumerate(es, start=1):
+                running = round(running + e["debit"] - e["credit"], 2)
+                erp_entries.append({**e, "id": idx, "amount": e.get("debit") or e.get("credit") or 0.0,
+                                    "balance": running})
+            ledger = empty_ledger(name, closing)
+            ledger.update({
+                "customer_id": cust.get("id"), "customer_name": name,
+                "opening_balance": opening, "entries": erp_entries,
+                "closing_balance": round(running, 2), "received": received,
+                "erp_received": received, "source": "erp",
+            })
+            ledgers[str(cust.get("id"))] = ledger
+            continue
+
         entries = []
         for s in sales_by_name.get(key, []):
             total = _sale_total(s)
@@ -2431,6 +2521,7 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today):
             "closing_balance": closing,
             "received": received,
             "erp_received": round(_num(cust.get("received", cust.get("erp_received", received))), 2),
+            "source": "db",
         })
         ledgers[str(cust.get("id"))] = ledger
     return ledgers
@@ -2571,6 +2662,7 @@ def write_snapshot_bundle(
     controls,
     balance_snapshots,
     archive_balances,
+    customer_ledgers_full=None,
 ):
     week_start = today - timedelta(days=today.weekday())
     last_week_start = week_start - timedelta(days=7)
@@ -2672,7 +2764,7 @@ def write_snapshot_bundle(
     write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
     write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
 
-    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments, today)
+    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments, today, customer_ledgers_full)
     for row in customers_full:
         write_snapshot(
             f"/api/customers/ledger/{row['id']}",
@@ -3336,6 +3428,12 @@ def main():
     except Exception as e:
         print(f"  full vendor ledgers unavailable; using lightweight fallback: {e}")
         vendor_ledgers_full = {}
+    try:
+        customer_ledgers_full = fetch_customer_ledgers_full(sess, debtors_today, CUST_LEDGER_START, today)
+        print(f"  {len(customer_ledgers_full)} full customer ledgers")
+    except Exception as e:
+        print(f"  full customer ledgers unavailable; using archive fallback: {e}")
+        customer_ledgers_full = {}
     bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
@@ -3696,6 +3794,7 @@ def main():
         {"today": ctrl_today, "yesterday": ctrl_yesterday, "week": ctrl_week, "mtd": ctrl_mtd},
         balance_snapshots,
         archive_balances,
+        customer_ledgers_full,
     )
     cleanup_excluded_customer_receipt_artifacts()
 
