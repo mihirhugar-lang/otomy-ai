@@ -2673,31 +2673,38 @@ async function showVendLedger(id,name){
 function renderVendLedger(){
   if(!_currentVendLedger)return;
   const data=_currentVendLedger.data;
-  const rows=data.entries||[];   // date-ordered, with running_balance, from snapshot
+  const all=data.entries||[];   // full history, date-ordered, cumulative running_balance
+  // Respect the Vendors page date range: opening = balance carried INTO the range (e.g. last FY 31-Mar close).
+  const rangeTo=document.getElementById('v-to')?.value||today();
+  const rangeFrom=document.getElementById('v-from')?.value||'';
+  const _vd=r=>String(r.date||'').slice(0,10);
+  const before=rangeFrom?all.filter(r=>_vd(r)<rangeFrom):[];
+  const opening=before.length?(before[before.length-1].running_balance||0):(data.opening_balance||0);
+  const rows=all.filter(r=>{const d=_vd(r);return (!rangeFrom||d>=rangeFrom)&&(!rangeTo||d<=rangeTo);});
+  const closing=rows.length?(rows[rows.length-1].running_balance||0):opening;
   // Tally supplier convention: Purchase = Credit (raises payable), Payment = Debit (lowers payable).
   const bills=rows.filter(r=>r.type==='purchase');
   const payments=rows.filter(r=>r.type==='payment');
   const totalBills=bills.reduce((s,r)=>s+(r.credit||0),0);
   const totalPayments=payments.reduce((s,r)=>s+(r.debit||0),0);
-  const opening=data.opening_balance||0;
-  const closing=(data.closing_balance!=null)?data.closing_balance:(rows.length?rows[rows.length-1].running_balance||0:opening);
   const srcNote=data.source==='erp'?'full history from loctell ERP':'local records only';
+  const rangeNote=rangeFrom?`${rangeFrom} → ${rangeTo}`:`up to ${rangeTo}`;
   let html=`<div class="kpi-row" style="margin-bottom:12px">
     <div class="kpi blue"><div class="kpi-label">Bills</div><div class="kpi-value">${bills.length}</div></div>
     <div class="kpi red"><div class="kpi-label">Purchases</div><div class="kpi-value">${fmtINR(totalBills)}</div></div>
     <div class="kpi green"><div class="kpi-label">Payments Made</div><div class="kpi-value">${fmtINR(totalPayments)}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Opening</div><div class="kpi-value">${_fmtDrCr(opening,true)}</div></div>
     <div class="kpi navy"><div class="kpi-label">Closing Payable</div><div class="kpi-value">${_fmtDrCr(closing,true)}</div></div>
-    <div class="kpi red"><div class="kpi-label">45+ Days</div><div class="kpi-value">${fmtINR(data.age_45_plus||0)}</div></div>
   </div>`;
-  // ── Tally-style Ledger Account (running balance, date order) ──
-  html+=`<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:8px 0;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(srcNote)})</span></h3>`;
+  // ── Tally-style Ledger Account (range-aware running balance) ──
+  html+=`<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:8px 0;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(rangeNote)} · ${esc(srcNote)})</span></h3>`;
   html+='<table class="tally-ledger"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
   html+=`<tr style="background:#f4f7f4"><td>—</td><td><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${_fmtDrCr(opening,true)}</td></tr>`;
   rows.forEach(r=>{
     const isBill=r.type==='purchase';
     html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td>${esc(r.vch_type||(isBill?'Purchase':'Payment'))}</td><td style="text-align:right">${r.debit?fmtINR(r.debit):''}</td><td style="text-align:right">${r.credit?fmtINR(r.credit):''}</td><td style="text-align:right;font-weight:600">${_fmtDrCr(r.running_balance,true)}</td></tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
+  if(!rows.length)html+='<tr><td colspan="6" class="empty">No transactions in this range</td></tr>';
   html+=`</tbody><tfoot><tr style="background:#eef3ee"><td colspan="3"><strong>Closing Balance</strong></td><td style="text-align:right"><strong>${fmtINR(totalPayments)}</strong></td><td style="text-align:right"><strong>${fmtINR(totalBills)}</strong></td><td style="text-align:right;font-weight:700">${_fmtDrCr(closing,true)}</td></tr></tfoot></table></div>`;
   // ── Detail tables (kept for Print Bills / Print Payments) ──
   html+='<div id="vend-bills-print" style="margin-top:16px"><h3 style="font-size:16px;margin:8px 0;color:#c62828">Bills / Purchases</h3>';
