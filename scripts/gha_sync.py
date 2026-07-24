@@ -966,6 +966,24 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d):
 
 CUST_LEDGER_START = date(2025, 2, 15)  # full itemized customer history begins here
 CUST_LEDGER_WORKERS = _env_int("OTOMY_CUST_LEDGER_WORKERS", 6, min_value=1, max_value=12)
+CUST_LEDGER_MARKER = "/internal/cust-ledger-fetch"  # tracks the last daily full-ledger refresh
+
+
+def _should_fetch_cust_ledgers(today):
+    """The ~99-customer full-ledger fetch is heavy (~9 min), and this sync is dispatched every few
+    minutes — so refresh at most ONCE per day (after 05:30 IST), tracked by a marker snapshot in R2;
+    other runs reuse the previous reconciling snapshots. OTOMY_FETCH_CUST_LEDGERS=1 forces a refresh."""
+    if os.environ.get("OTOMY_FETCH_CUST_LEDGERS", "").strip() not in ("", "0", "false"):
+        return True
+    try:
+        now_ist = datetime.now(IST)
+    except Exception:
+        return False
+    minutes = now_ist.hour * 60 + now_ist.minute
+    if not (330 <= minutes <= 420):  # confine the heavy run to 05:30–07:00 IST (low traffic)
+        return False
+    marker = read_snapshot(CUST_LEDGER_MARKER) or {}
+    return marker.get("date") != str(today)
 
 
 def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=True):
@@ -3435,15 +3453,16 @@ def main():
     except Exception as e:
         print(f"  full vendor ledgers unavailable; using lightweight fallback: {e}")
         vendor_ledgers_full = {}
-    # Heavy: ~99 customer ledger fetches (~9 min). Only refresh on the daily run (env-gated); other
-    # runs reuse the previous reconciling snapshot from R2, keeping the 10-min sync fast.
-    if os.environ.get("OTOMY_FETCH_CUST_LEDGERS", "").strip() not in ("", "0", "false"):
+    # Heavy: ~99 customer ledger fetches (~9 min). Auto-refresh at most once per day (after 05:30 IST,
+    # tracked by a marker snapshot); other runs reuse the previous reconciling snapshots from R2.
+    if _should_fetch_cust_ledgers(today):
         try:
             customer_ledgers_full = fetch_customer_ledgers_full(sess, debtors_today, CUST_LEDGER_START, today)
             print(f"  {len(customer_ledgers_full)} full customer ledgers")
         except Exception as e:
             print(f"  full customer ledgers unavailable; using reuse/archive fallback: {e}")
             customer_ledgers_full = {}
+        write_snapshot(CUST_LEDGER_MARKER, {"date": str(today), "count": len(customer_ledgers_full)})
     else:
         customer_ledgers_full = {}
         print("  customer ledger full-fetch skipped (reusing previous snapshots)")

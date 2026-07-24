@@ -11,6 +11,11 @@ on:
     - cron: '0,30 18-23 * * *'   # 18:00-23:30 UTC  (23:30-05:00 IST)
     - cron: '0 0 * * *'          # 00:00 UTC        (05:30 IST)
   workflow_dispatch:
+    inputs:
+      full_cust_ledgers:
+        description: "Force a full customer-ledger refresh this run"
+        type: boolean
+        default: false
 
 concurrency:
   group: otomy-erp-sync
@@ -49,8 +54,9 @@ jobs:
           ERP_PASS: ${{ secrets.ERP_PASS }}
           OTOMY_SYNC_MODE: recent
           OTOMY_RECENT_DAYS: "7"
-          # Heavy full customer-ledger fetch (~99 calls): only on the daily 00:00 UTC run or manual dispatch.
-          OTOMY_FETCH_CUST_LEDGERS: ${{ (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 0 * * *') && '1' || '' }}
+          # Full customer-ledger refresh is heavy (~99 calls) and this workflow is dispatched every
+          # few minutes, so the script self-limits to once/day. Set '1' ONLY via a manual force input.
+          OTOMY_FETCH_CUST_LEDGERS: ${{ github.event.inputs.full_cust_ledgers == 'true' && '1' || '' }}
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
           OTOMY_DEBTOR_WORKERS: "4"
