@@ -905,6 +905,65 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
     return payments
 
 
+def _norm_name(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+VENDOR_LEDGER_START = date(2025, 2, 15)  # full itemized vendor history begins here
+
+
+def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d):
+    """Full itemized supplier ledgers (every bill + payment) for a Tally-style view, keyed by
+    normalised vendor name. Tally supplier convention: Purchase=Credit (raises payable),
+    Payment=Debit (lowers payable). Resilient: a creditor that errors just yields no entries
+    (its ledger falls back to the lightweight payments-only build) — never aborts the sync."""
+    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+    if not creditors:
+        return {}
+
+    def _one(creditor):
+        sid = creditor.get("erp_supplier_id")
+        name = creditor.get("name", "")
+        if not sid:
+            return (name, [])
+        entries = []
+        try:
+            data = json.loads(_clone_sess(sess).get(
+                f"{ERP_BASE}/crusher/ViewSupplierLedgerTransactions"
+                f"?start={fs}&end={ts}&supplierId={sid}&materialId=-1&crusherId=-1&orderType=2&type=1",
+                timeout=45, verify=True).text)
+            for row in data.get("data", []):
+                cells = [_clean(c) for c in row]
+                if not cells or not cells[0]:
+                    continue
+                if not re.match(r"\d{1,2}-\d{1,2}-\d{4}", cells[0]):
+                    continue  # skip the trailing TOTAL row
+                d = _parse_date(cells[0], to_d)
+                payment = _num(cells[6]) if len(cells) > 6 else 0.0
+                purchase = _num(cells[7]) if len(cells) > 7 else 0.0
+                mode = cells[8] if len(cells) > 8 else ""
+                narration = cells[9] if len(cells) > 9 else ""
+                if purchase > 0:
+                    entries.append({"type": "purchase", "date": str(d), "vch_type": "Purchase",
+                                    "description": narration or "Material Purchase",
+                                    "debit": 0.0, "credit": round(purchase, 2)})
+                if payment > 0:
+                    entries.append({"type": "payment", "date": str(d), "vch_type": "Payment",
+                                    "description": ((narration or "Payment") + (f" — {mode}" if mode else "")).strip(" —"),
+                                    "debit": round(payment, 2), "credit": 0.0})
+        except Exception as e:
+            print(f"  supplier ledger fetch error ({name}); using lightweight fallback: {e}")
+            return (name, [])
+        return (name, entries)
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
+        for name, entries in pool.map(_one, creditors):
+            if entries:
+                result[_norm_name(name)] = entries
+    return result
+
+
 def compute_repayments(debtors_prev, debtors_curr, as_of_date):
     """
     Credit repayments = customers whose outstanding balance DECREASED between
@@ -2229,38 +2288,61 @@ def empty_ledger(name, closing=0.0):
         "age_45_plus": round(max(closing, 0.0), 2),
     }
 
-def build_vendor_ledgers(vendors_full, vendor_payments):
+def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
+    full_ledgers = full_ledgers or {}
     payments_by_name = {}
     for payment in vendor_payments:
         payments_by_name.setdefault(payment.get("vendor_name", ""), []).append(payment)
 
     ledgers = {}
     for vendor in vendors_full:
-        payments = payments_by_name.get(vendor.get("name", ""), [])
+        name = vendor.get("name", "")
+        payable = round(_num(vendor.get("payable")), 2)
+        full_entries = full_ledgers.get(_norm_name(name))
+        if full_entries:
+            # Tally view from the full loctell ledger: Purchase=Credit, Payment=Debit, running=payable.
+            entries_sorted = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "purchase" else 1))
+            window_net = round(sum(e["credit"] - e["debit"] for e in entries_sorted), 2)
+            opening = round(payable - window_net, 2)
+            if abs(opening) < 100:
+                opening = 0.0  # rounding residual on a fully-captured history, not a real prior balance
+            entries = []
+            running = opening
+            for index, e in enumerate(entries_sorted, start=1):
+                running = round(running + e["credit"] - e["debit"], 2)
+                entries.append({**e, "id": index,
+                                "amount": e.get("credit") or e.get("debit") or 0.0,
+                                "running_balance": running, "balance": running})
+            ledger = empty_ledger(name, payable)
+            ledger.update({
+                "vendor_id": vendor.get("id"), "vendor_name": name,
+                "opening_balance": opening, "entries": entries,
+                "closing_balance": round(running, 2), "source": "erp",
+            })
+            ledgers[str(vendor.get("id"))] = ledger
+            continue
+
+        # Fallback: lightweight payments-only ledger (Tally convention: Payment=Debit).
+        payments = payments_by_name.get(name, [])
         total_payments = round(sum(_num(row.get("amount")) for row in payments), 2)
-        opening = round(_num(vendor.get("payable")) + total_payments, 2)
+        opening = round(payable + total_payments, 2)
         entries = []
         running = opening
         for index, payment in enumerate(sorted(payments, key=lambda row: (row.get("date", ""), row.get("reference", ""))), start=1):
             amount = _num(payment.get("amount"))
             running = round(running - amount, 2)
             entries.append({
-                "type": "payment",
-                "id": index,
+                "type": "payment", "vch_type": "Payment", "id": index,
                 "date": payment.get("date"),
                 "description": f"Payment ({payment.get('mode') or 'Payment'})" + (f" Ref: {payment.get('reference')}" if payment.get("reference") else ""),
-                "amount": amount,
-                "debit": 0.0,
-                "credit": amount,
-                "running_balance": running,
+                "amount": amount, "debit": amount, "credit": 0.0,
+                "running_balance": running, "balance": running,
             })
-        ledger = empty_ledger(vendor.get("name", ""), vendor.get("payable", 0.0))
+        ledger = empty_ledger(name, payable)
         ledger.update({
-            "vendor_id": vendor.get("id"),
-            "vendor_name": vendor.get("name", ""),
-            "opening_balance": opening,
-            "entries": entries,
-            "closing_balance": round(_num(vendor.get("payable")), 2),
+            "vendor_id": vendor.get("id"), "vendor_name": name,
+            "opening_balance": opening, "entries": entries,
+            "closing_balance": payable, "source": "db",
         })
         ledgers[str(vendor.get("id"))] = ledger
     return ledgers
@@ -3248,6 +3330,12 @@ def main():
     print(f"  {len(creditors)} vendors")
     vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()
     print(f"  {len(vendor_payments)} vendor payments")
+    try:
+        vendor_ledgers_full = fetch_supplier_ledgers_full(sess, creditors, VENDOR_LEDGER_START, today)
+        print(f"  {len(vendor_ledgers_full)} full vendor ledgers")
+    except Exception as e:
+        print(f"  full vendor ledgers unavailable; using lightweight fallback: {e}")
+        vendor_ledgers_full = {}
     bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
@@ -3542,7 +3630,7 @@ def main():
         }
 
     vendors_full = sorted(vendors_by_name.values(), key=lambda row: row.get("name", ""))
-    vendor_ledgers = build_vendor_ledgers(vendors_full, vendor_payments)
+    vendor_ledgers = build_vendor_ledgers(vendors_full, vendor_payments, vendor_ledgers_full)
     vendors_payables = [
         {
             "id": row.get("id"),

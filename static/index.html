@@ -14,6 +14,9 @@
 <title>CrusherOps ERP</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+.tally-ledger th{background:#2e7d32;color:#fff}
+.tally-ledger td{font-variant-numeric:tabular-nums}
+.tally-ledger tfoot td{border-top:2px solid #2e7d32}
 :root{
   --ink:#111827;--muted:#667085;--line:#e4e7ec;--panel:#fffaf0;--paper:#fff;
   --nav:#17202a;--nav2:#2b1708;--amber:#d97706;--amber2:#f59e0b;
@@ -1382,6 +1385,8 @@ function lastMonthYM(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1
 function fmtINR(n){if(n==null||isNaN(n))return'—';const abs=Math.abs(Number(n));const s=abs.toLocaleString('en-IN',{maximumFractionDigits:0});return (n<0?'-':'')+'₹'+s;}
 function fmtNum(n,d=1){if(n==null||isNaN(n))return'—';return Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+// Tally-style balance: creditPositive=true for vendors (positive=payable=Cr), false for customers (positive=receivable=Dr).
+function _fmtDrCr(bal,creditPositive){const v=Number(bal||0);if(Math.abs(v)<0.5)return '₹0';const suf=creditPositive?(v>0?' Cr':' Dr'):(v>0?' Dr':' Cr');return '₹'+Math.abs(v).toLocaleString('en-IN',{maximumFractionDigits:0})+suf;}
 function flash(msg,ok=true){const d=document.getElementById('flash');const el=document.createElement('div');el.className='flash-msg '+(ok?'flash-ok':'flash-err');el.textContent=msg;d.appendChild(el);setTimeout(()=>el.remove(),3500);}
 async function api(url,opts={}){
   const isRead=(!opts.method || String(opts.method).toUpperCase()==='GET');
@@ -2645,41 +2650,43 @@ async function showVendLedger(id,name){
 function renderVendLedger(){
   if(!_currentVendLedger)return;
   const data=_currentVendLedger.data;
-  const rows=data.entries||[];
-  const bills=sortedRows(rows.filter(r=>r.type==='purchase'),'vendBills',{amount:r=>r.debit||r.amount||0});
-  const payments=sortedRows(rows.filter(r=>r.type==='payment'),'vendPayments',{amount:r=>r.credit||r.amount||0});
-  const ledger=sortedRows(rows,'vendLedger');
-  const totalBills=bills.reduce((s,r)=>s+(r.debit||r.amount||0),0);
-  const totalPayments=payments.reduce((s,r)=>s+(r.credit||r.amount||0),0);
-  const closing=rows.length?rows[rows.length-1].running_balance||0:data.opening_balance||0;
+  const rows=data.entries||[];   // date-ordered, with running_balance, from snapshot
+  // Tally supplier convention: Purchase = Credit (raises payable), Payment = Debit (lowers payable).
+  const bills=rows.filter(r=>r.type==='purchase');
+  const payments=rows.filter(r=>r.type==='payment');
+  const totalBills=bills.reduce((s,r)=>s+(r.credit||0),0);
+  const totalPayments=payments.reduce((s,r)=>s+(r.debit||0),0);
+  const opening=data.opening_balance||0;
+  const closing=(data.closing_balance!=null)?data.closing_balance:(rows.length?rows[rows.length-1].running_balance||0:opening);
+  const srcNote=data.source==='erp'?'full history from loctell ERP':'local records only';
   let html=`<div class="kpi-row" style="margin-bottom:12px">
     <div class="kpi blue"><div class="kpi-label">Bills</div><div class="kpi-value">${bills.length}</div></div>
-    <div class="kpi red"><div class="kpi-label">Bill Amount</div><div class="kpi-value">${fmtINR(totalBills)}</div></div>
-    <div class="kpi green"><div class="kpi-label">Payments</div><div class="kpi-value">${fmtINR(totalPayments)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Payable</div><div class="kpi-value">${fmtINR(closing)}</div></div>
-    <div class="kpi"><div class="kpi-label">0-15 Days</div><div class="kpi-value">${fmtINR(data.age_0_15||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">16-30 Days</div><div class="kpi-value">${fmtINR(data.age_16_30||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">31-45 Days</div><div class="kpi-value">${fmtINR(data.age_31_45||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Purchases</div><div class="kpi-value">${fmtINR(totalBills)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Payments Made</div><div class="kpi-value">${fmtINR(totalPayments)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Closing Payable</div><div class="kpi-value">${_fmtDrCr(closing,true)}</div></div>
     <div class="kpi red"><div class="kpi-label">45+ Days</div><div class="kpi-value">${fmtINR(data.age_45_plus||0)}</div></div>
   </div>`;
-  html+='<div id="vend-bills-print"><h3 style="font-size:16px;margin:8px 0;color:#c62828">Bills / Purchases</h3>';
-  html+='<table><thead><tr>'+thSort('vendBills','date','Date','renderVendLedger')+thSort('vendBills','category','Category','renderVendLedger')+thSort('vendBills','description','Description','renderVendLedger')+thSort('vendBills','amount','Amount','renderVendLedger')+thSort('vendBills','payment_mode','Mode','renderVendLedger')+'</tr></thead><tbody>';
-  bills.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.category||'—')}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${esc(r.payment_mode||'—')}</td></tr>`;});
-  if(!bills.length)html+='<tr><td colspan="5" class="empty">No bills linked to this vendor yet</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (${bills.length})</strong></td><td>${fmtINR(totalBills)}</td><td></td></tr></tfoot></table></div>`;
-  html+='<div id="vend-payments-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Payments to Vendor</h3>';
-  html+='<table><thead><tr>'+thSort('vendPayments','date','Date','renderVendLedger')+thSort('vendPayments','description','Description','renderVendLedger')+thSort('vendPayments','amount','Amount','renderVendLedger')+'</tr></thead><tbody>';
-  payments.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.credit||r.amount||0)}</strong></td></tr>`;});
-  if(!payments.length)html+='<tr><td colspan="3" class="empty">No payments recorded for this vendor</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL (${payments.length})</strong></td><td>${fmtINR(totalPayments)}</td></tr></tfoot></table></div>`;
-  html+='<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Summary</h3>';
-  html+='<table><thead><tr>'+thSort('vendLedger','date','Date','renderVendLedger')+thSort('vendLedger','type','Type','renderVendLedger')+thSort('vendLedger','description','Description','renderVendLedger')+thSort('vendLedger','debit','Purchase','renderVendLedger')+thSort('vendLedger','credit','Payment','renderVendLedger')+thSort('vendLedger','running_balance','Balance','renderVendLedger')+'</tr></thead><tbody>';
-  ledger.forEach(r=>{
-    const isBill=r.type==='purchase', isPayment=r.type==='payment';
-    html+=`<tr><td>${r.date||'—'}</td><td><span class="badge ${isBill?'b-credit':'b-paid'}">${isBill?'Bill':isPayment?'Payment':'Entry'}</span></td><td>${esc(r.description||'')}</td><td>${isBill?fmtINR(r.debit||r.amount||0):'—'}</td><td>${isPayment?fmtINR(r.credit||r.amount||0):'—'}</td><td style="font-weight:600">${fmtINR(r.running_balance||0)}</td></tr>`;
+  // ── Tally-style Ledger Account (running balance, date order) ──
+  html+=`<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:8px 0;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(srcNote)})</span></h3>`;
+  html+='<table class="tally-ledger"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
+  html+=`<tr style="background:#f4f7f4"><td>—</td><td><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${_fmtDrCr(opening,true)}</td></tr>`;
+  rows.forEach(r=>{
+    const isBill=r.type==='purchase';
+    html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td>${esc(r.vch_type||(isBill?'Purchase':'Payment'))}</td><td style="text-align:right">${r.debit?fmtINR(r.debit):''}</td><td style="text-align:right">${r.credit?fmtINR(r.credit):''}</td><td style="text-align:right;font-weight:600">${_fmtDrCr(r.running_balance,true)}</td></tr>`;
   });
-  if(!ledger.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
-  html+='</tbody></table></div>';
+  if(!rows.length)html+='<tr><td colspan="6" class="empty">No transactions</td></tr>';
+  html+=`</tbody><tfoot><tr style="background:#eef3ee"><td colspan="3"><strong>Closing Balance</strong></td><td style="text-align:right"><strong>${fmtINR(totalPayments)}</strong></td><td style="text-align:right"><strong>${fmtINR(totalBills)}</strong></td><td style="text-align:right;font-weight:700">${_fmtDrCr(closing,true)}</td></tr></tfoot></table></div>`;
+  // ── Detail tables (kept for Print Bills / Print Payments) ──
+  html+='<div id="vend-bills-print" style="margin-top:16px"><h3 style="font-size:16px;margin:8px 0;color:#c62828">Bills / Purchases</h3>';
+  html+='<table><thead><tr>'+thSort('vendBills','date','Date','renderVendLedger')+thSort('vendBills','description','Particulars','renderVendLedger')+thSort('vendBills','credit','Amount','renderVendLedger')+'</tr></thead><tbody>';
+  sortedRows(bills,'vendBills',{amount:r=>r.credit||0,credit:r=>r.credit||0}).forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.credit||0)}</strong></td></tr>`;});
+  if(!bills.length)html+='<tr><td colspan="3" class="empty">No bills for this vendor</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL (${bills.length})</strong></td><td>${fmtINR(totalBills)}</td></tr></tfoot></table></div>`;
+  html+='<div id="vend-payments-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Payments to Vendor</h3>';
+  html+='<table><thead><tr>'+thSort('vendPayments','date','Date','renderVendLedger')+thSort('vendPayments','description','Particulars','renderVendLedger')+thSort('vendPayments','debit','Amount','renderVendLedger')+'</tr></thead><tbody>';
+  sortedRows(payments,'vendPayments',{amount:r=>r.debit||0,debit:r=>r.debit||0}).forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${esc(r.description||'')}</td><td><strong>${fmtINR(r.debit||0)}</strong></td></tr>`;});
+  if(!payments.length)html+='<tr><td colspan="3" class="empty">No payments for this vendor</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL (${payments.length})</strong></td><td>${fmtINR(totalPayments)}</td></tr></tfoot></table></div>`;
   document.getElementById('vend-ledger-tbl').innerHTML=html;
 }
 async function addVendorPayment(){
