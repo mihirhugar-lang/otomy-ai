@@ -586,9 +586,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   <div class="page-header"><h2>Cash & Bank</h2></div>
   <div id="bank-summary-cards" class="kpi-row"></div>
 
-  <!-- ERP Bank Ledger -->
+  <!-- Bank Book -->
   <div class="card" style="border-top:3px solid #1565c0">
-    <h3 style="color:#1565c0">🏦 ERP Bank Transactions</h3>
+    <h3 style="color:#1565c0">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— all bank/UPI receipts &amp; payments, with opening balance</span></h3>
     <div class="preset-bar no-print">
       <span class="preset-label">Period:</span>
       <button class="pbtn act" onclick="preset('erpbank','today',this)">Today</button>
@@ -604,15 +604,15 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')"> <label>Day:</label><input type="date" id="eb-day" onchange="setDay('erpbank',this.value)">
         <button class="pbtn" onclick="loadErpBank()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Bank Transactions','erp-bank-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Bank Book','erp-bank-tbl')">Print / PDF</button>
     </div>
-    <div class="tbl-wrap" id="erp-bank-tbl"></div>
+    <div class="tbl-wrap" id="erp-bank-tbl" style="max-height:520px;overflow:auto"></div>
     <div id="erp-bank-pager" class="no-print"></div>
   </div>
 
-  <!-- ERP Cash Ledger -->
+  <!-- Cash Book -->
   <div class="card" style="border-top:3px solid #2e7d32">
-    <h3 style="color:#2e7d32">💵 ERP Cash Ledger</h3>
+    <h3 style="color:#2e7d32">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— all cash receipts &amp; payments (incl. site expenses), with opening balance</span></h3>
     <div class="preset-bar no-print">
       <span class="preset-label">Period:</span>
       <button class="pbtn act" onclick="preset('erpcash','today',this)">Today</button>
@@ -628,9 +628,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
         <label>To:</label><input type="date" id="ec-to" onchange="clearPresetBtns('erpcash')"> <label>Day:</label><input type="date" id="ec-day" onchange="setDay('erpcash',this.value)">
         <button class="pbtn" onclick="loadErpCash()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('ERP Cash Ledger','erp-cash-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Cash Book','erp-cash-tbl')">Print / PDF</button>
     </div>
-    <div class="tbl-wrap" id="erp-cash-tbl"></div>
+    <div class="tbl-wrap" id="erp-cash-tbl" style="max-height:520px;overflow:auto"></div>
     <div id="erp-cash-pager" class="no-print"></div>
   </div>
 </div>
@@ -1865,15 +1865,15 @@ function pdfFullTableForId(id){
     const rows=_allData.machines||[];
     return pdfTableBlock('Machine Readings',['Date','Machine','Start Hrs','End Hrs','Run Hrs','Production MT','Fuel L'],rows.map(r=>[r.date,r.machine_name,r.start_hours,r.end_hours,r.running_hours,r.production_mt,r.fuel_liters]));
   }
-  if(id==='erp-bank-tbl'){
-    const rows=sortedRows(_allData.erpbank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)});
-    const totC=_allData.erpbank.reduce((s,r)=>s+_num(r.credit),0),totD=_allData.erpbank.reduce((s,r)=>s+_num(r.debit),0);
-    return pdfTableBlock('ERP Bank Transactions',['Date','Bank','Description','Credit (In)','Debit (Out)'],rows.map(r=>[r.date,r.bank_name||'-',r.description||'-',r.credit>0?fmtINR(r.credit):'-',r.debit>0?fmtINR(r.debit):'-']),[`TOTAL (${_allData.erpbank.length})`,'','',fmtINR(totC),fmtINR(totD)]);
-  }
-  if(id==='erp-cash-tbl'){
-    const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)});
-    const totR=_allData.erpcash.reduce((s,r)=>s+_num(r.received),0),totP=_allData.erpcash.reduce((s,r)=>s+_num(r.paid),0);
-    return pdfTableBlock('ERP Cash Ledger',['Date','Ledger','Description','Received (In)','Paid (Out)','Balance'],rows.map(r=>[r.date,r.ledger||'-',r.description||'-',r.received>0?fmtINR(r.received):'-',r.paid>0?fmtINR(r.paid):'-',r.balance!=null?fmtINR(r.balance):'-']),[`TOTAL (${_allData.erpcash.length})`,'','',fmtINR(totR),fmtINR(totP),'']);
+  if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
+    const channel=id==='erp-cash-tbl'?'cash':'bank';
+    const book=_cashbook[channel];if(!book)return null;
+    const side=book[channel]||{},rows=side.rows||[];
+    const title=channel==='cash'?'Cash Book':'Bank Book';
+    const inL=channel==='cash'?'Cash In':'Bank/UPI In',outL=channel==='cash'?'Cash Out':'Bank/UPI Out';
+    const body=[['(Opening)','Opening Balance','','','',fmtINR(side.opening||0)]];
+    rows.forEach(r=>body.push([r.date,r.particulars||'',r.party||'-',r.in>0?fmtINR(r.in):'-',r.out>0?fmtINR(r.out):'-',fmtINR(r.balance)]));
+    return pdfTableBlock(title,['Date','Particulars','Party',inL,outL,'Balance'],body,['Closing Balance','','',fmtINR(side.total_in||0),fmtINR(side.total_out||0),fmtINR(side.closing||0)]);
   }
   return null;
 }
@@ -3084,57 +3084,68 @@ async function downloadGSTR1(){
 }
 
 // ── ERP Bank Transactions ─────────────────────────────────────────────────────
+// ── Cash Book / Bank Book ─────────────────────────────────────────────────────
+// Built entirely client-side from the SAME archive movement streams + verified anchors the
+// dashboard uses (spot sales, customer payments, ALL expenses incl. cash payments not booked in
+// loctell's cash ledger), so every payment shows and the running balance ties out to the dashboard
+// tiles. Opening balance is carried forward to the chosen from-date. Mirrors localhost's backend.
+const _cashbook={cash:null,bank:null};
+async function _buildCashBook(from,to){
+  const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
+  const [openBal,closeBal,cfg]=await Promise.all([_archiveOperatingBalances(prev),_archiveOperatingBalances(to),_balanceConfig()]);
+  const corrs=(cfg&&cfg.mode_corrections)||null;
+  const anchorsInRange=(((cfg&&cfg.anchors)||[]).map(a=>String(a.date)).filter(d=>d>=from&&d<=to)).sort();
+  const months=await _loadArchiveRange(from,to);
+  const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
+  const spotCash={},spotBank={},rkey=(n,d)=>`${String(n||'').trim().toUpperCase()}|${d}`;
+  saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s.customer_name,s.date);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
+  const cashRows=[],bankRows=[],mk=(d,part,party,inn,out)=>({date:String(d).slice(0,10),particulars:part,party:party||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
+  saleRows.forEach(s=>{const ch=_saleChannels(s),nm=s.customer_name||'Customer';if(ch.cash)cashRows.push(mk(s.date,'Spot sale (cash)',nm,ch.cash,0));if(ch.upi)bankRows.push(mk(s.date,'Spot sale (UPI/Bank)',nm,ch.upi,0));});
+  receipts.forEach(r=>{const amt=_receiptPaymentAmount(r);if(amt<=0)return;const k=rkey(r.customer_name,r.date),nm=r.customer_name||'Customer';
+    if(_payChannel(r.mode)==='cash'){const ov=Math.min(amt,spotCash[k]||0);spotCash[k]=(spotCash[k]||0)-ov;const net=amt-ov;if(net>0.5)cashRows.push(mk(r.date,'Customer payment (cash)',nm,net,0));}
+    else{const ov=Math.min(amt,spotBank[k]||0);spotBank[k]=(spotBank[k]||0)-ov;const net=amt-ov;if(net>0.5)bankRows.push(mk(r.date,'Customer payment (UPI/Bank)',nm,net,0));}});
+  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt));});
+  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||(b.in-a.in);
+  cashRows.sort(bySort);bankRows.sort(bySort);
+  const adjDate=anchorsInRange.length?anchorsInRange[anchorsInRange.length-1]:to;
+  const fin=(rows,opening,closing,channel)=>{
+    let running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
+    const gap=Math.round((closing-running)*100)/100;
+    if(Math.abs(gap)>0.5){
+      rows.push({date:adjDate,particulars:'Verified balance adjustment ('+(channel==='cash'?'physical cash count':'bank statement')+')',party:'',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true});
+      rows.sort((a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?0:1)-(b.adjustment?0:1))||(b.in-a.in));
+      running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
+    }
+    return {opening:Math.round(opening*100)/100,rows,total_in:Math.round(rows.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(rows.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
+  };
+  return {from,to,opening_as_of:prev,
+    cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,'cash'),
+    bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,'bank')};
+}
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
-  try{
-    const rows=await api(`/api/sync/erp/bank?from_date=${from}&to_date=${to}`);
-    _allData.erpbank=rows;_page.erpbank=1;_renderCache.erpbank=()=>renderErpBank();renderErpBank();
-    loadBankSummary();
-  }catch(e){flash(e.message,false);}
+  try{_cashbook.bank=await _buildCashBook(from,to);renderCashBook('bank','erp-bank-tbl','erp-bank-pager');loadBankSummary();}catch(e){flash(e.message,false);}
 }
-// A spot sale's UPI/bank portion appears both as a "Sale" row and (because the payment posts to the
-// customer's ledger) as a "Credit Payment" row for the SAME money. Show it once: drop the Credit Payment
-// row when a same-day "Sale" row exists for the same customer & amount. Display only — balance is separate.
-function _dedupeSpotBank(rows){
-  const cust=d=>{const m=String(d||'').match(/bank\/UPI - (.+?)(?: - Ticket|$)/i);return m?m[1].trim().toUpperCase():'';};
-  const saleKeys=new Set();
-  (rows||[]).forEach(r=>{if((r.source||'')==='Sale')saleKeys.add(cust(r.description)+'|'+String(r.date)+'|'+Math.round(Number(r.credit)||0));});
-  return (rows||[]).filter(r=>(r.source||'')!=='Credit Payment'||!saleKeys.has(cust(r.description)+'|'+String(r.date)+'|'+Math.round(Number(r.credit)||0)));
-}
-function renderErpBank(){
-  applyTableRangeMode('erpbank','erp-bank-tbl');
-  const _bank=_dedupeSpotBank(_allData.erpbank);
-  const rows=sortedRows(_bank,'erpbank',{max_amount:r=>Math.max(r.credit||0,r.debit||0)}),cur=_page.erpbank,size=pageSizeFor('erpbank',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let totC=0,totD=0;_bank.forEach(r=>{totC+=r.credit;totD+=r.debit;});
-  let html='<table><thead><tr>'+thSort('erpbank','date','Date')+thSort('erpbank','bank_name','Bank')+thSort('erpbank','description','Description')+thSort('erpbank','credit','Credit (In)')+thSort('erpbank','debit','Debit (Out)')+'</tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.bank_name||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.credit>0?fmtINR(r.credit):'—'}</td><td style="color:#c62828">${r.debit>0?fmtINR(r.debit):'—'}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="5" class="empty">No bank transactions</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_bank.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totC)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totD)}</strong></td></tr></tfoot></table>`;
-  document.getElementById('erp-bank-tbl').innerHTML=html;
-  document.getElementById('erp-bank-pager').innerHTML=pagerHTML('erpbank',_bank.length);
-}
-
-// ── ERP Cash Ledger ───────────────────────────────────────────────────────────
 async function loadErpCash(){
   const from=document.getElementById('ec-from').value,to=document.getElementById('ec-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
-  try{
-    const rows=await api(`/api/sync/erp/cash?from_date=${from}&to_date=${to}`);
-    _allData.erpcash=rows;_page.erpcash=1;_renderCache.erpcash=()=>renderErpCash();renderErpCash();
-    loadBankSummary();
-  }catch(e){flash(e.message,false);}
+  try{_cashbook.cash=await _buildCashBook(from,to);renderCashBook('cash','erp-cash-tbl','erp-cash-pager');loadBankSummary();}catch(e){flash(e.message,false);}
 }
-function renderErpCash(){
-  applyTableRangeMode('erpcash','erp-cash-tbl');
-  const rows=sortedRows(_allData.erpcash,'erpcash',{max_amount:r=>Math.max(r.received||0,r.paid||0)}),cur=_page.erpcash,size=pageSizeFor('erpcash',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let totR=0,totP=0;_allData.erpcash.forEach(r=>{totR+=r.received;totP+=r.paid;});
-  let html='<table><thead><tr>'+thSort('erpcash','date','Date')+thSort('erpcash','ledger','Ledger')+thSort('erpcash','description','Description')+thSort('erpcash','received','Received (In)')+thSort('erpcash','paid','Paid (Out)')+thSort('erpcash','balance','Balance')+'</tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.ledger||'—'}</td><td>${r.description||'—'}</td><td style="color:#2e7d32">${r.received>0?fmtINR(r.received):'—'}</td><td style="color:#c62828">${r.paid>0?fmtINR(r.paid):'—'}</td><td style="font-weight:600">${r.balance!=null?fmtINR(r.balance):'—'}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="6" class="empty">No cash ledger entries</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.erpcash.length})</strong></td><td style="color:#2e7d32"><strong>${fmtINR(totR)}</strong></td><td style="color:#c62828"><strong>${fmtINR(totP)}</strong></td><td></td></tr></tfoot></table>`;
-  document.getElementById('erp-cash-tbl').innerHTML=html;
-  document.getElementById('erp-cash-pager').innerHTML=pagerHTML('erpcash',_allData.erpcash.length);
+function renderCashBook(channel,tblId,pagerId){
+  const book=_cashbook[channel];if(!book)return;
+  const side=book[channel]||{},rows=side.rows||[];
+  const inLabel=channel==='cash'?'Cash In':'Bank / UPI In',outLabel=channel==='cash'?'Cash Out':'Bank / UPI Out';
+  let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Party / Customer</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
+  html+=`<tr style="background:#eef3ee"><td>${esc(book.opening_as_of||'')}</td><td colspan="2"><strong>Opening Balance</strong></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
+  rows.forEach(r=>{
+    const adj=r.adjustment?' style="background:#fff6e0;font-style:italic"':'';
+    html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.party||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
+  });
+  if(!rows.length)html+='<tr><td colspan="6" class="empty">No movements in this range</td></tr>';
+  html+=`</tbody><tfoot><tr style="background:#eef3ee"><td colspan="3"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
+  document.getElementById(tblId).innerHTML=html;
+  const pager=document.getElementById(pagerId);if(pager)pager.innerHTML='';
 }
 
 
