@@ -17,7 +17,7 @@ SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
-BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-05-31_2026-06-28.json"
+BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 
@@ -228,7 +228,13 @@ def _sale_channels(s):
     return 0.0, 0.0, total
 
 
-def _is_director_payment(*values):
+# Before this date, exclude ONLY genuine director drawings (category "... SIR SHARE"),
+# NOT company expenses a director merely fronted (notes like "KUMAR SIR PAID ..."). From
+# June 2026 onward the prior name-anywhere rule is kept unchanged (already reconciled).
+_DIRECTOR_SHARE_ONLY_BEFORE = "2026-06-01"
+
+
+def _is_director_payment(*values, when=None):
     text = " ".join(str(value or "") for value in values).upper()
     localhost_operating_expense_labels = (
         "CASH GIVEN TO KUMAR SIR",
@@ -237,7 +243,13 @@ def _is_director_payment(*values):
     )
     if any(label in text for label in localhost_operating_expense_labels):
         return False
-    return "PRASHANT" in text or "KUMAR" in text
+    if not ("PRASHANT" in text or "KUMAR" in text):
+        return False
+    # Apr-May 2026 (and earlier): only actual drawings ("... SIR SHARE") count as a
+    # director payment; "KUMAR SIR PAID" company expenses remain operating expenses.
+    if when is not None and str(when) < _DIRECTOR_SHARE_ONLY_BEFORE:
+        return "SHARE" in text
+    return True
 
 def _mode_bucket(raw):
     value = (raw or "").strip()
@@ -1232,17 +1244,17 @@ def build_control(sales, expenses, from_d, to_d,
         sum(
             _num(e.get("amount"))
             for e in expenses
-            if _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"))
+            if _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"), when=e.get("date"))
         )
         + sum(
             _num(row.get("amount"))
             for row in labour
-            if _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"))
+            if _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"), when=row.get("date"))
         )
         + sum(
             _num(row.get("total_amount"))
             for row in parts
-            if _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"))
+            if _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"), when=row.get("date"))
         )
     )
     operating_total_exp = total_exp - director_expense_total
