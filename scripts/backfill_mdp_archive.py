@@ -48,8 +48,13 @@ def main():
     print(f"Backfilling MDP Ton for {len(dates)} unfixed dates "
           f"across {len(payloads)} months...", flush=True)
 
-    def new_sess():
-        return g.erp_auth()
+    def new_sess(retries=6):
+        for a in range(retries):
+            try:
+                return g.erp_auth()
+            except Exception:
+                time.sleep(3 * (a + 1))
+        return None
 
     sess = new_sess()
     updated = 0
@@ -57,11 +62,17 @@ def main():
     for i, d in enumerate(dates, 1):
         dd = date.fromisoformat(d)
         ok = False
-        for attempt in (1, 2):
+        for attempt in (1, 2, 3):
             try:
+                if sess is None:
+                    sess = new_sess()
+                if sess is None:
+                    break
                 sp = g.fetch_sale_splits(sess, dd, dd)
                 if not sp:
-                    raise RuntimeError("empty")
+                    sess = new_sess()
+                    time.sleep(1)
+                    continue
                 for s in by_date[d]:
                     row = sp.get(str(s.get("ticket_no") or ""))
                     if row is not None and "mdp" in row:
@@ -81,7 +92,7 @@ def main():
             sess = new_sess()  # proactive re-auth to beat session expiry
             print(f"  {i}/{len(dates)} dates | {updated} rows updated | "
                   f"{len(failed)} failed", flush=True)
-        time.sleep(0.2)
+        time.sleep(0.8)  # gentle on loctell
 
     # Strip transient back-pointers and write only changed months.
     for mf, payload in payloads.items():
