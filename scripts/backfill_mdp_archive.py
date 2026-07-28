@@ -4,13 +4,18 @@
 Historically each sale's mdp_ton was mistakenly stored equal to qty_mt. The real
 "MDP Ton" is ListSale field 21 (captured by fetch_sale_splits as row["mdp"]). This
 walks every data/archive/YYYY-MM.json, re-fetches the real MDP per date, and updates
-each sale row by ticket_no. Resilient: a per-day ERP failure just leaves those rows
-unchanged. Run inside the sync workflow (R2 pulled in, pushed back out afterward).
+each sale row by ticket_no.
+
+Robust against loctell's short session TTL: re-authenticates every few dates and
+retries a failed date once with a fresh session. Resumable/idempotent — only dates
+whose sales still have mdp_ton == qty_mt (unfixed) are fetched. Run inside the
+workflow (R2 pulled in first, pushed back out after).
 """
 import glob
 import json
 import os
 import sys
+import time
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -18,42 +23,76 @@ import gha_sync as g  # noqa: E402
 
 
 def main():
-    sess = g.erp_auth()
     month_files = sorted(glob.glob(str(g.ARCHIVE_DIR / "20??-??.json")))
-    print(f"Backfilling MDP Ton across {len(month_files)} archive months...", flush=True)
-    grand = 0
+    # Load every month; index sale rows by date, remember which file each came from.
+    payloads = {}          # file -> payload
+    dirty = set()          # files that changed
+    by_date = {}           # 'YYYY-MM-DD' -> list of sale-row dicts
     for mf in month_files:
         try:
             with open(mf) as fh:
-                payload = json.load(fh)
+                payloads[mf] = json.load(fh)
         except Exception as e:
-            print(f"  {os.path.basename(mf)}: read error {e}", flush=True)
+            print(f"  read error {os.path.basename(mf)}: {e}", flush=True)
             continue
-        sales = payload.get("sales") or []
-        dates = sorted(str(s.get("date"))[:10] for s in sales if s.get("date"))
-        if not dates:
-            continue
-        d0, d1 = date.fromisoformat(dates[0]), date.fromisoformat(dates[-1])
-        try:
-            splits = g.fetch_sale_splits(sess, d0, d1)
-        except Exception as e:
-            print(f"  {os.path.basename(mf)}: split fetch failed {e}", flush=True)
-            continue
-        updated = 0
-        for s in sales:
-            row = splits.get(str(s.get("ticket_no") or ""))
-            if row is not None and "mdp" in row:
-                nv = round(g._num(row["mdp"]), 3)
-                if abs(g._num(s.get("mdp_ton")) - nv) > 1e-6:
-                    s["mdp_ton"] = nv
-                    updated += 1
-        if updated:
+        for s in payloads[mf].get("sales") or []:
+            d = str(s.get("date"))[:10]
+            if not d:
+                continue
+            s["_mf"] = mf  # transient back-pointer
+            # only unfixed rows need work (idempotent / resumable)
+            if abs(g._num(s.get("mdp_ton")) - g._num(s.get("qty_mt"))) < 1e-6:
+                by_date.setdefault(d, []).append(s)
+
+    dates = sorted(by_date)
+    print(f"Backfilling MDP Ton for {len(dates)} unfixed dates "
+          f"across {len(payloads)} months...", flush=True)
+
+    def new_sess():
+        return g.erp_auth()
+
+    sess = new_sess()
+    updated = 0
+    failed = []
+    for i, d in enumerate(dates, 1):
+        dd = date.fromisoformat(d)
+        ok = False
+        for attempt in (1, 2):
+            try:
+                sp = g.fetch_sale_splits(sess, dd, dd)
+                if not sp:
+                    raise RuntimeError("empty")
+                for s in by_date[d]:
+                    row = sp.get(str(s.get("ticket_no") or ""))
+                    if row is not None and "mdp" in row:
+                        nv = round(g._num(row["mdp"]), 3)
+                        if abs(g._num(s.get("mdp_ton")) - nv) > 1e-6:
+                            s["mdp_ton"] = nv
+                            dirty.add(s["_mf"])
+                            updated += 1
+                ok = True
+                break
+            except Exception:
+                sess = new_sess()
+                time.sleep(1)
+        if not ok:
+            failed.append(d)
+        if i % 10 == 0:
+            sess = new_sess()  # proactive re-auth to beat session expiry
+            print(f"  {i}/{len(dates)} dates | {updated} rows updated | "
+                  f"{len(failed)} failed", flush=True)
+        time.sleep(0.2)
+
+    # Strip transient back-pointers and write only changed months.
+    for mf, payload in payloads.items():
+        for s in payload.get("sales") or []:
+            s.pop("_mf", None)
+        if mf in dirty:
             with open(mf, "w") as fh:
                 json.dump(payload, fh, default=str, separators=(",", ":"))
-        grand += updated
-        print(f"  {os.path.basename(mf)}: {updated} sales updated "
-              f"({len(splits)} tickets fetched)", flush=True)
-    print(f"DONE: {grand} sale rows updated across {len(month_files)} months", flush=True)
+
+    print(f"DONE: {updated} sale rows updated across {len(dirty)} months; "
+          f"{len(failed)} dates failed: {failed[:10]}", flush=True)
 
 
 if __name__ == "__main__":
