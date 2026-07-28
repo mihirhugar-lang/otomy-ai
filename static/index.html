@@ -1947,7 +1947,7 @@ function pdfFullTableForId(id){
   if(id==='sales-tbl'){
     const rows=sortedRows(_allData.sales,'sales');
     let tot=0,totTransport=0,totmt=0,totmdp=0;
-    _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
+    _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);});
     return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','Mode','Vehicle','Ticket'],rows.map(r=>{
       return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR(_saleTotal(r)),r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
     }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),'','','']);
@@ -2478,7 +2478,7 @@ function renderSales(){
   applyTableRangeMode('sales','sales-tbl');
   const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
-  let tot=0,totTransport=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=(r.mdp_ton||r.qty_mt||0);});
+  let tot=0,totTransport=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);});
   let html='<table class="sales-table"><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
   slice.forEach(r=>{
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
