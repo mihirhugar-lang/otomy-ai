@@ -3092,7 +3092,16 @@ async function downloadGSTR1(){
 const _cashbook={cash:null,bank:null};
 async function _buildCashBook(from,to){
   const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
-  const [openBal,closeBal,cfg]=await Promise.all([_archiveOperatingBalances(prev),_archiveOperatingBalances(to),_balanceConfig()]);
+  // Opening/closing come from the SAME /api/dashboard/control the dashboard tiles use (server
+  // snapshot for standard ranges, client engine otherwise), so the book always ties out to the
+  // dashboard's Cash-in-Office / Bank Balance. Fall back to the client engine if control is absent.
+  const _ctlBal=async(f,t,d)=>{
+    try{const c=await api(`/api/dashboard/control?from_date=${f}&to_date=${t}`);const s=c&&c.summary;
+      if(s&&(s.cash_balance_office!=null||s.bank_balance!=null))return {cash_balance_office:_num(s.cash_balance_office),bank_balance:_num(s.bank_balance)};
+    }catch(e){}
+    return await _archiveOperatingBalances(d);
+  };
+  const [openBal,closeBal,cfg]=await Promise.all([_ctlBal(prev,prev,prev),_ctlBal(from,to,to),_balanceConfig()]);
   const corrs=(cfg&&cfg.mode_corrections)||null;
   const anchorsInRange=(((cfg&&cfg.anchors)||[]).map(a=>String(a.date)).filter(d=>d>=from&&d<=to)).sort();
   const months=await _loadArchiveRange(from,to);
