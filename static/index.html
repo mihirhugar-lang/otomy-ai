@@ -1785,17 +1785,35 @@ function printViaIframe(title, content, className=''){
 function _isStandalonePWA(){
   try{return (window.navigator.standalone===true)||window.matchMedia('(display-mode: standalone)').matches;}catch(e){return false;}
 }
+function _isIOS(){
+  try{return /iPad|iPhone|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}catch(e){return false;}
+}
+// iOS installed app (standalone) can't print in-place. Open the report as a real page (blob URL) so it
+// loads in a Safari view with a Share/Print button, and auto-trigger print there.
+function printViaBlob(title, content, className=''){
+  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+printStyles()+' #print-area{display:block!important}</style></head><body><div id="print-area" class="'+className+'">'+content+'</div><scr'+'ipt>setTimeout(function(){try{window.print();}catch(e){}},600);</scr'+'ipt></body></html>';
+  try{
+    const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+    const w=window.open(url,'_blank');
+    if(!w){flash('Allow pop-ups for this app, then tap Print again.',false);}
+    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
+  }catch(e){try{window.print();}catch(e2){}}
+}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Mobile browser (Safari tab): hidden iframe -> no new tab, dismisses back to the page.
+  // iOS installed app (standalone): print in-place is blocked by iOS -> open in a Safari view & auto-print.
+  if(_isStandalonePWA() && _isIOS()){
+    printViaBlob(title, content, className);
+    return;
+  }
+  // Mobile browser (Safari/Chrome tab): hidden iframe -> no new tab, dismisses back to the page.
   if(isMobilePrint() && !_isStandalonePWA()){
     printViaIframe(title, content, className);
     return;
   }
-  // Desktop AND the installed app (iOS standalone, where iframe/new-window printing is unreliable):
-  // print the current document directly via the @media print rules.
+  // Desktop and Android installed app: print the current document directly via the @media print rules.
   setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
