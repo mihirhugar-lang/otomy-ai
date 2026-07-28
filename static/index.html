@@ -2367,7 +2367,7 @@ function renderControlRoom(data){
       <td>${fmtNum(r.fuel_liters,2)}</td>
     </tr>`).join('')||'<tr><td colspan="4" class="empty">No machine readings in this period</td></tr>';
   let expCashTotal=0,expBankTotal=0;
-  const expenseList=(data.expense_rows||[]).map(r=>{
+  const expenseList=(data.expense_rows||[]).filter(r=>!_isDirectorPayment(r.category,r.description,r.party,r.payment_mode)).map(r=>{
     const amt=Number(r.amount)||0;
     const isCash=_payChannel(r.payment_mode)==='cash';
     if(isCash)expCashTotal+=amt;else expBankTotal+=amt;
@@ -2447,6 +2447,7 @@ function renderControlRoom(data){
           <tr><td colspan="4"><strong>Grand Total (Cash + Bank)</strong></td><td colspan="2" style="text-align:right"><strong>${fmtINR(expGrandTotal)}</strong></td></tr></tfoot>
         </table>
       </div>
+      <div class="metric-note">Director share / drawings (Prashant &amp; Kumar) are excluded — capital withdrawals, not company expenses. Ties to Operating Expenses.</div>
     </div>
     <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
