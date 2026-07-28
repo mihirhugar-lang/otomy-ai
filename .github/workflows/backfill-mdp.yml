@@ -1,6 +1,10 @@
 name: Backfill MDP Ton (one-off)
 on:
   workflow_dispatch:
+  schedule:
+    # One-off overnight run: 19:40 UTC on 28 Jul == 01:10 IST on 29 Jul (loctell off-peak).
+    # Date-pinned so it fires once tonight (next match is a year away). Remove after it runs.
+    - cron: '40 19 28 7 *'
 
 concurrency:
   group: otomy-erp-sync
