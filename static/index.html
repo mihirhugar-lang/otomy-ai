@@ -15,15 +15,16 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 /* Tally-style ledger look (cream paper, blue header, monospace). Revert this block to undo. */
-.tally-ledger{font-family:'Consolas','Menlo','Courier New',monospace;font-size:12.5px;background:#fdfbf0;color:#12233f;border:1px solid #bfa974}
-.tally-ledger th{background:#1f4e79;color:#fff;font-weight:600;font-size:12px;padding:5px 9px;border:1px solid #163a5c}
-.tally-ledger td{padding:3px 9px;border-bottom:1px dotted #d8c9a2;color:#12233f;font-variant-numeric:tabular-nums}
-.tally-ledger tbody tr{background:transparent!important}
-.tally-ledger tbody tr:first-child{background:#f6efd6!important}
-.tally-ledger tbody tr:hover td{background:#f3ead0}
-.tally-ledger tfoot tr{background:#f2e7c9!important}
-.tally-ledger tfoot td{border-top:2px solid #1f4e79;font-weight:700;padding:5px 9px}
-.tally-ledger em{font-style:italic;color:#6b5628}
+.tally-ledger,.cashbook-table{font-family:'Consolas','Menlo','Courier New',monospace;font-size:12.5px;background:#fdfbf0;color:#12233f;border:1px solid #bfa974}
+.tally-ledger th,.cashbook-table th{background:#1f4e79;color:#fff;font-weight:600;font-size:12px;padding:5px 9px;border:1px solid #163a5c;position:sticky;top:0;z-index:1}
+.tally-ledger td,.cashbook-table td{padding:3px 9px;border-bottom:1px dotted #d8c9a2;color:#12233f;font-variant-numeric:tabular-nums}
+.tally-ledger tbody tr,.cashbook-table tbody tr{background:transparent!important}
+.tally-ledger tbody tr:first-child,.cashbook-table tbody tr:first-child{background:#f6efd6!important}
+.tally-ledger tbody tr:hover td,.cashbook-table tbody tr:hover td{background:#f3ead0}
+.tally-ledger tfoot tr,.cashbook-table tfoot tr{background:#f2e7c9!important}
+.tally-ledger tfoot td,.cashbook-table tfoot td{border-top:2px solid #1f4e79;font-weight:700;padding:5px 9px}
+.tally-ledger em,.cashbook-table em{font-style:italic;color:#6b5628}
+.cashbook-title{font-family:'Consolas','Menlo','Courier New',monospace;letter-spacing:.3px}
 :root{
   --ink:#111827;--muted:#667085;--line:#e4e7ec;--panel:#fffaf0;--paper:#fff;
   --nav:#17202a;--nav2:#2b1708;--amber:#d97706;--amber2:#f59e0b;
@@ -2325,21 +2326,10 @@ function renderControlRoom(data){
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
     </div>
-    <div class="card print-section"><h3>Full Expense List</h3><div class="tbl-wrap" style="max-height:460px;overflow:auto"><table class="expense-table"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Party</th><th>Mode</th><th>Amount</th></tr></thead><tbody>${expenseList}</tbody><tfoot><tr><td colspan="6"><strong>Total Expenses</strong></td><td><strong>${fmtINR(expenseTotal)}</strong></td></tr></tfoot></table></div></div>
-    <div class="card print-section">
-      <h3>Machine Hours Summary</h3>
-      <div class="report-table-wrap">
-        <table class="report-table">
-          <thead><tr><th>Machine</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead>
-          <tbody>${machineRows}</tbody>
-        </table>
-      </div>
-    </div>
-    <div class="money-list">
-      <div class="card"><h3>Top Money To Collect</h3><ul class="mini-list">${rec}</ul></div>
-      <div class="card"><h3>Top Money To Pay</h3><ul class="mini-list">${pay}</ul></div>
-    </div>
+    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:460px;overflow:auto"></div></div>
+    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:460px;overflow:auto"></div></div>
   `;
+  renderDashboardCashBooks(data.period.from,data.period.to);
 }
 // ── Sales ──────────────────────────────────────────────────────────────────
 function calcSale(){document.getElementById('s-amt').value=((parseFloat(document.getElementById('s-qty').value)||0)*(parseFloat(document.getElementById('s-rate').value)||0)).toFixed(2);}
@@ -3141,20 +3131,32 @@ async function loadErpCash(){
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
   try{_cashbook.cash=await _buildCashBook(from,to);renderCashBook('cash','erp-cash-tbl','erp-cash-pager');loadBankSummary();}catch(e){flash(e.message,false);}
 }
-function renderCashBook(channel,tblId,pagerId){
-  const book=_cashbook[channel];if(!book)return;
-  const side=book[channel]||{},rows=side.rows||[];
+function _cashBookHTML(book,channel){
+  const side=(book&&book[channel])||{},rows=side.rows||[];
   const inLabel=channel==='cash'?'Cash In':'Bank / UPI In',outLabel=channel==='cash'?'Cash Out':'Bank / UPI Out';
   let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Party / Customer</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
-  html+=`<tr style="background:#eef3ee"><td>${esc(book.opening_as_of||'')}</td><td colspan="2"><strong>Opening Balance</strong></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
+  html+=`<tr style="background:#f6efd6"><td>${esc((book&&book.opening_as_of)||'')}</td><td colspan="2"><em>Opening Balance</em></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
   rows.forEach(r=>{
     const adj=r.adjustment?' style="background:#fff6e0;font-style:italic"':'';
     html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.party||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
   });
   if(!rows.length)html+='<tr><td colspan="6" class="empty">No movements in this range</td></tr>';
-  html+=`</tbody><tfoot><tr style="background:#eef3ee"><td colspan="3"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
-  document.getElementById(tblId).innerHTML=html;
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
+  return html;
+}
+function renderCashBook(channel,tblId,pagerId){
+  document.getElementById(tblId).innerHTML=_cashBookHTML(_cashbook[channel],channel);
   const pager=document.getElementById(pagerId);if(pager)pager.innerHTML='';
+}
+// Dashboard embeds the same Cash Book + Bank Book for the control-room date range (client-built).
+async function renderDashboardCashBooks(from,to){
+  const bb=document.getElementById('dash-bank-book'),cb=document.getElementById('dash-cash-book');
+  if(!bb&&!cb)return;
+  try{
+    const book=await _buildCashBook(from,to);
+    if(bb)bb.innerHTML=_cashBookHTML(book,'bank');
+    if(cb)cb.innerHTML=_cashBookHTML(book,'cash');
+  }catch(e){if(bb)bb.innerHTML='<div class="empty">Cash/Bank book unavailable</div>';}
 }
 
 
