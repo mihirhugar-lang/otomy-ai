@@ -1782,15 +1782,21 @@ function printViaIframe(title, content, className=''){
   iframe.onload=()=>setTimeout(fire,350);
   setTimeout(()=>{if(!done&&cw&&cw.document&&cw.document.readyState!=='loading')fire();},1000);  // Safari doc.write onload fallback
 }
+function _isStandalonePWA(){
+  try{return (window.navigator.standalone===true)||window.matchMedia('(display-mode: standalone)').matches;}catch(e){return false;}
+}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  if(isMobilePrint()){
-    printViaIframe(title, content, className);   // was openMobilePrintPage (new window -> blank page / tab-switch hiccups)
+  // Mobile browser (Safari tab): hidden iframe -> no new tab, dismisses back to the page.
+  if(isMobilePrint() && !_isStandalonePWA()){
+    printViaIframe(title, content, className);
     return;
   }
-  setTimeout(()=>window.print(), 50);
+  // Desktop AND the installed app (iOS standalone, where iframe/new-window printing is unreliable):
+  // print the current document directly via the @media print rules.
+  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
