@@ -2366,17 +2366,22 @@ function renderControlRoom(data){
       <td>${fmtNum(r.production_mt,2)}</td>
       <td>${fmtNum(r.fuel_liters,2)}</td>
     </tr>`).join('')||'<tr><td colspan="4" class="empty">No machine readings in this period</td></tr>';
-  const expenseList=(data.expense_rows||[]).map(r=>`
-    <tr>
+  let expCashTotal=0,expBankTotal=0;
+  const expenseList=(data.expense_rows||[]).map(r=>{
+    const amt=Number(r.amount)||0;
+    const isCash=_payChannel(r.payment_mode)==='cash';
+    if(isCash)expCashTotal+=amt;else expBankTotal+=amt;
+    const particulars=[r.category,r.description].map(v=>String(v||'').trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' — ')||'Expense';
+    return `<tr>
       <td>${esc(r.date)}</td>
-      <td>${esc(r.type)}</td>
-      <td>${esc(r.category)}</td>
-      <td>${esc(r.description)}</td>
+      <td>${esc(particulars)}</td>
       <td>${esc(r.party||'—')}</td>
       <td>${esc(r.payment_mode||'—')}</td>
-      <td>${fmtINR(r.amount)}</td>
-    </tr>
-  `).join('')||'<tr><td colspan="7" class="empty">No expenses in this period</td></tr>';
+      <td style="text-align:right">${isCash?fmtINR(amt):''}</td>
+      <td style="text-align:right">${isCash?'':fmtINR(amt)}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="6" class="empty">No expenses in this period</td></tr>';
+  const expGrandTotal=expCashTotal+expBankTotal;
   const rec=(data.top_receivables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No receivables</strong><span>₹0</span></li>';
   const pay=(data.top_payables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No payables</strong><span>₹0</span></li>';
   document.getElementById('control-room').innerHTML=`
@@ -2431,6 +2436,17 @@ function renderControlRoom(data){
         </table>
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
+    </div>
+    <div class="card print-section">
+      <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3>
+      <div class="tbl-wrap" style="max-height:520px;overflow:auto">
+        <table class="cashbook-table">
+          <thead><tr><th>Date</th><th>Particulars</th><th>Party</th><th>Mode</th><th style="text-align:right">Cash</th><th style="text-align:right">Bank / UPI</th></tr></thead>
+          <tbody>${expenseList}</tbody>
+          <tfoot><tr><td colspan="4"><strong>Total</strong></td><td style="text-align:right"><strong>${fmtINR(expCashTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(expBankTotal)}</strong></td></tr>
+          <tr><td colspan="4"><strong>Grand Total (Cash + Bank)</strong></td><td colspan="2" style="text-align:right"><strong>${fmtINR(expGrandTotal)}</strong></td></tr></tfoot>
+        </table>
+      </div>
     </div>
     <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
