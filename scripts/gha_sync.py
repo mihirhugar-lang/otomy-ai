@@ -2459,9 +2459,13 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today, full_le
         full_entries = full_ledgers.get(_norm_name(name))
         if not full_entries:
             # No fresh fetch this run: reuse the last reconciling snapshot from R2 rather than
-            # overwriting it with the (inflated) archive build.
+            # overwriting it with the (inflated) archive build. Non-seed customer ids are assigned
+            # positionally and can shift between syncs, so VERIFY the cached snapshot at this id still
+            # belongs to THIS customer (by name) before reusing — otherwise a shifted id would graft
+            # another customer's ledger (e.g. a 20mm buyer) onto this one.
             prev = read_snapshot(f"/api/customers/ledger/{cust.get('id')}")
-            if isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries"):
+            if (isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries")
+                    and _norm_name(prev.get("customer_name")) == _norm_name(name)):
                 ledgers[str(cust.get("id"))] = prev
                 continue
         if full_entries:
