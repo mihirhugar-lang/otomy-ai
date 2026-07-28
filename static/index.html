@@ -388,15 +388,15 @@ body{background:#e7dcc0 !important;color:#12233f}
 .topbar-title{font-family:var(--tally-mono);color:#1f4e79;font-weight:700}
 .page-header h2{color:#1f4e79 !important;font-family:var(--tally-mono);font-weight:700}
 .card{background:#fdfbf0 !important;border:1px solid #c9b98f !important;border-radius:5px !important;box-shadow:0 2px 6px rgba(90,70,30,.14) !important}
-.card h3{color:#1f4e79 !important;border-bottom:1px solid #c9b98f !important;font-family:var(--tally-mono) !important;letter-spacing:.3px}
+.card h3{color:#fff !important;background:#1f4e79 !important;border:0 !important;border-radius:4px !important;padding:7px 12px !important;margin:0 0 12px !important;font-family:var(--tally-mono) !important;letter-spacing:.4px;font-size:12px}
 .kpi{background:#fdfbf0 !important;border-radius:5px !important;box-shadow:0 2px 5px rgba(90,70,30,.12) !important}
 .kpi-label{font-family:var(--tally-mono) !important;color:#5b6b7f !important}
 .kpi-value{font-family:var(--tally-mono) !important;letter-spacing:0 !important;color:#12233f}
 .kpi-sub{color:#8a7d5f !important}
 table{font-family:var(--tally-mono) !important;font-variant-numeric:tabular-nums;background:#fdfbf0}
-thead th{background:#1f4e79 !important;background-image:none !important;color:#fff !important;text-transform:uppercase;font-weight:600;border:1px solid #163a5c}
+thead th{background:#1f4e79 !important;background-image:none !important;color:#fff !important;text-transform:uppercase;font-weight:600;border:1px solid #163a5c;padding:5px 10px !important;font-size:11px;letter-spacing:.3px}
 thead th.sortable:hover{background:#163a5c !important}
-tbody td{border-bottom:1px dotted #d8c9a2 !important;color:#12233f}
+tbody td{border-bottom:1px dotted #d8c9a2 !important;color:#12233f;padding:4px 10px !important;line-height:1.4}
 tbody tr{background:transparent}
 tbody tr:nth-child(even){background:#faf5e4}
 tbody tr:hover{background:#f0e6ca !important}
@@ -420,6 +420,13 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .control-panel{background:linear-gradient(135deg,#1f4e79,#14314c) !important;border-radius:6px !important}
 .control-eyebrow,.control-title,.control-metric span,.control-metric strong{font-family:var(--tally-mono)}
 .cash-card{background:#fdfbf0 !important}
+.card{border-color:#b7a271 !important}
+.tbl-wrap,.report-table-wrap{scrollbar-color:#1f4e79 #e7dcc0;scrollbar-width:thin}
+.tbl-wrap::-webkit-scrollbar,.report-table-wrap::-webkit-scrollbar{width:13px;height:13px}
+.tbl-wrap::-webkit-scrollbar-track,.report-table-wrap::-webkit-scrollbar-track{background:#e7dcc0;border-radius:7px}
+.tbl-wrap::-webkit-scrollbar-thumb,.report-table-wrap::-webkit-scrollbar-thumb{background:#1f4e79;border-radius:7px;border:3px solid #e7dcc0}
+.tbl-wrap::-webkit-scrollbar-thumb:hover,.report-table-wrap::-webkit-scrollbar-thumb:hover{background:#163a5c}
+.cashbook-table th,.tally-ledger th{padding:5px 10px !important}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 </head>
@@ -486,7 +493,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
     <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value" id="d-cash">—</div></div>
     <div class="kpi purple"><div class="kpi-label">Credit Sale</div><div class="kpi-value" id="d-credit-sale">—</div></div>
-    <div class="kpi navy"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value" id="d-credit-repay">—</div></div>
+    <div class="kpi navy"><div class="kpi-label">Credit Repayment</div><div class="kpi-value" id="d-credit-repay">—</div></div>
     <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
     <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
   </div>
@@ -2341,7 +2348,7 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Expenses / MT</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
-          <div class="control-metric"><span>Payment Received From Customer</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
+          <div class="control-metric"><span>Credit Repayment</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
           <div class="control-metric glass-green"><span>Selected Period Profit / MT</span><strong>${fmtINR(s.selected_period_profit_per_tonne||0)}</strong></div>
         </div>
       </div>
@@ -2355,7 +2362,7 @@ function renderControlRoom(data){
       </div>
     </div>
     <div class="card print-section">
-      <h3>Payment Received From Customer</h3>
+      <h3>Credit Repayment</h3>
       <div class="report-table-wrap">
         <table class="report-table payment-table">
           <thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Bank / UPI Received</th><th>Cash Received</th><th>Total Received</th><th>Sale Adjusted</th><th>Credit Repayment</th><th>Balance To Pay</th></tr></thead>
@@ -2375,8 +2382,8 @@ function renderControlRoom(data){
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
     </div>
-    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:460px;overflow:auto"></div></div>
-    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:460px;overflow:auto"></div></div>
+    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
   `;
   renderDashboardCashBooks(data.period.from,data.period.to);
 }
@@ -2809,7 +2816,7 @@ async function loadBankSummary(){
     sumDiv.innerHTML=`
       <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
       <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
-      <div class="kpi blue"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Credit repayment on older dues (same-day counts as Spot)</div></div>
+      <div class="kpi blue"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Credit repayment on older dues (same-day counts as Spot)</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
     sumDiv.innerHTML=`<div class="alert-banner alert-red"><strong>Cash & Bank summary error</strong><span>${esc(e.message)}</span></div>`;
@@ -2858,13 +2865,13 @@ function renderLedgerView(data){
     <div class="kpi green"><div class="kpi-label">Spot Sale Cash</div><div class="kpi-value">${fmtINR(t.spot_sale_cash||0)}</div></div>
     <div class="kpi green"><div class="kpi-label">Spot Sale Bank/UPI</div><div class="kpi-value">${fmtINR(t.spot_sale_bank||0)}</div></div>
     <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Payment Received From Customer</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
     <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
   const per=(n,d)=>d?fmtINR(n/d):'—';
-  let html='<table><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Payment Received From Customer</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Expenses / Tonne Sale</th><th>Expenses / Boulder Input</th><th>Profit / Tonne Sale</th><th>Profit / Boulder Input</th></tr></thead><tbody>';
+  let html='<table><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Expenses / Tonne Sale</th><th>Expenses / Boulder Input</th><th>Profit / Tonne Sale</th><th>Profit / Boulder Input</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>

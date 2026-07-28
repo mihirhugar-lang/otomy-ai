@@ -66,7 +66,7 @@ VISIBLE_DASHBOARD_TILES = (
     ("Expenses / MT", "expenses_per_mt"),
     ("Bank Balance", "bank_balance"),
     ("Cash Balance In Office", "cash_balance_office"),
-    ("Payment Received From Customer", "credit_payment_received"),
+    ("Credit Repayment", "credit_payment_received"),
     ("Credit Sales", "credit_sales"),
     ("Receivables", "receivables"),
     ("Payables", "payables"),
