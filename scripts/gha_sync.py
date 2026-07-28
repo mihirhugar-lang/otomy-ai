@@ -2432,6 +2432,25 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
 
 
+def _prev_customer_ledgers_by_name():
+    """Index the previous run's reconciling (source=='erp') customer-ledger snapshots by normalised
+    customer name, so a customer's own full ledger is reused across positional-id shifts. Runs before
+    this sync overwrites any ledger snapshot, so the files on disk are the previous run's (from R2)."""
+    out = {}
+    try:
+        for path in SNAPSHOT_API_DIR.glob("*.json"):
+            try:
+                with open(path) as fh:
+                    j = json.load(fh)
+            except Exception:
+                continue
+            if isinstance(j, dict) and j.get("customer_name") and j.get("source") == "erp" and j.get("entries"):
+                out[_norm_name(j["customer_name"])] = j
+    except Exception:
+        pass
+    return out
+
+
 def build_customer_ledgers(customers_full, all_sales, repayments, today, full_ledgers=None):
     """Per-customer ledger from sales + receipts, linked by NAME (sale customer_id does NOT
     match the customer list id). When a reconciling FULL loctell ledger (sales + receipts incl.
@@ -2439,6 +2458,7 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today, full_le
     it falls back to the archive-based build (whose running balance can be inflated because spot
     receipts are missing). Mirrors localhost's ledger shape."""
     full_ledgers = full_ledgers or {}
+    prev_ledgers_by_name = _prev_customer_ledgers_by_name()
     hist = load_archive_window(LEDGER_HISTORY_START, today)
     sales_src = hist.get("sales") or all_sales or []
     reps_src = hist.get("receipts") or repayments or []
@@ -2458,14 +2478,13 @@ def build_customer_ledgers(customers_full, all_sales, repayments, today, full_le
         # Prefer the FULL reconciling loctell ledger (Sale=Debit, Receipt=Credit incl. spot receipts).
         full_entries = full_ledgers.get(_norm_name(name))
         if not full_entries:
-            # No fresh fetch this run: reuse the last reconciling snapshot from R2 rather than
-            # overwriting it with the (inflated) archive build. Non-seed customer ids are assigned
-            # positionally and can shift between syncs, so VERIFY the cached snapshot at this id still
-            # belongs to THIS customer (by name) before reusing — otherwise a shifted id would graft
-            # another customer's ledger (e.g. a 20mm buyer) onto this one.
-            prev = read_snapshot(f"/api/customers/ledger/{cust.get('id')}")
-            if (isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries")
-                    and _norm_name(prev.get("customer_name")) == _norm_name(name)):
+            # No fresh fetch this run: reuse the customer's OWN last reconciling snapshot rather than
+            # overwriting it with the receipt-sparse archive build. Look it up by NAME (not by the
+            # positional id, which shifts between syncs) — reusing by id would graft another customer's
+            # ledger onto this one (wrong material) or drop to the archive build (missing recent
+            # receipts). Keyed by name, each customer keeps its own full receipt history across id shifts.
+            prev = prev_ledgers_by_name.get(_norm_name(name))
+            if isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries"):
                 ledgers[str(cust.get("id"))] = prev
                 continue
         if full_entries:
