@@ -981,10 +981,10 @@ def _should_fetch_cust_ledgers(today):
     except Exception:
         return False
     minutes = now_ist.hour * 60 + now_ist.minute
-    if not (330 <= minutes <= 420):  # confine the heavy run to 05:30–07:00 IST (low traffic)
+    if not (1290 <= minutes <= 1350):  # confine the heavy run to 21:30–22:30 IST (loctell off-peak)
         return False
     marker = read_snapshot(CUST_LEDGER_MARKER) or {}
-    return marker.get("date") != str(today)
+    return marker.get("date") != str(today) or marker.get("slot") != "night"
 
 
 def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=True):
@@ -3488,7 +3488,10 @@ def main():
         except Exception as e:
             print(f"  full customer ledgers unavailable; using reuse/archive fallback: {e}")
             customer_ledgers_full = {}
-        write_snapshot(CUST_LEDGER_MARKER, {"date": str(today), "count": len(customer_ledgers_full)})
+        # Only mark the daily rebuild as done if it actually returned ledgers — so a loctell timeout
+        # inside the window lets the next sync retry instead of skipping the rebuild for the whole day.
+        if customer_ledgers_full:
+            write_snapshot(CUST_LEDGER_MARKER, {"date": str(today), "slot": "night", "count": len(customer_ledgers_full)})
     else:
         customer_ledgers_full = {}
         print("  customer ledger full-fetch skipped (reusing previous snapshots)")
