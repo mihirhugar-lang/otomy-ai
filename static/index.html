@@ -372,6 +372,55 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .print-ph h1{font-size:14px;font-weight:800;color:#2b2118;margin:0}
   .print-ph p{font-size:8px;color:#555;margin:1px 0 0}
 }
+/* ============================================================
+   TALLY SITE THEME — makes the whole app read like a Tally screen.
+   Colors / fonts / borders only (no layout structure). Delete this
+   block (through END TALLY SITE THEME) to fully revert.
+   ============================================================ */
+:root{--tally-mono:'Consolas','Menlo','DejaVu Sans Mono','Courier New',monospace}
+body{background:#e7dcc0 !important;color:#12233f}
+.sidebar{background:linear-gradient(180deg,#1f4e79,#12314c) !important;box-shadow:8px 0 22px rgba(20,40,60,.25) !important}
+.sidebar-logo span{color:#ffd36b !important}
+.nav-item{font-family:var(--tally-mono)}
+.nav-item.active{background:rgba(255,255,255,.15) !important;border-left-color:#ffd36b !important;color:#fff !important}
+.nav-section{color:rgba(255,255,255,.5) !important}
+.topbar{background:#fdfbf0 !important;border-bottom:1px solid #c9b98f !important;backdrop-filter:none !important}
+.topbar-title{font-family:var(--tally-mono);color:#1f4e79;font-weight:700}
+.page-header h2{color:#1f4e79 !important;font-family:var(--tally-mono);font-weight:700}
+.card{background:#fdfbf0 !important;border:1px solid #c9b98f !important;border-radius:5px !important;box-shadow:0 2px 6px rgba(90,70,30,.14) !important}
+.card h3{color:#1f4e79 !important;border-bottom:1px solid #c9b98f !important;font-family:var(--tally-mono) !important;letter-spacing:.3px}
+.kpi{background:#fdfbf0 !important;border-radius:5px !important;box-shadow:0 2px 5px rgba(90,70,30,.12) !important}
+.kpi-label{font-family:var(--tally-mono) !important;color:#5b6b7f !important}
+.kpi-value{font-family:var(--tally-mono) !important;letter-spacing:0 !important;color:#12233f}
+.kpi-sub{color:#8a7d5f !important}
+table{font-family:var(--tally-mono) !important;font-variant-numeric:tabular-nums;background:#fdfbf0}
+thead th{background:#1f4e79 !important;background-image:none !important;color:#fff !important;text-transform:uppercase;font-weight:600;border:1px solid #163a5c}
+thead th.sortable:hover{background:#163a5c !important}
+tbody td{border-bottom:1px dotted #d8c9a2 !important;color:#12233f}
+tbody tr{background:transparent}
+tbody tr:nth-child(even){background:#faf5e4}
+tbody tr:hover{background:#f0e6ca !important}
+tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;color:#12233f !important;font-weight:700}
+.report-table{border:1px solid #c9b98f !important;background:#fdfbf0 !important;border-radius:5px !important}
+.report-table thead th{background:#1f4e79 !important;background-image:none !important}
+.report-table tbody td{border-bottom:1px dotted #d8c9a2 !important}
+.report-table tbody tr:nth-child(even){background:#faf5e4 !important}
+.report-table tbody tr:hover{background:#f0e6ca !important}
+.report-table tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;color:#12233f !important}
+.badge{border-radius:3px !important;font-family:var(--tally-mono);border:1px solid rgba(20,40,60,.18)}
+.preset-bar{background:#fdfbf0 !important;border:1px solid #c9b98f !important;border-left:4px solid #1f4e79 !important;border-radius:5px !important;box-shadow:0 2px 6px rgba(90,70,30,.10) !important}
+.preset-label{color:#1f4e79 !important;font-family:var(--tally-mono)}
+.pbtn{border-radius:4px !important;font-family:var(--tally-mono);border-color:#c9b98f !important;background:#fffdf5 !important;color:#3a4a5a !important}
+.pbtn:hover{border-color:#1f4e79 !important;color:#1f4e79 !important;background:#eef3f8 !important}
+.pbtn.act{background:#1f4e79 !important;background-image:none !important;color:#fff !important;border-color:#163a5c !important}
+.preset-dates input{border-radius:4px !important;font-family:var(--tally-mono)}
+.fg input,.fg select,.fg textarea{border-radius:4px !important;font-family:var(--tally-mono);border-color:#c9b98f !important;background:#fffdf5 !important}
+.fg label{color:#5b6b7f !important;font-family:var(--tally-mono)}
+.btn{border-radius:4px !important;font-family:var(--tally-mono)}
+.control-panel{background:linear-gradient(135deg,#1f4e79,#14314c) !important;border-radius:6px !important}
+.control-eyebrow,.control-title,.control-metric span,.control-metric strong{font-family:var(--tally-mono)}
+.cash-card{background:#fdfbf0 !important}
+/* ============================================================ END TALLY SITE THEME ============ */
 </style>
 </head>
 <body>
