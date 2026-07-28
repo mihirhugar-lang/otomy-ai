@@ -1763,12 +1763,31 @@ function openMobilePrintPage(title, content, className=''){
   win.document.close();
   return true;
 }
+// Print a section via a hidden iframe — no new window/tab, so it works smoothly inside the installed
+// app (PWA standalone) and in Safari without a blank page or a tab you have to switch back from. The
+// print/share sheet appears over the app and dismisses right back to it.
+function printViaIframe(title, content, className=''){
+  try{const old=document.getElementById('__printFrame');if(old)old.remove();}catch(e){}
+  const iframe=document.createElement('iframe');
+  iframe.id='__printFrame';
+  iframe.setAttribute('aria-hidden','true');
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(iframe);
+  const cw=iframe.contentWindow, doc=cw.document;
+  doc.open();
+  doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+printStyles()+' #print-area{display:block!important}</style></head><body><div id="print-area" class="'+className+'">'+content+'</div></body></html>');
+  doc.close();
+  let done=false;
+  const fire=()=>{if(done)return;done=true;try{cw.focus();cw.print();}catch(e){}setTimeout(()=>{try{iframe.remove();}catch(e){}},2000);};
+  iframe.onload=()=>setTimeout(fire,350);
+  setTimeout(()=>{if(!done&&cw&&cw.document&&cw.document.readyState!=='loading')fire();},1000);  // Safari doc.write onload fallback
+}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
   if(isMobilePrint()){
-    openMobilePrintPage(title, content, className);
+    printViaIframe(title, content, className);   // was openMobilePrintPage (new window -> blank page / tab-switch hiccups)
     return;
   }
   setTimeout(()=>window.print(), 50);
