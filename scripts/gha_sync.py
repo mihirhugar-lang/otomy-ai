@@ -524,6 +524,7 @@ def fetch_sale_splits(sess, from_d, to_d):
                     splits[row[3]] = {
                         "total": _num(row[14]), "pay_type": row[15],
                         "cash": round(_num(row[16]), 2), "credit": round(_num(row[17]), 2), "upi": round(_num(row[18]), 2),
+                        "mdp": round(_num(row[21]), 3),  # real "MDP Ton" column from ListSale
                     }
         except Exception as e:
             print(f"  sale splits {ds}: {e}")
@@ -3148,6 +3149,8 @@ def main():
         _n = 0
         for _s in fresh_sales:
             _sp = _splits.get(str(_s.get("ticket_no") or ""))
+            if _sp is not None and "mdp" in _sp:
+                _s["mdp_ton"] = _sp["mdp"]  # real MDP Ton (differs from sale/net tonnage)
             if _sp and (_sp["cash"] + _sp["credit"] + _sp["upi"]) > 0:
                 _s["cash_amount"] = _sp["cash"]; _s["credit_amount"] = _sp["credit"]; _s["upi_amount"] = _sp["upi"]
                 _n += 1
