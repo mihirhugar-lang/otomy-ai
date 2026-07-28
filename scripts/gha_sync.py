@@ -2432,10 +2432,15 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
 
 
+_PREV_LEDGER_CACHE = None
 def _prev_customer_ledgers_by_name():
     """Index the previous run's reconciling (source=='erp') customer-ledger snapshots by normalised
     customer name, so a customer's own full ledger is reused across positional-id shifts. Runs before
-    this sync overwrites any ledger snapshot, so the files on disk are the previous run's (from R2)."""
+    this sync overwrites any ledger snapshot, so the files on disk are the previous run's (from R2).
+    Memoised per run (snapshots aren't overwritten until the end of the run)."""
+    global _PREV_LEDGER_CACHE
+    if _PREV_LEDGER_CACHE is not None:
+        return _PREV_LEDGER_CACHE
     out = {}
     try:
         for path in SNAPSHOT_API_DIR.glob("*.json"):
@@ -2448,6 +2453,7 @@ def _prev_customer_ledgers_by_name():
                 out[_norm_name(j["customer_name"])] = j
     except Exception:
         pass
+    _PREV_LEDGER_CACHE = out
     return out
 
 
@@ -3495,6 +3501,28 @@ def main():
     else:
         customer_ledgers_full = {}
         print("  customer ledger full-fetch skipped (reusing previous snapshots)")
+    # Incremental refresh EVERY sync: re-fetch the full ledger for any outstanding customer whose
+    # balance changed vs its last snapshot (a fresh sale/repayment, e.g. AYAM paying today), so otomy
+    # reflects it within a sync cycle instead of waiting for the nightly rebuild. Bounded per sync so
+    # it stays light; the nightly full-fetch still catches everything else. This is the permanent fix
+    # for "localhost updated but otomy didn't" — localhost fetches live, this keeps otomy nearly live.
+    try:
+        _prev_led = _prev_customer_ledgers_by_name()
+        def _prev_close(nm):
+            p = _prev_led.get(_norm_name(nm))
+            return _num(p.get("closing_balance")) if isinstance(p, dict) else None
+        changed = [d for d in debtors_today
+                   if d.get("erp_customer_id") and _num(d.get("outstanding")) > 0
+                   and _norm_name(d.get("name")) not in customer_ledgers_full
+                   and (_prev_close(d.get("name")) is None
+                        or abs(_num(d.get("outstanding")) - _prev_close(d.get("name"))) > 0.5)]
+        changed = changed[:30]  # cap per sync; nightly full-fetch covers any overflow
+        if changed:
+            inc = fetch_customer_ledgers_full(sess, changed, CUST_LEDGER_START, today, only_outstanding=False)
+            customer_ledgers_full = {**customer_ledgers_full, **inc}
+            print(f"  {len(inc)} changed-customer ledgers refreshed incrementally")
+    except Exception as e:
+        print(f"  incremental customer-ledger refresh skipped: {e}")
     bank_rows = dedupe_bank_rows(bank_rows)
     bank_net = round(
         sum(_num(r.get("credit")) for r in bank_rows) - sum(_num(r.get("debit")) for r in bank_rows),
