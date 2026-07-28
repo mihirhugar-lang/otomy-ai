@@ -956,9 +956,16 @@ function _saleChannels(r){
 function _saleCreditAmount(r){return _saleChannels(r).credit;}
 function _saleSpotAmount(r){const ch=_saleChannels(r);return ch.cash+ch.upi;}
 function _isDirectorPayment(...values){
+  // Optional trailing {when:'YYYY-MM-DD'} options object enables date-scoping.
+  let when=null;
+  if(values.length&&values[values.length-1]&&typeof values[values.length-1]==='object'){when=values.pop().when;}
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
   if(String(values[0]||'').toUpperCase().includes('DIRECTOR'))return false;
-  return text.includes('PRASHANT')||text.includes('KUMAR');
+  if(!(text.includes('PRASHANT')||text.includes('KUMAR')))return false;
+  // Before June 2026: only genuine drawings ("... SIR SHARE") are director payments;
+  // "KUMAR SIR PAID" company expenses stay operating expenses. June onward unchanged.
+  if(when!=null&&String(when)<'2026-06-01')return text.includes('SHARE');
+  return true;
 }
 function _receiptNoteAmount(notes,key){
   const m=String(notes||'').match(new RegExp(`${key}=([\\d.]+)`));
@@ -1193,9 +1200,9 @@ async function _archiveControl(from,to){
   const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
   const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
   const cashCollected=sales.reduce((s,r)=>s+_saleSpotAmount(r),0);
-  const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes)).reduce((s,r)=>s+_num(r.amount),0);
-  const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes)).reduce((s,r)=>s+_num(r.amount),0);
-  const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes)).reduce((s,r)=>s+_num(r.total_amount),0);
+  const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes,{when:e.date})).reduce((s,r)=>s+_num(r.amount),0);
+  const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes,{when:l.date})).reduce((s,r)=>s+_num(r.amount),0);
+  const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes,{when:p.date})).reduce((s,r)=>s+_num(r.total_amount),0);
   const expensesAdj=expAdj+labourAdj+partsAdj;
   const expensesRaw=expenses.reduce((s,r)=>s+_num(r.amount),0)+labour.reduce((s,r)=>s+_num(r.amount),0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
   const repayments=receipts.map(r=>{
@@ -2540,7 +2547,7 @@ function renderExpTonne(){
   const d=_allData.expTonne||{expenses:[],sales:[],boulders:[]};
   const rawExp=d.expenses||[],sales=d.sales||[],boulders=d.boulders||[];
   // Exclude shareholder drawings (Kumar / Prashant); keep Director 1 & 2 operational expenses
-  const expenses=rawExp.filter(r=>!_isDirectorPayment(r.category,r.description,r.payment_mode,r.notes));
+  const expenses=rawExp.filter(r=>!_isDirectorPayment(r.category,r.description,r.payment_mode,r.notes,{when:r.date}));
   const soldTonne=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
   const boulderTonne=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
   const perT=v=>soldTonne>0?v/soldTonne:0;
