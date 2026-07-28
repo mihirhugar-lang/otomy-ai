@@ -1,0 +1,29 @@
+{
+  "_note": "Downstream balance correction layer. loctell is NEVER edited. BANK = actual ICICI statement running balance (exact); after the statement's end date, bank = last statement balance + bank movements. CASH = latest anchor (physical count) + movements (with mode corrections). Refresh monthly: drop in a new statement file + add a cash anchor.",
+  "bank_statement_file": "bank_statement_icici_2026-04-01_2026-06-28.json",
+  "anchors": [
+    {
+      "date": "2026-03-31",
+      "bank": 535696.9,
+      "cash": 331710.0,
+      "source": "FY2026-27 opening (into 01-Apr): ICICI statement 01-Apr carried-forward bank 535696.9 + physical opening cash 331710 (XL Config B4/B5). Movements from 01-Apr."
+    },
+    {
+      "date": "2026-05-31",
+      "bank": 1398718.32,
+      "cash": 462700.0,
+      "source": "ICICI statement detailStatement_28-6-2026 (row 13) + physical cash count"
+    },
+    {
+      "date": "2026-06-28",
+      "bank": 511431.72,
+      "cash": 488284.0,
+      "source": "ICICI statement detailStatement_28-6-2026 (row 221) + physical cash count (cash re-anchored 2026-07-03 from verified 02-Jul-night count 590560; 28-Jun back-calc = 488284)"
+    }
+  ],
+  "mode_corrections": [
+    { "date_from": "2026-06-01", "date_to": "2026-06-30", "amount": 148500, "contains": "HITACHI", "force": "bank", "note": "KMB loader ACH 10-Jun, mis-tagged cash" },
+    { "date_from": "2026-06-01", "date_to": "2026-06-30", "amount": 100000, "contains": "RAJA RAJESHWARI", "force": "bank", "note": "diesel IMPS 02-Jun, mis-tagged cash" },
+    { "date_from": "2026-06-01", "date_to": "2026-06-30", "amount": 9357, "contains": "VIKAS", "force": "bank", "note": "VIKAS spares IMPS 06-Jun, mis-tagged cash" }
+  ]
+}

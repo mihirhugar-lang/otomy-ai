@@ -1,0 +1,2538 @@
+{
+ "source": "ICICI DetailedStatement.pdf (01-Apr..28-Jul 2026) April-May daily closings + precise May31-Jun28 rows",
+ "account_no": "142605003676",
+ "bank_name": "ICICI Bank 142605003676",
+ "from": "2026-04-01",
+ "to": "2026-06-28",
+ "rows": [
+  {
+   "sr_no": 1,
+   "tran_id": "APR-MAY-2026-04-01",
+   "date": "2026-04-01",
+   "description": "Daily closing (ICICI statement) 2026-04-01",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 27326.9
+  },
+  {
+   "sr_no": 2,
+   "tran_id": "APR-MAY-2026-04-02",
+   "date": "2026-04-02",
+   "description": "Daily closing (ICICI statement) 2026-04-02",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 31404.9
+  },
+  {
+   "sr_no": 3,
+   "tran_id": "APR-MAY-2026-04-03",
+   "date": "2026-04-03",
+   "description": "Daily closing (ICICI statement) 2026-04-03",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 100204.0
+  },
+  {
+   "sr_no": 4,
+   "tran_id": "APR-MAY-2026-04-04",
+   "date": "2026-04-04",
+   "description": "Daily closing (ICICI statement) 2026-04-04",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 209214.0
+  },
+  {
+   "sr_no": 5,
+   "tran_id": "APR-MAY-2026-04-05",
+   "date": "2026-04-05",
+   "description": "Daily closing (ICICI statement) 2026-04-05",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 348025.0
+  },
+  {
+   "sr_no": 6,
+   "tran_id": "APR-MAY-2026-04-06",
+   "date": "2026-04-06",
+   "description": "Daily closing (ICICI statement) 2026-04-06",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 344195.0
+  },
+  {
+   "sr_no": 7,
+   "tran_id": "APR-MAY-2026-04-07",
+   "date": "2026-04-07",
+   "description": "Daily closing (ICICI statement) 2026-04-07",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 553226.0
+  },
+  {
+   "sr_no": 8,
+   "tran_id": "APR-MAY-2026-04-08",
+   "date": "2026-04-08",
+   "description": "Daily closing (ICICI statement) 2026-04-08",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 623426.0
+  },
+  {
+   "sr_no": 9,
+   "tran_id": "APR-MAY-2026-04-09",
+   "date": "2026-04-09",
+   "description": "Daily closing (ICICI statement) 2026-04-09",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 611590.0
+  },
+  {
+   "sr_no": 10,
+   "tran_id": "APR-MAY-2026-04-10",
+   "date": "2026-04-10",
+   "description": "Daily closing (ICICI statement) 2026-04-10",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 792133.0
+  },
+  {
+   "sr_no": 11,
+   "tran_id": "APR-MAY-2026-04-11",
+   "date": "2026-04-11",
+   "description": "Daily closing (ICICI statement) 2026-04-11",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 899931.0
+  },
+  {
+   "sr_no": 12,
+   "tran_id": "APR-MAY-2026-04-12",
+   "date": "2026-04-12",
+   "description": "Daily closing (ICICI statement) 2026-04-12",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 511156.0
+  },
+  {
+   "sr_no": 13,
+   "tran_id": "APR-MAY-2026-04-13",
+   "date": "2026-04-13",
+   "description": "Daily closing (ICICI statement) 2026-04-13",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1153334.0
+  },
+  {
+   "sr_no": 14,
+   "tran_id": "APR-MAY-2026-04-14",
+   "date": "2026-04-14",
+   "description": "Daily closing (ICICI statement) 2026-04-14",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1247174.0
+  },
+  {
+   "sr_no": 15,
+   "tran_id": "APR-MAY-2026-04-15",
+   "date": "2026-04-15",
+   "description": "Daily closing (ICICI statement) 2026-04-15",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1319384.0
+  },
+  {
+   "sr_no": 16,
+   "tran_id": "APR-MAY-2026-04-16",
+   "date": "2026-04-16",
+   "description": "Daily closing (ICICI statement) 2026-04-16",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1411248.0
+  },
+  {
+   "sr_no": 17,
+   "tran_id": "APR-MAY-2026-04-17",
+   "date": "2026-04-17",
+   "description": "Daily closing (ICICI statement) 2026-04-17",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1548721.0
+  },
+  {
+   "sr_no": 18,
+   "tran_id": "APR-MAY-2026-04-18",
+   "date": "2026-04-18",
+   "description": "Daily closing (ICICI statement) 2026-04-18",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 203721.0
+  },
+  {
+   "sr_no": 19,
+   "tran_id": "APR-MAY-2026-04-19",
+   "date": "2026-04-19",
+   "description": "Daily closing (ICICI statement) 2026-04-19",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 203251.0
+  },
+  {
+   "sr_no": 20,
+   "tran_id": "APR-MAY-2026-04-20",
+   "date": "2026-04-20",
+   "description": "Daily closing (ICICI statement) 2026-04-20",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 317231.0
+  },
+  {
+   "sr_no": 21,
+   "tran_id": "APR-MAY-2026-04-21",
+   "date": "2026-04-21",
+   "description": "Daily closing (ICICI statement) 2026-04-21",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 405311.0
+  },
+  {
+   "sr_no": 22,
+   "tran_id": "APR-MAY-2026-04-22",
+   "date": "2026-04-22",
+   "description": "Daily closing (ICICI statement) 2026-04-22",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 537247.0
+  },
+  {
+   "sr_no": 23,
+   "tran_id": "APR-MAY-2026-04-23",
+   "date": "2026-04-23",
+   "description": "Daily closing (ICICI statement) 2026-04-23",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 488855.0
+  },
+  {
+   "sr_no": 24,
+   "tran_id": "APR-MAY-2026-04-24",
+   "date": "2026-04-24",
+   "description": "Daily closing (ICICI statement) 2026-04-24",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 131772.0
+  },
+  {
+   "sr_no": 25,
+   "tran_id": "APR-MAY-2026-04-25",
+   "date": "2026-04-25",
+   "description": "Daily closing (ICICI statement) 2026-04-25",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 119117.0
+  },
+  {
+   "sr_no": 26,
+   "tran_id": "APR-MAY-2026-04-26",
+   "date": "2026-04-26",
+   "description": "Daily closing (ICICI statement) 2026-04-26",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 219637.0
+  },
+  {
+   "sr_no": 27,
+   "tran_id": "APR-MAY-2026-04-27",
+   "date": "2026-04-27",
+   "description": "Daily closing (ICICI statement) 2026-04-27",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 410884.0
+  },
+  {
+   "sr_no": 28,
+   "tran_id": "APR-MAY-2026-04-28",
+   "date": "2026-04-28",
+   "description": "Daily closing (ICICI statement) 2026-04-28",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 590324.0
+  },
+  {
+   "sr_no": 29,
+   "tran_id": "APR-MAY-2026-04-29",
+   "date": "2026-04-29",
+   "description": "Daily closing (ICICI statement) 2026-04-29",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 493431.0
+  },
+  {
+   "sr_no": 30,
+   "tran_id": "APR-MAY-2026-04-30",
+   "date": "2026-04-30",
+   "description": "Daily closing (ICICI statement) 2026-04-30",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 738387.0
+  },
+  {
+   "sr_no": 31,
+   "tran_id": "APR-MAY-2026-05-01",
+   "date": "2026-05-01",
+   "description": "Daily closing (ICICI statement) 2026-05-01",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 827292.0
+  },
+  {
+   "sr_no": 32,
+   "tran_id": "APR-MAY-2026-05-02",
+   "date": "2026-05-02",
+   "description": "Daily closing (ICICI statement) 2026-05-02",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 833372.0
+  },
+  {
+   "sr_no": 33,
+   "tran_id": "APR-MAY-2026-05-03",
+   "date": "2026-05-03",
+   "description": "Daily closing (ICICI statement) 2026-05-03",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 907165.0
+  },
+  {
+   "sr_no": 34,
+   "tran_id": "APR-MAY-2026-05-04",
+   "date": "2026-05-04",
+   "description": "Daily closing (ICICI statement) 2026-05-04",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1244675.0
+  },
+  {
+   "sr_no": 35,
+   "tran_id": "APR-MAY-2026-05-05",
+   "date": "2026-05-05",
+   "description": "Daily closing (ICICI statement) 2026-05-05",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1409060.0
+  },
+  {
+   "sr_no": 36,
+   "tran_id": "APR-MAY-2026-05-06",
+   "date": "2026-05-06",
+   "description": "Daily closing (ICICI statement) 2026-05-06",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1754890.0
+  },
+  {
+   "sr_no": 37,
+   "tran_id": "APR-MAY-2026-05-07",
+   "date": "2026-05-07",
+   "description": "Daily closing (ICICI statement) 2026-05-07",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1926430.0
+  },
+  {
+   "sr_no": 38,
+   "tran_id": "APR-MAY-2026-05-08",
+   "date": "2026-05-08",
+   "description": "Daily closing (ICICI statement) 2026-05-08",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 2135811.0
+  },
+  {
+   "sr_no": 39,
+   "tran_id": "APR-MAY-2026-05-09",
+   "date": "2026-05-09",
+   "description": "Daily closing (ICICI statement) 2026-05-09",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 2097731.0
+  },
+  {
+   "sr_no": 40,
+   "tran_id": "APR-MAY-2026-05-10",
+   "date": "2026-05-10",
+   "description": "Daily closing (ICICI statement) 2026-05-10",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1914461.0
+  },
+  {
+   "sr_no": 41,
+   "tran_id": "APR-MAY-2026-05-11",
+   "date": "2026-05-11",
+   "description": "Daily closing (ICICI statement) 2026-05-11",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 2046259.0
+  },
+  {
+   "sr_no": 42,
+   "tran_id": "APR-MAY-2026-05-12",
+   "date": "2026-05-12",
+   "description": "Daily closing (ICICI statement) 2026-05-12",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4109900.0
+  },
+  {
+   "sr_no": 43,
+   "tran_id": "APR-MAY-2026-05-13",
+   "date": "2026-05-13",
+   "description": "Daily closing (ICICI statement) 2026-05-13",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4405640.0
+  },
+  {
+   "sr_no": 44,
+   "tran_id": "APR-MAY-2026-05-14",
+   "date": "2026-05-14",
+   "description": "Daily closing (ICICI statement) 2026-05-14",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4432385.0
+  },
+  {
+   "sr_no": 45,
+   "tran_id": "APR-MAY-2026-05-15",
+   "date": "2026-05-15",
+   "description": "Daily closing (ICICI statement) 2026-05-15",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4157235.0
+  },
+  {
+   "sr_no": 46,
+   "tran_id": "APR-MAY-2026-05-16",
+   "date": "2026-05-16",
+   "description": "Daily closing (ICICI statement) 2026-05-16",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4197385.0
+  },
+  {
+   "sr_no": 47,
+   "tran_id": "APR-MAY-2026-05-17",
+   "date": "2026-05-17",
+   "description": "Daily closing (ICICI statement) 2026-05-17",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4131970.0
+  },
+  {
+   "sr_no": 48,
+   "tran_id": "APR-MAY-2026-05-18",
+   "date": "2026-05-18",
+   "description": "Daily closing (ICICI statement) 2026-05-18",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 4178315.0
+  },
+  {
+   "sr_no": 49,
+   "tran_id": "APR-MAY-2026-05-19",
+   "date": "2026-05-19",
+   "description": "Daily closing (ICICI statement) 2026-05-19",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 5683731.0
+  },
+  {
+   "sr_no": 50,
+   "tran_id": "APR-MAY-2026-05-20",
+   "date": "2026-05-20",
+   "description": "Daily closing (ICICI statement) 2026-05-20",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 6144580.0
+  },
+  {
+   "sr_no": 51,
+   "tran_id": "APR-MAY-2026-05-21",
+   "date": "2026-05-21",
+   "description": "Daily closing (ICICI statement) 2026-05-21",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 5767852.0
+  },
+  {
+   "sr_no": 52,
+   "tran_id": "APR-MAY-2026-05-22",
+   "date": "2026-05-22",
+   "description": "Daily closing (ICICI statement) 2026-05-22",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 6124372.0
+  },
+  {
+   "sr_no": 53,
+   "tran_id": "APR-MAY-2026-05-23",
+   "date": "2026-05-23",
+   "description": "Daily closing (ICICI statement) 2026-05-23",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 6333522.0
+  },
+  {
+   "sr_no": 54,
+   "tran_id": "APR-MAY-2026-05-24",
+   "date": "2026-05-24",
+   "description": "Daily closing (ICICI statement) 2026-05-24",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 779711.0
+  },
+  {
+   "sr_no": 55,
+   "tran_id": "APR-MAY-2026-05-25",
+   "date": "2026-05-25",
+   "description": "Daily closing (ICICI statement) 2026-05-25",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 475583.0
+  },
+  {
+   "sr_no": 56,
+   "tran_id": "APR-MAY-2026-05-26",
+   "date": "2026-05-26",
+   "description": "Daily closing (ICICI statement) 2026-05-26",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 549033.0
+  },
+  {
+   "sr_no": 57,
+   "tran_id": "APR-MAY-2026-05-27",
+   "date": "2026-05-27",
+   "description": "Daily closing (ICICI statement) 2026-05-27",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 628742.0
+  },
+  {
+   "sr_no": 58,
+   "tran_id": "APR-MAY-2026-05-28",
+   "date": "2026-05-28",
+   "description": "Daily closing (ICICI statement) 2026-05-28",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 626738.0
+  },
+  {
+   "sr_no": 59,
+   "tran_id": "APR-MAY-2026-05-29",
+   "date": "2026-05-29",
+   "description": "Daily closing (ICICI statement) 2026-05-29",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1211033.0
+  },
+  {
+   "sr_no": 60,
+   "tran_id": "APR-MAY-2026-05-30",
+   "date": "2026-05-30",
+   "description": "Daily closing (ICICI statement) 2026-05-30",
+   "debit": 0.0,
+   "credit": 0.0,
+   "balance": 1312278.0
+  },
+  {
+   "sr_no": 1,
+   "tran_id": "S5516435",
+   "date": "2026-05-31",
+   "description": "1    S5516435   31-May-         31-May-2026               UPI/003116939873       NA         17100.00   1329378.32",
+   "debit": 0.0,
+   "credit": 17100.0,
+   "balance": 1329378.32
+  },
+  {
+   "sr_no": 2,
+   "tran_id": "S5513787",
+   "date": "2026-05-31",
+   "description": "2    S5513787   31-May-         31-May-2026               UPI/698202563797       NA         10000.00   1339378.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 1339378.32
+  },
+  {
+   "sr_no": 3,
+   "tran_id": "S5646627",
+   "date": "2026-05-31",
+   "description": "3    S5646627   31-May-         31-May-2026               UPI/902980251307       NA         32500.00   1371878.32",
+   "debit": 0.0,
+   "credit": 32500.0,
+   "balance": 1371878.32
+  },
+  {
+   "sr_no": 4,
+   "tran_id": "S5729793",
+   "date": "2026-05-31",
+   "description": "4    S5729793   31-May-         31-May-2026               UPI/109915738009    16000.00         NA      1355878.32",
+   "debit": 16000.0,
+   "credit": 0.0,
+   "balance": 1355878.32
+  },
+  {
+   "sr_no": 5,
+   "tran_id": "S5734490",
+   "date": "2026-05-31",
+   "description": "5    S5734490   31-May-         31-May-2026               UPI/109915741241    16000.00         NA      1339878.32",
+   "debit": 16000.0,
+   "credit": 0.0,
+   "balance": 1339878.32
+  },
+  {
+   "sr_no": 6,
+   "tran_id": "S5725897",
+   "date": "2026-05-31",
+   "description": "6    S5725897   31-May-         31-May-2026               UPI/109915745075    16000.00         NA      1323878.32",
+   "debit": 16000.0,
+   "credit": 0.0,
+   "balance": 1323878.32
+  },
+  {
+   "sr_no": 7,
+   "tran_id": "S5740989",
+   "date": "2026-05-31",
+   "description": "7    S5740989   31-May-         31-May-2026               UPI/109915748102     870.00          NA      1323008.32",
+   "debit": 870.0,
+   "credit": 0.0,
+   "balance": 1323008.32
+  },
+  {
+   "sr_no": 8,
+   "tran_id": "S5871755",
+   "date": "2026-05-31",
+   "description": "8    S5871755   31-May-         31-May-2026               UPI/878564339828       NA         7000.00    1330008.32",
+   "debit": 0.0,
+   "credit": 7000.0,
+   "balance": 1330008.32
+  },
+  {
+   "sr_no": 9,
+   "tran_id": "S5988409",
+   "date": "2026-05-31",
+   "description": "9    S5988409   31-May-         31-May-2026               UPI/172475141138       NA         25000.00   1355008.32",
+   "debit": 0.0,
+   "credit": 25000.0,
+   "balance": 1355008.32
+  },
+  {
+   "sr_no": 10,
+   "tran_id": "S5992303",
+   "date": "2026-05-31",
+   "description": "10   S5992303   31-May-         31-May-2026               UPI/576361634241       NA         3040.00    1358048.32",
+   "debit": 0.0,
+   "credit": 3040.0,
+   "balance": 1358048.32
+  },
+  {
+   "sr_no": 11,
+   "tran_id": "S6051279",
+   "date": "2026-05-31",
+   "description": "11   S6051279    31-May-      31-May-2026   UPI/792276020641      NA      12125.00   1370173.32",
+   "debit": 0.0,
+   "credit": 12125.0,
+   "balance": 1370173.32
+  },
+  {
+   "sr_no": 12,
+   "tran_id": "S6057092",
+   "date": "2026-05-31",
+   "description": "12   S6057092    31-May-      31-May-2026   UPI/601645217411      NA      12525.00   1382698.32",
+   "debit": 0.0,
+   "credit": 12525.0,
+   "balance": 1382698.32
+  },
+  {
+   "sr_no": 13,
+   "tran_id": "S6058517",
+   "date": "2026-05-31",
+   "description": "13   S6058517    31-May-      31-May-2026   UPI/944644136620      NA      16020.00   1398718.32",
+   "debit": 0.0,
+   "credit": 16020.0,
+   "balance": 1398718.32
+  },
+  {
+   "sr_no": 14,
+   "tran_id": "S6104719",
+   "date": "2026-06-01",
+   "description": "14   S6104719   01-Jun-2026   01-Jun-2026   UPI/905895798573      NA      13460.00   1412178.32",
+   "debit": 0.0,
+   "credit": 13460.0,
+   "balance": 1412178.32
+  },
+  {
+   "sr_no": 15,
+   "tran_id": "S6227321",
+   "date": "2026-06-01",
+   "description": "15   S6227321   01-Jun-2026   01-Jun-2026   UPI/043317902972      NA      14680.00   1426858.32",
+   "debit": 0.0,
+   "credit": 14680.0,
+   "balance": 1426858.32
+  },
+  {
+   "sr_no": 16,
+   "tran_id": "S6420277",
+   "date": "2026-06-01",
+   "description": "16   S6420277   01-Jun-2026   01-Jun-2026   UPI/623885979460      NA      21590.00   1448448.32",
+   "debit": 0.0,
+   "credit": 21590.0,
+   "balance": 1448448.32
+  },
+  {
+   "sr_no": 17,
+   "tran_id": "S6445642",
+   "date": "2026-06-01",
+   "description": "17   S6445642   01-Jun-2026   01-Jun-2026   UPI/342668736482      NA      7245.00    1455693.32",
+   "debit": 0.0,
+   "credit": 7245.0,
+   "balance": 1455693.32
+  },
+  {
+   "sr_no": 18,
+   "tran_id": "S6483911",
+   "date": "2026-06-01",
+   "description": "18   S6483911   01-Jun-2026   01-Jun-2026   UPI/889547923058      NA      14520.00   1470213.32",
+   "debit": 0.0,
+   "credit": 14520.0,
+   "balance": 1470213.32
+  },
+  {
+   "sr_no": 19,
+   "tran_id": "S6503462",
+   "date": "2026-06-01",
+   "description": "19   S6503462   01-Jun-2026   01-Jun-2026   UPI/341982633493      NA      13040.00   1483253.32",
+   "debit": 0.0,
+   "credit": 13040.0,
+   "balance": 1483253.32
+  },
+  {
+   "sr_no": 20,
+   "tran_id": "S6586206",
+   "date": "2026-06-01",
+   "description": "20   S6586206   01-Jun-2026   01-Jun-2026   UPI/686911168729      NA      14625.00   1497878.32",
+   "debit": 0.0,
+   "credit": 14625.0,
+   "balance": 1497878.32
+  },
+  {
+   "sr_no": 21,
+   "tran_id": "S6633073",
+   "date": "2026-06-01",
+   "description": "21   S6633073   01-Jun-2026   01-Jun-2026   UPI/651874321417      NA      17840.00   1515718.32",
+   "debit": 0.0,
+   "credit": 17840.0,
+   "balance": 1515718.32
+  },
+  {
+   "sr_no": 22,
+   "tran_id": "S6690906",
+   "date": "2026-06-01",
+   "description": "22   S6690906   01-Jun-2026   01-Jun-2026   UPI/419969925093      NA      12800.00   1528518.32",
+   "debit": 0.0,
+   "credit": 12800.0,
+   "balance": 1528518.32
+  },
+  {
+   "sr_no": 23,
+   "tran_id": "S6710467",
+   "date": "2026-06-01",
+   "description": "23   S6710467   01-Jun-2026   01-Jun-2026   UPI/555789975126      NA      14092.00   1542610.32",
+   "debit": 0.0,
+   "credit": 14092.0,
+   "balance": 1542610.32
+  },
+  {
+   "sr_no": 24,
+   "tran_id": "S6735436",
+   "date": "2026-06-01",
+   "description": "24   S6735436   01-Jun-2026   01-Jun-2026   MMT/IMPS/615213 200000.00       NA       1342610.32",
+   "debit": 200000.0,
+   "credit": 0.0,
+   "balance": 1342610.32
+  },
+  {
+   "sr_no": 25,
+   "tran_id": "M333193",
+   "date": "2026-06-01",
+   "description": "25   M333193    01-Jun-2026   01-Jun-2026    TRFR FROM: SBS       NA      78000.00   1420610.32",
+   "debit": 0.0,
+   "credit": 78000.0,
+   "balance": 1420610.32
+  },
+  {
+   "sr_no": 26,
+   "tran_id": "S6794974",
+   "date": "2026-06-01",
+   "description": "26   S6794974   01-Jun-2026   01-Jun-2026   UPI/585676407254      NA       150.00    1420760.32",
+   "debit": 0.0,
+   "credit": 150.0,
+   "balance": 1420760.32
+  },
+  {
+   "sr_no": 27,
+   "tran_id": "S6928898",
+   "date": "2026-06-01",
+   "description": "27   S6928898   01-Jun-2026   01-Jun-2026   UPI/582418306457      NA      40000.00   1460760.32",
+   "debit": 0.0,
+   "credit": 40000.0,
+   "balance": 1460760.32
+  },
+  {
+   "sr_no": 28,
+   "tran_id": "S6919362",
+   "date": "2026-06-01",
+   "description": "28   S6919362   01-Jun-2026   01-Jun-2026   UPI/651885360260      NA      10000.00   1470760.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 1470760.32
+  },
+  {
+   "sr_no": 29,
+   "tran_id": "S6930495",
+   "date": "2026-06-01",
+   "description": "29   S6930495   01-Jun-2026   01-Jun-2026   UPI/253696852524      NA      20450.00   1491210.32",
+   "debit": 0.0,
+   "credit": 20450.0,
+   "balance": 1491210.32
+  },
+  {
+   "sr_no": 30,
+   "tran_id": "S7026139",
+   "date": "2026-06-01",
+   "description": "30   S7026139   01-Jun-2026   01-Jun-2026   UPI/109924640070    9800.00     NA       1481410.32",
+   "debit": 9800.0,
+   "credit": 0.0,
+   "balance": 1481410.32
+  },
+  {
+   "sr_no": 31,
+   "tran_id": "S7154062",
+   "date": "2026-06-01",
+   "description": "31   S7154062   01-Jun-2026   01-Jun-2026   UPI/072119204802    NA      25000.00   1506410.32",
+   "debit": 0.0,
+   "credit": 25000.0,
+   "balance": 1506410.32
+  },
+  {
+   "sr_no": 32,
+   "tran_id": "S7647016",
+   "date": "2026-06-02",
+   "description": "32   S7647016   02-Jun-2026   02-Jun-2026   UPI/615311096846    NA      15000.00   1521410.32",
+   "debit": 0.0,
+   "credit": 15000.0,
+   "balance": 1521410.32
+  },
+  {
+   "sr_no": 33,
+   "tran_id": "S7643184",
+   "date": "2026-06-02",
+   "description": "33   S7643184   02-Jun-2026   02-Jun-2026   UPI/839816494060    NA      14920.00   1536330.32",
+   "debit": 0.0,
+   "credit": 14920.0,
+   "balance": 1536330.32
+  },
+  {
+   "sr_no": 34,
+   "tran_id": "S7647289",
+   "date": "2026-06-02",
+   "description": "34   S7647289   02-Jun-2026   02-Jun-2026   UPI/465489768520    NA       470.00    1536800.32",
+   "debit": 0.0,
+   "credit": 470.0,
+   "balance": 1536800.32
+  },
+  {
+   "sr_no": 35,
+   "tran_id": "S7756103",
+   "date": "2026-06-02",
+   "description": "35   S7756103   02-Jun-2026   02-Jun-2026   MMT/IMPS/615310 100000.00     NA       1436800.32",
+   "debit": 100000.0,
+   "credit": 0.0,
+   "balance": 1436800.32
+  },
+  {
+   "sr_no": 36,
+   "tran_id": "S8096169",
+   "date": "2026-06-02",
+   "description": "36   S8096169   02-Jun-2026   02-Jun-2026   UPI/627640458647    NA      19000.00   1455800.32",
+   "debit": 0.0,
+   "credit": 19000.0,
+   "balance": 1455800.32
+  },
+  {
+   "sr_no": 37,
+   "tran_id": "S8103548",
+   "date": "2026-06-02",
+   "description": "37   S8103548   02-Jun-2026   02-Jun-2026   UPI/036327921589    NA       150.00    1455950.32",
+   "debit": 0.0,
+   "credit": 150.0,
+   "balance": 1455950.32
+  },
+  {
+   "sr_no": 38,
+   "tran_id": "S8112568",
+   "date": "2026-06-02",
+   "description": "38   S8112568   02-Jun-2026   02-Jun-2026   UPI/008925860716    NA      19800.00   1475750.32",
+   "debit": 0.0,
+   "credit": 19800.0,
+   "balance": 1475750.32
+  },
+  {
+   "sr_no": 39,
+   "tran_id": "S8159443",
+   "date": "2026-06-02",
+   "description": "39   S8159443   02-Jun-2026   02-Jun-2026   UPI/972365620062    NA      19710.00   1495460.32",
+   "debit": 0.0,
+   "credit": 19710.0,
+   "balance": 1495460.32
+  },
+  {
+   "sr_no": 40,
+   "tran_id": "S8203368",
+   "date": "2026-06-02",
+   "description": "40   S8203368   02-Jun-2026   02-Jun-2026   UPI/390923635707    NA      9000.00    1504460.32",
+   "debit": 0.0,
+   "credit": 9000.0,
+   "balance": 1504460.32
+  },
+  {
+   "sr_no": 41,
+   "tran_id": "S8338434",
+   "date": "2026-06-02",
+   "description": "41   S8338434   02-Jun-2026   02-Jun-2026   UPI/192175003142    NA      13490.00   1517950.32",
+   "debit": 0.0,
+   "credit": 13490.0,
+   "balance": 1517950.32
+  },
+  {
+   "sr_no": 42,
+   "tran_id": "S8337939",
+   "date": "2026-06-02",
+   "description": "42   S8337939   02-Jun-2026   02-Jun-2026   UPI/898427702585    NA      37500.00   1555450.32",
+   "debit": 0.0,
+   "credit": 37500.0,
+   "balance": 1555450.32
+  },
+  {
+   "sr_no": 43,
+   "tran_id": "S8347474",
+   "date": "2026-06-02",
+   "description": "43   S8347474   02-Jun-2026   02-Jun-2026   UPI/615360457525    NA      12500.00   1567950.32",
+   "debit": 0.0,
+   "credit": 12500.0,
+   "balance": 1567950.32
+  },
+  {
+   "sr_no": 44,
+   "tran_id": "S8658334",
+   "date": "2026-06-03",
+   "description": "44   S8658334   03-Jun-2026   03-Jun-2026   UPI/598511541362    NA      1488.00    1569438.32",
+   "debit": 0.0,
+   "credit": 1488.0,
+   "balance": 1569438.32
+  },
+  {
+   "sr_no": 45,
+   "tran_id": "S8656859",
+   "date": "2026-06-03",
+   "description": "45   S8656859   03-Jun-2026   03-Jun-2026   UPI/127259741211    NA      13000.00   1582438.32",
+   "debit": 0.0,
+   "credit": 13000.0,
+   "balance": 1582438.32
+  },
+  {
+   "sr_no": 46,
+   "tran_id": "S8716890",
+   "date": "2026-06-03",
+   "description": "46   S8716890   03-Jun-2026   03-Jun-2026   UPI/486581300848    NA      13950.00   1596388.32",
+   "debit": 0.0,
+   "credit": 13950.0,
+   "balance": 1596388.32
+  },
+  {
+   "sr_no": 47,
+   "tran_id": "S8747118",
+   "date": "2026-06-03",
+   "description": "47   S8747118   03-Jun-2026   03-Jun-2026   UPI/615401034775    NA      17750.00   1614138.32",
+   "debit": 0.0,
+   "credit": 17750.0,
+   "balance": 1614138.32
+  },
+  {
+   "sr_no": 48,
+   "tran_id": "S8752474",
+   "date": "2026-06-03",
+   "description": "48   S8752474   03-Jun-2026   03-Jun-2026   UPI/142338893981    NA      2775.00    1616913.32",
+   "debit": 0.0,
+   "credit": 2775.0,
+   "balance": 1616913.32
+  },
+  {
+   "sr_no": 49,
+   "tran_id": "S9208560",
+   "date": "2026-06-03",
+   "description": "49   S9208560   03-Jun-2026   03-Jun-2026   UPI/859096801647    NA      10390.00   1627303.32",
+   "debit": 0.0,
+   "credit": 10390.0,
+   "balance": 1627303.32
+  },
+  {
+   "sr_no": 50,
+   "tran_id": "S9244081",
+   "date": "2026-06-03",
+   "description": "50   S9244081   03-Jun-2026   03-Jun-2026   MMT/IMPS/615462         NA       18115.00   1645418.32",
+   "debit": 0.0,
+   "credit": 18115.0,
+   "balance": 1645418.32
+  },
+  {
+   "sr_no": 51,
+   "tran_id": "S9391768",
+   "date": "2026-06-03",
+   "description": "51   S9391768   03-Jun-2026   03-Jun-2026   MMT/IMPS/615462         NA       70000.00   1715418.32",
+   "debit": 0.0,
+   "credit": 70000.0,
+   "balance": 1715418.32
+  },
+  {
+   "sr_no": 52,
+   "tran_id": "S9529171",
+   "date": "2026-06-03",
+   "description": "52   S9529171   03-Jun-2026   03-Jun-2026   UPI/876689692996        NA       10000.00   1725418.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 1725418.32
+  },
+  {
+   "sr_no": 53,
+   "tran_id": "S9786205",
+   "date": "2026-06-04",
+   "description": "53   S9786205   04-Jun-2026   04-Jun-2026   UPI/519957011762        NA       2000.00    1727418.32",
+   "debit": 0.0,
+   "credit": 2000.0,
+   "balance": 1727418.32
+  },
+  {
+   "sr_no": 54,
+   "tran_id": "S9799016",
+   "date": "2026-06-04",
+   "description": "54   S9799016   04-Jun-2026   04-Jun-2026   UPI/699854448265        NA       13770.00   1741188.32",
+   "debit": 0.0,
+   "credit": 13770.0,
+   "balance": 1741188.32
+  },
+  {
+   "sr_no": 55,
+   "tran_id": "S9910611",
+   "date": "2026-06-04",
+   "description": "55   S9910611   04-Jun-2026   04-Jun-2026   UPI/615581054998        NA       13100.00   1754288.32",
+   "debit": 0.0,
+   "credit": 13100.0,
+   "balance": 1754288.32
+  },
+  {
+   "sr_no": 56,
+   "tran_id": "S16260",
+   "date": "2026-06-04",
+   "description": "56    S16260    04-Jun-2026   04-Jun-2026   UPI/053234810268        NA       14280.00   1768568.32",
+   "debit": 0.0,
+   "credit": 14280.0,
+   "balance": 1768568.32
+  },
+  {
+   "sr_no": 57,
+   "tran_id": "S102641",
+   "date": "2026-06-04",
+   "description": "57   S102641    04-Jun-2026   04-Jun-2026   UPI/665194553655        NA       29000.00   1797568.32",
+   "debit": 0.0,
+   "credit": 29000.0,
+   "balance": 1797568.32
+  },
+  {
+   "sr_no": 58,
+   "tran_id": "S108767",
+   "date": "2026-06-04",
+   "description": "58   S108767    04-Jun-2026   04-Jun-2026   UPI/652107462440        NA       21000.00   1818568.32",
+   "debit": 0.0,
+   "credit": 21000.0,
+   "balance": 1818568.32
+  },
+  {
+   "sr_no": 59,
+   "tran_id": "S130391",
+   "date": "2026-06-04",
+   "description": "59   S130391    04-Jun-2026   04-Jun-2026   UPI/114571513781        NA       14130.00   1832698.32",
+   "debit": 0.0,
+   "credit": 14130.0,
+   "balance": 1832698.32
+  },
+  {
+   "sr_no": 60,
+   "tran_id": "S154248",
+   "date": "2026-06-04",
+   "description": "60   S154248    04-Jun-2026   04-Jun-2026   MMT/IMPS/615512       50000.00     NA       1782698.32",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 1782698.32
+  },
+  {
+   "sr_no": 61,
+   "tran_id": "S197101",
+   "date": "2026-06-04",
+   "description": "61   S197101    04-Jun-2026   04-Jun-2026   UPI/099870883590        NA       20400.00   1803098.32",
+   "debit": 0.0,
+   "credit": 20400.0,
+   "balance": 1803098.32
+  },
+  {
+   "sr_no": 62,
+   "tran_id": "S183531",
+   "date": "2026-06-04",
+   "description": "62   S183531    04-Jun-2026   04-Jun-2026   UPI/113033115308        NA       18900.00   1821998.32",
+   "debit": 0.0,
+   "credit": 18900.0,
+   "balance": 1821998.32
+  },
+  {
+   "sr_no": 63,
+   "tran_id": "S265520",
+   "date": "2026-06-04",
+   "description": "63   S265520    04-Jun-2026   04-Jun-2026   UPI/590302235273        NA       20600.00   1842598.32",
+   "debit": 0.0,
+   "credit": 20600.0,
+   "balance": 1842598.32
+  },
+  {
+   "sr_no": 64,
+   "tran_id": "S294565",
+   "date": "2026-06-04",
+   "description": "64   S294565    04-Jun-2026   04-Jun-2026   UPI/859564540518        NA       13890.00   1856488.32",
+   "debit": 0.0,
+   "credit": 13890.0,
+   "balance": 1856488.32
+  },
+  {
+   "sr_no": 65,
+   "tran_id": "S298639",
+   "date": "2026-06-04",
+   "description": "65   S298639    04-Jun-2026   04-Jun-2026   UPI/981889543536        NA       19181.00   1875669.32",
+   "debit": 0.0,
+   "credit": 19181.0,
+   "balance": 1875669.32
+  },
+  {
+   "sr_no": 66,
+   "tran_id": "S396789",
+   "date": "2026-06-04",
+   "description": "66   S396789    04-Jun-2026   04-Jun-2026   UPI/061846359297        NA       21390.00   1897059.32",
+   "debit": 0.0,
+   "credit": 21390.0,
+   "balance": 1897059.32
+  },
+  {
+   "sr_no": 67,
+   "tran_id": "S662156",
+   "date": "2026-06-04",
+   "description": "67   S662156    04-Jun-2026   04-Jun-2026   UPI/617693767179        NA       14000.00   1911059.32",
+   "debit": 0.0,
+   "credit": 14000.0,
+   "balance": 1911059.32
+  },
+  {
+   "sr_no": 68,
+   "tran_id": "S707434",
+   "date": "2026-06-04",
+   "description": "68   S707434    04-Jun-2026   04-Jun-2026   UPI/668074006165        NA       11400.00   1922459.32",
+   "debit": 0.0,
+   "credit": 11400.0,
+   "balance": 1922459.32
+  },
+  {
+   "sr_no": 69,
+   "tran_id": "S1443748",
+   "date": "2026-06-05",
+   "description": "69   S1443748   05-Jun-2026   05-Jun-2026   UPI/635995582272        NA        800.00    1923259.32",
+   "debit": 0.0,
+   "credit": 800.0,
+   "balance": 1923259.32
+  },
+  {
+   "sr_no": 70,
+   "tran_id": "S1703059",
+   "date": "2026-06-05",
+   "description": "70   S1703059   05-Jun-2026   05-Jun-2026   UPI/319747729374        NA       30000.00   1953259.32",
+   "debit": 0.0,
+   "credit": 30000.0,
+   "balance": 1953259.32
+  },
+  {
+   "sr_no": 71,
+   "tran_id": "S1959318",
+   "date": "2026-06-05",
+   "description": "71   S1959318   05-Jun-2026   05-Jun-2026   UPI/302254956157        NA       12800.00   1966059.32",
+   "debit": 0.0,
+   "credit": 12800.0,
+   "balance": 1966059.32
+  },
+  {
+   "sr_no": 72,
+   "tran_id": "S2039437",
+   "date": "2026-06-05",
+   "description": "72   S2039437   05-Jun-2026   05-Jun-2026   UPI/510841475150        NA       6000.00    1972059.32",
+   "debit": 0.0,
+   "credit": 6000.0,
+   "balance": 1972059.32
+  },
+  {
+   "sr_no": 73,
+   "tran_id": "S2059587",
+   "date": "2026-06-05",
+   "description": "73   S2059587   05-Jun-2026   05-Jun-2026   UPI/375720888797        NA       10800.00   1982859.32",
+   "debit": 0.0,
+   "credit": 10800.0,
+   "balance": 1982859.32
+  },
+  {
+   "sr_no": 74,
+   "tran_id": "S2117281",
+   "date": "2026-06-05",
+   "description": "74   S2117281   05-Jun-2026   05-Jun-2026   UPI/701013490685        NA       28000.00   2010859.32",
+   "debit": 0.0,
+   "credit": 28000.0,
+   "balance": 2010859.32
+  },
+  {
+   "sr_no": 75,
+   "tran_id": "S2208940",
+   "date": "2026-06-05",
+   "description": "75   S2208940   05-Jun-2026   05-Jun-2026   UPI/363882481969        NA       12270.00   2023129.32",
+   "debit": 0.0,
+   "credit": 12270.0,
+   "balance": 2023129.32
+  },
+  {
+   "sr_no": 76,
+   "tran_id": "S2242776",
+   "date": "2026-06-05",
+   "description": "76   S2242776   05-Jun-2026   05-Jun-2026   MMT/IMPS/615621       60000.00     NA       1963129.32",
+   "debit": 60000.0,
+   "credit": 0.0,
+   "balance": 1963129.32
+  },
+  {
+   "sr_no": 77,
+   "tran_id": "S2313231",
+   "date": "2026-06-05",
+   "description": "77   S2313231   05-Jun-2026   05-Jun-2026   UPI/522574880147        NA       16325.00   1979454.32",
+   "debit": 0.0,
+   "credit": 16325.0,
+   "balance": 1979454.32
+  },
+  {
+   "sr_no": 78,
+   "tran_id": "S2307141",
+   "date": "2026-06-05",
+   "description": "78   S2307141   05-Jun-2026   05-Jun-2026   UPI/810541869993        NA       15080.00   1994534.32",
+   "debit": 0.0,
+   "credit": 15080.0,
+   "balance": 1994534.32
+  },
+  {
+   "sr_no": 79,
+   "tran_id": "S2340999",
+   "date": "2026-06-06",
+   "description": "79   S2340999   06-Jun-2026   06-Jun-2026   UPI/748296878913        NA       11000.00   2005534.32",
+   "debit": 0.0,
+   "credit": 11000.0,
+   "balance": 2005534.32
+  },
+  {
+   "sr_no": 80,
+   "tran_id": "S2350206",
+   "date": "2026-06-06",
+   "description": "80   S2350206   06-Jun-2026   06-Jun-2026   UPI/382780639809        NA       14630.00   2020164.32",
+   "debit": 0.0,
+   "credit": 14630.0,
+   "balance": 2020164.32
+  },
+  {
+   "sr_no": 81,
+   "tran_id": "S2387562",
+   "date": "2026-06-06",
+   "description": "81   S2387562   06-Jun-2026   06-Jun-2026   UPI/688963577061        NA       14580.00   2034744.32",
+   "debit": 0.0,
+   "credit": 14580.0,
+   "balance": 2034744.32
+  },
+  {
+   "sr_no": 82,
+   "tran_id": "S2386930",
+   "date": "2026-06-06",
+   "description": "82   S2386930   06-Jun-2026   06-Jun-2026   UPI/323563108577        NA       14275.00   2049019.32",
+   "debit": 0.0,
+   "credit": 14275.0,
+   "balance": 2049019.32
+  },
+  {
+   "sr_no": 83,
+   "tran_id": "S2455579",
+   "date": "2026-06-06",
+   "description": "83   S2455579   06-Jun-2026   06-Jun-2026   UPI/887554032013        NA        300.00    2049319.32",
+   "debit": 0.0,
+   "credit": 300.0,
+   "balance": 2049319.32
+  },
+  {
+   "sr_no": 84,
+   "tran_id": "S2524512",
+   "date": "2026-06-06",
+   "description": "84   S2524512   06-Jun-2026   06-Jun-2026   UPI/929418564216        NA       12950.00   2062269.32",
+   "debit": 0.0,
+   "credit": 12950.0,
+   "balance": 2062269.32
+  },
+  {
+   "sr_no": 85,
+   "tran_id": "S2551625",
+   "date": "2026-06-06",
+   "description": "85   S2551625   06-Jun-2026   06-Jun-2026   UPI/241493552557        NA       13670.00   2075939.32",
+   "debit": 0.0,
+   "credit": 13670.0,
+   "balance": 2075939.32
+  },
+  {
+   "sr_no": 86,
+   "tran_id": "S2579233",
+   "date": "2026-06-06",
+   "description": "86   S2579233   06-Jun-2026   06-Jun-2026   MMT/IMPS/615711       9357.00      NA       2066582.32",
+   "debit": 9357.0,
+   "credit": 0.0,
+   "balance": 2066582.32
+  },
+  {
+   "sr_no": 87,
+   "tran_id": "S2685952",
+   "date": "2026-06-06",
+   "description": "87   S2685952   06-Jun-2026   06-Jun-2026   UPI/109960720206      9550.00      NA       2057032.32",
+   "debit": 9550.0,
+   "credit": 0.0,
+   "balance": 2057032.32
+  },
+  {
+   "sr_no": 88,
+   "tran_id": "S3077327",
+   "date": "2026-06-06",
+   "description": "88    S3077327   06-Jun-2026   06-Jun-2026   UPI/840789148539    NA      50000.00    2107032.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 2107032.32
+  },
+  {
+   "sr_no": 89,
+   "tran_id": "S3112130",
+   "date": "2026-06-06",
+   "description": "89    S3112130   06-Jun-2026   06-Jun-2026   MMT/IMPS/615718 100000.00      NA       2007032.32",
+   "debit": 100000.0,
+   "credit": 0.0,
+   "balance": 2007032.32
+  },
+  {
+   "sr_no": 90,
+   "tran_id": "S3188735",
+   "date": "2026-06-06",
+   "description": "90    S3188735   06-Jun-2026   06-Jun-2026   UPI/968100400286    NA      15000.00    2022032.32",
+   "debit": 0.0,
+   "credit": 15000.0,
+   "balance": 2022032.32
+  },
+  {
+   "sr_no": 91,
+   "tran_id": "S3282856",
+   "date": "2026-06-06",
+   "description": "91    S3282856   06-Jun-2026   06-Jun-2026   UPI/982334841723    NA      12890.00    2034922.32",
+   "debit": 0.0,
+   "credit": 12890.0,
+   "balance": 2034922.32
+  },
+  {
+   "sr_no": 92,
+   "tran_id": "S3544294",
+   "date": "2026-06-07",
+   "description": "92    S3544294   07-Jun-2026   07-Jun-2026   UPI/124335395018    NA      10000.00    2044922.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 2044922.32
+  },
+  {
+   "sr_no": 93,
+   "tran_id": "S3711972",
+   "date": "2026-06-07",
+   "description": "93    S3711972   07-Jun-2026   07-Jun-2026   MMT/IMPS/615863     NA      60000.00    2104922.32",
+   "debit": 0.0,
+   "credit": 60000.0,
+   "balance": 2104922.32
+  },
+  {
+   "sr_no": 94,
+   "tran_id": "S3718487",
+   "date": "2026-06-07",
+   "description": "94    S3718487   07-Jun-2026   07-Jun-2026           RTGS-       NA      300000.00   2404922.32",
+   "debit": 0.0,
+   "credit": 300000.0,
+   "balance": 2404922.32
+  },
+  {
+   "sr_no": 95,
+   "tran_id": "S3924008",
+   "date": "2026-06-08",
+   "description": "95    S3924008   08-Jun-2026   08-Jun-2026   UPI/151232078199    NA       7000.00    2411922.32",
+   "debit": 0.0,
+   "credit": 7000.0,
+   "balance": 2411922.32
+  },
+  {
+   "sr_no": 96,
+   "tran_id": "S4295619",
+   "date": "2026-06-08",
+   "description": "96    S4295619   08-Jun-2026   08-Jun-2026   UPI/109973629404 50000.00      NA       2361922.32",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 2361922.32
+  },
+  {
+   "sr_no": 97,
+   "tran_id": "S4310131",
+   "date": "2026-06-08",
+   "description": "97    S4310131   08-Jun-2026   08-Jun-2026   UPI/RVSL1099736     NA      50000.00    2411922.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 2411922.32
+  },
+  {
+   "sr_no": 98,
+   "tran_id": "S4409491",
+   "date": "2026-06-08",
+   "description": "98    S4409491   08-Jun-2026   08-Jun-2026   MMT/IMPS/615963     NA      65000.00    2476922.32",
+   "debit": 0.0,
+   "credit": 65000.0,
+   "balance": 2476922.32
+  },
+  {
+   "sr_no": 99,
+   "tran_id": "S4632182",
+   "date": "2026-06-08",
+   "description": "99    S4632182   08-Jun-2026   08-Jun-2026   MMT/IMPS/615916 29120.00       NA       2447802.32",
+   "debit": 29120.0,
+   "credit": 0.0,
+   "balance": 2447802.32
+  },
+  {
+   "sr_no": 100,
+   "tran_id": "S4637879",
+   "date": "2026-06-08",
+   "description": "100   S4637879   08-Jun-2026   08-Jun-2026   UPI/109975694665 50000.00      NA       2397802.32",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 2397802.32
+  },
+  {
+   "sr_no": 101,
+   "tran_id": "S4637881",
+   "date": "2026-06-08",
+   "description": "101   S4637881   08-Jun-2026   08-Jun-2026   UPI/RVSL1099756     NA      50000.00    2447802.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 2447802.32
+  },
+  {
+   "sr_no": 102,
+   "tran_id": "S4853565",
+   "date": "2026-06-08",
+   "description": "102   S4853565   08-Jun-2026   08-Jun-2026   UPI/109976925805 50000.00      NA       2397802.32",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 2397802.32
+  },
+  {
+   "sr_no": 103,
+   "tran_id": "S4855162",
+   "date": "2026-06-08",
+   "description": "103   S4855162   08-Jun-2026   08-Jun-2026   UPI/RVSL1099769     NA      50000.00    2447802.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 2447802.32
+  },
+  {
+   "sr_no": 104,
+   "tran_id": "S5215896",
+   "date": "2026-06-09",
+   "description": "104   S5215896   09-Jun-2026   09-Jun-2026   MMT/IMPS/616007 300000.00      NA       2147802.32",
+   "debit": 300000.0,
+   "credit": 0.0,
+   "balance": 2147802.32
+  },
+  {
+   "sr_no": 105,
+   "tran_id": "S5332435",
+   "date": "2026-06-09",
+   "description": "105   S5332435   09-Jun-2026   09-Jun-2026   MMT/IMPS/616010 50000.00       NA       2097802.32",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 2097802.32
+  },
+  {
+   "sr_no": 106,
+   "tran_id": "S6432537",
+   "date": "2026-06-10",
+   "description": "106   S6432537   10-Jun-2026   10-Jun-2026   ACH/KMBLDRAOP 115000.00        NA       1982802.32",
+   "debit": 115000.0,
+   "credit": 0.0,
+   "balance": 1982802.32
+  },
+  {
+   "sr_no": 107,
+   "tran_id": "S6434956",
+   "date": "2026-06-10",
+   "description": "107   S6434956   10-Jun-2026   10-Jun-2026   ACH/KMBLDRAOP 148500.00        NA       1834302.32",
+   "debit": 148500.0,
+   "credit": 0.0,
+   "balance": 1834302.32
+  },
+  {
+   "sr_no": 108,
+   "tran_id": "S6459336",
+   "date": "2026-06-10",
+   "description": "108   S6459336   10-Jun-2026   10-Jun-2026   UPI/994327611891    NA       13820.00   1848122.32",
+   "debit": 0.0,
+   "credit": 13820.0,
+   "balance": 1848122.32
+  },
+  {
+   "sr_no": 109,
+   "tran_id": "S6580160",
+   "date": "2026-06-10",
+   "description": "109   S6580160   10-Jun-2026   10-Jun-2026   UPI/857525101333    NA       47060.00   1895182.32",
+   "debit": 0.0,
+   "credit": 47060.0,
+   "balance": 1895182.32
+  },
+  {
+   "sr_no": 110,
+   "tran_id": "S6682622",
+   "date": "2026-06-10",
+   "description": "110   S6682622   10-Jun-2026   10-Jun-2026   MMT/IMPS/616164     NA       95000.00   1990182.32",
+   "debit": 0.0,
+   "credit": 95000.0,
+   "balance": 1990182.32
+  },
+  {
+   "sr_no": 111,
+   "tran_id": "S6879976",
+   "date": "2026-06-10",
+   "description": "111   S6879976   10-Jun-2026   10-Jun-2026   UPI/995649772953    NA       27200.00   2017382.32",
+   "debit": 0.0,
+   "credit": 27200.0,
+   "balance": 2017382.32
+  },
+  {
+   "sr_no": 112,
+   "tran_id": "S7032036",
+   "date": "2026-06-10",
+   "description": "112   S7032036   10-Jun-2026   10-Jun-2026   UPI/436225211494    NA       1360.00    2018742.32",
+   "debit": 0.0,
+   "credit": 1360.0,
+   "balance": 2018742.32
+  },
+  {
+   "sr_no": 113,
+   "tran_id": "S7032270",
+   "date": "2026-06-10",
+   "description": "113   S7032270   10-Jun-2026   10-Jun-2026   UPI/212703846897    NA       12605.00   2031347.32",
+   "debit": 0.0,
+   "credit": 12605.0,
+   "balance": 2031347.32
+  },
+  {
+   "sr_no": 114,
+   "tran_id": "S7066122",
+   "date": "2026-06-10",
+   "description": "114   S7066122   10-Jun-2026   10-Jun-2026   UPI/977059644688    NA       1870.00    2033217.32",
+   "debit": 0.0,
+   "credit": 1870.0,
+   "balance": 2033217.32
+  },
+  {
+   "sr_no": 115,
+   "tran_id": "S7220809",
+   "date": "2026-06-10",
+   "description": "115   S7220809   10-Jun-2026   10-Jun-2026   RTGS/ICICR42026 2000000.00     NA        33217.32",
+   "debit": 2000000.0,
+   "credit": 0.0,
+   "balance": 33217.32
+  },
+  {
+   "sr_no": 116,
+   "tran_id": "S7664584",
+   "date": "2026-06-11",
+   "description": "116   S7664584   11-Jun-2026   11-Jun-2026   UPI/363169810496    NA       16250.00    49467.32",
+   "debit": 0.0,
+   "credit": 16250.0,
+   "balance": 49467.32
+  },
+  {
+   "sr_no": 117,
+   "tran_id": "S7755821",
+   "date": "2026-06-11",
+   "description": "117   S7755821   11-Jun-2026   11-Jun-2026   UPI/597439944355    NA       2125.00     51592.32",
+   "debit": 0.0,
+   "credit": 2125.0,
+   "balance": 51592.32
+  },
+  {
+   "sr_no": 118,
+   "tran_id": "S8019789",
+   "date": "2026-06-11",
+   "description": "118   S8019789   11-Jun-2026   11-Jun-2026   UPI/498591065588    NA       11915.00    63507.32",
+   "debit": 0.0,
+   "credit": 11915.0,
+   "balance": 63507.32
+  },
+  {
+   "sr_no": 119,
+   "tran_id": "S8131008",
+   "date": "2026-06-11",
+   "description": "119   S8131008   11-Jun-2026   11-Jun-2026   UPI/410910336813    NA       18550.00    82057.32",
+   "debit": 0.0,
+   "credit": 18550.0,
+   "balance": 82057.32
+  },
+  {
+   "sr_no": 120,
+   "tran_id": "S8172515",
+   "date": "2026-06-11",
+   "description": "120   S8172515   11-Jun-2026   11-Jun-2026   MMT/IMPS/616264     NA       90000.00   172057.32",
+   "debit": 0.0,
+   "credit": 90000.0,
+   "balance": 172057.32
+  },
+  {
+   "sr_no": 121,
+   "tran_id": "S8170196",
+   "date": "2026-06-11",
+   "description": "121   S8170196   11-Jun-2026   11-Jun-2026   UPI/115652987824    NA       11200.00   183257.32",
+   "debit": 0.0,
+   "credit": 11200.0,
+   "balance": 183257.32
+  },
+  {
+   "sr_no": 122,
+   "tran_id": "S8254393",
+   "date": "2026-06-11",
+   "description": "122   S8254393   11-Jun-2026   11-Jun-2026   UPI/123078561746    NA       16500.00   199757.32",
+   "debit": 0.0,
+   "credit": 16500.0,
+   "balance": 199757.32
+  },
+  {
+   "sr_no": 123,
+   "tran_id": "S8283555",
+   "date": "2026-06-11",
+   "description": "123   S8283555   11-Jun-2026   11-Jun-2026   MMT/IMPS/616222 150000.00      NA        49757.32",
+   "debit": 150000.0,
+   "credit": 0.0,
+   "balance": 49757.32
+  },
+  {
+   "sr_no": 124,
+   "tran_id": "S8285966",
+   "date": "2026-06-11",
+   "description": "124   S8285966   11-Jun-2026   11-Jun-2026   UPI/521781057532    NA       2000.00     51757.32",
+   "debit": 0.0,
+   "credit": 2000.0,
+   "balance": 51757.32
+  },
+  {
+   "sr_no": 125,
+   "tran_id": "S8273881",
+   "date": "2026-06-11",
+   "description": "125   S8273881   11-Jun-2026   11-Jun-2026   UPI/020208191276    NA        840.00     52597.32",
+   "debit": 0.0,
+   "credit": 840.0,
+   "balance": 52597.32
+  },
+  {
+   "sr_no": 126,
+   "tran_id": "S8597300",
+   "date": "2026-06-12",
+   "description": "126   S8597300   12-Jun-2026   12-Jun-2026   UPI/652978080427        NA       50000.00    102597.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 102597.32
+  },
+  {
+   "sr_no": 127,
+   "tran_id": "S8597156",
+   "date": "2026-06-12",
+   "description": "127   S8597156   12-Jun-2026   12-Jun-2026   UPI/810475076068        NA       50000.00    152597.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 152597.32
+  },
+  {
+   "sr_no": 128,
+   "tran_id": "S8667189",
+   "date": "2026-06-12",
+   "description": "128   S8667189   12-Jun-2026   12-Jun-2026   MMT/IMPS/616364         NA       40000.00    192597.32",
+   "debit": 0.0,
+   "credit": 40000.0,
+   "balance": 192597.32
+  },
+  {
+   "sr_no": 129,
+   "tran_id": "S8899873",
+   "date": "2026-06-12",
+   "description": "129   S8899873   12-Jun-2026   12-Jun-2026   UPI/182110011723        NA       22290.00    214887.32",
+   "debit": 0.0,
+   "credit": 22290.0,
+   "balance": 214887.32
+  },
+  {
+   "sr_no": 130,
+   "tran_id": "M356570",
+   "date": "2026-06-12",
+   "description": "130   M356570    12-Jun-2026   12-Jun-2026   CLG/CHEQUE/026          NA       100000.00   314887.32",
+   "debit": 0.0,
+   "credit": 100000.0,
+   "balance": 314887.32
+  },
+  {
+   "sr_no": 131,
+   "tran_id": "S9184452",
+   "date": "2026-06-12",
+   "description": "131   S9184452   12-Jun-2026   12-Jun-2026   MMT/IMPS/616364         NA       20055.00    334942.32",
+   "debit": 0.0,
+   "credit": 20055.0,
+   "balance": 334942.32
+  },
+  {
+   "sr_no": 132,
+   "tran_id": "S9293411",
+   "date": "2026-06-12",
+   "description": "132   S9293411   12-Jun-2026   12-Jun-2026   UPI/456580094189        NA       14400.00    349342.32",
+   "debit": 0.0,
+   "credit": 14400.0,
+   "balance": 349342.32
+  },
+  {
+   "sr_no": 133,
+   "tran_id": "S9554213",
+   "date": "2026-06-13",
+   "description": "133   S9554213   13-Jun-2026   13-Jun-2026   MMT/IMPS/616464         NA       20445.00    369787.32",
+   "debit": 0.0,
+   "credit": 20445.0,
+   "balance": 369787.32
+  },
+  {
+   "sr_no": 134,
+   "tran_id": "S9567831",
+   "date": "2026-06-13",
+   "description": "134   S9567831   13-Jun-2026   13-Jun-2026   UPI/261397242207        NA       22440.00    392227.32",
+   "debit": 0.0,
+   "credit": 22440.0,
+   "balance": 392227.32
+  },
+  {
+   "sr_no": 135,
+   "tran_id": "S9708856",
+   "date": "2026-06-13",
+   "description": "135   S9708856   13-Jun-2026   13-Jun-2026   UPI/513184733783        NA       18000.00    410227.32",
+   "debit": 0.0,
+   "credit": 18000.0,
+   "balance": 410227.32
+  },
+  {
+   "sr_no": 136,
+   "tran_id": "S104473",
+   "date": "2026-06-14",
+   "description": "136   S104473    14-Jun-2026   14-Jun-2026   UPI/616586662684        NA        4165.00    414392.32",
+   "debit": 0.0,
+   "credit": 4165.0,
+   "balance": 414392.32
+  },
+  {
+   "sr_no": 137,
+   "tran_id": "S1733873",
+   "date": "2026-06-16",
+   "description": "137   S1733873   16-Jun-2026   16-Jun-2026   UPI/256980209670        NA       19100.00    433492.32",
+   "debit": 0.0,
+   "credit": 19100.0,
+   "balance": 433492.32
+  },
+  {
+   "sr_no": 138,
+   "tran_id": "S1774568",
+   "date": "2026-06-16",
+   "description": "138   S1774568   16-Jun-2026   16-Jun-2026   EzpaySBMay'26Re        177.00       NA       433315.32",
+   "debit": 177.0,
+   "credit": 0.0,
+   "balance": 433315.32
+  },
+  {
+   "sr_no": 139,
+   "tran_id": "S1796479",
+   "date": "2026-06-16",
+   "description": "139   S1796479   16-Jun-2026   16-Jun-2026   UPI/202680706662        NA       21380.00    454695.32",
+   "debit": 0.0,
+   "credit": 21380.0,
+   "balance": 454695.32
+  },
+  {
+   "sr_no": 140,
+   "tran_id": "S1848464",
+   "date": "2026-06-16",
+   "description": "140   S1848464   16-Jun-2026   16-Jun-2026   UPI/384754015077        NA       21600.00    476295.32",
+   "debit": 0.0,
+   "credit": 21600.0,
+   "balance": 476295.32
+  },
+  {
+   "sr_no": 141,
+   "tran_id": "S1850236",
+   "date": "2026-06-16",
+   "description": "141   S1850236   16-Jun-2026   16-Jun-2026   UPI/256457473189        NA       20107.00    496402.32",
+   "debit": 0.0,
+   "credit": 20107.0,
+   "balance": 496402.32
+  },
+  {
+   "sr_no": 142,
+   "tran_id": "S1895041",
+   "date": "2026-06-16",
+   "description": "142   S1895041   16-Jun-2026   16-Jun-2026   MMT/IMPS/616765         NA       75000.00    571402.32",
+   "debit": 0.0,
+   "credit": 75000.0,
+   "balance": 571402.32
+  },
+  {
+   "sr_no": 143,
+   "tran_id": "S1963103",
+   "date": "2026-06-16",
+   "description": "143   S1963103   16-Jun-2026   16-Jun-2026   UPI/196529934048        NA       21170.00    592572.32",
+   "debit": 0.0,
+   "credit": 21170.0,
+   "balance": 592572.32
+  },
+  {
+   "sr_no": 144,
+   "tran_id": "S1986761",
+   "date": "2026-06-16",
+   "description": "144   S1986761   16-Jun-2026   16-Jun-2026   MMT/IMPS/616714       15000.00      NA       577572.32",
+   "debit": 15000.0,
+   "credit": 0.0,
+   "balance": 577572.32
+  },
+  {
+   "sr_no": 145,
+   "tran_id": "S2045930",
+   "date": "2026-06-16",
+   "description": "145   S2045930   16-Jun-2026   16-Jun-2026   UPI/667455017601        NA       11000.00    588572.32",
+   "debit": 0.0,
+   "credit": 11000.0,
+   "balance": 588572.32
+  },
+  {
+   "sr_no": 146,
+   "tran_id": "S2380549",
+   "date": "2026-06-16",
+   "description": "146   S2380549   16-Jun-2026   16-Jun-2026   UPI/359217889404    NA      25000.00   613572.32",
+   "debit": 0.0,
+   "credit": 25000.0,
+   "balance": 613572.32
+  },
+  {
+   "sr_no": 147,
+   "tran_id": "S2436501",
+   "date": "2026-06-16",
+   "description": "147   S2436501   16-Jun-2026   16-Jun-2026   MMT/IMPS/616723 100000.00     NA       513572.32",
+   "debit": 100000.0,
+   "credit": 0.0,
+   "balance": 513572.32
+  },
+  {
+   "sr_no": 148,
+   "tran_id": "S2701310",
+   "date": "2026-06-17",
+   "description": "148   S2701310   17-Jun-2026   17-Jun-2026   UPI/088088802114    NA      22310.00   535882.32",
+   "debit": 0.0,
+   "credit": 22310.0,
+   "balance": 535882.32
+  },
+  {
+   "sr_no": 149,
+   "tran_id": "S2875047",
+   "date": "2026-06-17",
+   "description": "149   S2875047   17-Jun-2026   17-Jun-2026   MMT/IMPS/616814 175000.00     NA       360882.32",
+   "debit": 175000.0,
+   "credit": 0.0,
+   "balance": 360882.32
+  },
+  {
+   "sr_no": 150,
+   "tran_id": "S2977413",
+   "date": "2026-06-17",
+   "description": "150   S2977413   17-Jun-2026   17-Jun-2026   MMT/IMPS/616816 31000.00      NA       329882.32",
+   "debit": 31000.0,
+   "credit": 0.0,
+   "balance": 329882.32
+  },
+  {
+   "sr_no": 151,
+   "tran_id": "S3022088",
+   "date": "2026-06-17",
+   "description": "151   S3022088   17-Jun-2026   17-Jun-2026   UPI/969063879792    NA      21620.00   351502.32",
+   "debit": 0.0,
+   "credit": 21620.0,
+   "balance": 351502.32
+  },
+  {
+   "sr_no": 152,
+   "tran_id": "S3014755",
+   "date": "2026-06-17",
+   "description": "152   S3014755   17-Jun-2026   17-Jun-2026   UPI/846538875559    NA      17730.00   369232.32",
+   "debit": 0.0,
+   "credit": 17730.0,
+   "balance": 369232.32
+  },
+  {
+   "sr_no": 153,
+   "tran_id": "S3081121",
+   "date": "2026-06-17",
+   "description": "153   S3081121   17-Jun-2026   17-Jun-2026          NEFT-        NA      58427.00   427659.32",
+   "debit": 0.0,
+   "credit": 58427.0,
+   "balance": 427659.32
+  },
+  {
+   "sr_no": 154,
+   "tran_id": "S3164267",
+   "date": "2026-06-17",
+   "description": "154   S3164267   17-Jun-2026   17-Jun-2026   UPI/250655142714    NA      31000.00   458659.32",
+   "debit": 0.0,
+   "credit": 31000.0,
+   "balance": 458659.32
+  },
+  {
+   "sr_no": 155,
+   "tran_id": "S3175943",
+   "date": "2026-06-17",
+   "description": "155   S3175943   17-Jun-2026   17-Jun-2026   MMT/IMPS/616819 75000.00      NA       383659.32",
+   "debit": 75000.0,
+   "credit": 0.0,
+   "balance": 383659.32
+  },
+  {
+   "sr_no": 156,
+   "tran_id": "S3212243",
+   "date": "2026-06-17",
+   "description": "156   S3212243   17-Jun-2026   17-Jun-2026   UPI/215666373270    NA      16470.00   400129.32",
+   "debit": 0.0,
+   "credit": 16470.0,
+   "balance": 400129.32
+  },
+  {
+   "sr_no": 157,
+   "tran_id": "S3307813",
+   "date": "2026-06-17",
+   "description": "157   S3307813   17-Jun-2026   17-Jun-2026   UPI/116050821581    NA      12000.00   412129.32",
+   "debit": 0.0,
+   "credit": 12000.0,
+   "balance": 412129.32
+  },
+  {
+   "sr_no": 158,
+   "tran_id": "S3559070",
+   "date": "2026-06-18",
+   "description": "158   S3559070   18-Jun-2026   18-Jun-2026   UPI/480160273742    NA      17800.00   429929.32",
+   "debit": 0.0,
+   "credit": 17800.0,
+   "balance": 429929.32
+  },
+  {
+   "sr_no": 159,
+   "tran_id": "S3578211",
+   "date": "2026-06-18",
+   "description": "159   S3578211   18-Jun-2026   18-Jun-2026   UPI/050493947527    NA      21530.00   451459.32",
+   "debit": 0.0,
+   "credit": 21530.0,
+   "balance": 451459.32
+  },
+  {
+   "sr_no": 160,
+   "tran_id": "S3608125",
+   "date": "2026-06-18",
+   "description": "160   S3608125   18-Jun-2026   18-Jun-2026   UPI/744648882084    NA      14300.00   465759.32",
+   "debit": 0.0,
+   "credit": 14300.0,
+   "balance": 465759.32
+  },
+  {
+   "sr_no": 161,
+   "tran_id": "S3770305",
+   "date": "2026-06-18",
+   "description": "161   S3770305   18-Jun-2026   18-Jun-2026   UPI/562539712857    NA      50000.00   515759.32",
+   "debit": 0.0,
+   "credit": 50000.0,
+   "balance": 515759.32
+  },
+  {
+   "sr_no": 162,
+   "tran_id": "S3892852",
+   "date": "2026-06-18",
+   "description": "162   S3892852   18-Jun-2026   18-Jun-2026   MMT/IMPS/616917 35000.00      NA       480759.32",
+   "debit": 35000.0,
+   "credit": 0.0,
+   "balance": 480759.32
+  },
+  {
+   "sr_no": 163,
+   "tran_id": "S3924042",
+   "date": "2026-06-18",
+   "description": "163   S3924042   18-Jun-2026   18-Jun-2026   UPI/616979667432    NA      16200.00   496959.32",
+   "debit": 0.0,
+   "credit": 16200.0,
+   "balance": 496959.32
+  },
+  {
+   "sr_no": 164,
+   "tran_id": "S4073467",
+   "date": "2026-06-18",
+   "description": "164   S4073467   18-Jun-2026   18-Jun-2026   UPI/813033091212    NA      10000.00   506959.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 506959.32
+  },
+  {
+   "sr_no": 165,
+   "tran_id": "S4440008",
+   "date": "2026-06-19",
+   "description": "165   S4440008   19-Jun-2026   19-Jun-2026   UPI/110045828980 10950.00     NA       496009.32",
+   "debit": 10950.0,
+   "credit": 0.0,
+   "balance": 496009.32
+  },
+  {
+   "sr_no": 166,
+   "tran_id": "S4497931",
+   "date": "2026-06-19",
+   "description": "166   S4497931   19-Jun-2026   19-Jun-2026   UPI/362438051731        NA        550.00     496559.32",
+   "debit": 0.0,
+   "credit": 550.0,
+   "balance": 496559.32
+  },
+  {
+   "sr_no": 167,
+   "tran_id": "S4489978",
+   "date": "2026-06-19",
+   "description": "167   S4489978   19-Jun-2026   19-Jun-2026   UPI/736224297608        NA       18740.00    515299.32",
+   "debit": 0.0,
+   "credit": 18740.0,
+   "balance": 515299.32
+  },
+  {
+   "sr_no": 168,
+   "tran_id": "S4505729",
+   "date": "2026-06-19",
+   "description": "168   S4505729   19-Jun-2026   19-Jun-2026   UPI/087200399409        NA       20920.00    536219.32",
+   "debit": 0.0,
+   "credit": 20920.0,
+   "balance": 536219.32
+  },
+  {
+   "sr_no": 169,
+   "tran_id": "S4539641",
+   "date": "2026-06-19",
+   "description": "169   S4539641   19-Jun-2026   19-Jun-2026   UPI/930783531540        NA       12890.00    549109.32",
+   "debit": 0.0,
+   "credit": 12890.0,
+   "balance": 549109.32
+  },
+  {
+   "sr_no": 170,
+   "tran_id": "S4604973",
+   "date": "2026-06-19",
+   "description": "170   S4604973   19-Jun-2026   19-Jun-2026   UPI/932498592737        NA       20265.00    569374.32",
+   "debit": 0.0,
+   "credit": 20265.0,
+   "balance": 569374.32
+  },
+  {
+   "sr_no": 171,
+   "tran_id": "S5235906",
+   "date": "2026-06-20",
+   "description": "171   S5235906   20-Jun-2026   20-Jun-2026   UPI/360318349077        NA       12775.00    582149.32",
+   "debit": 0.0,
+   "credit": 12775.0,
+   "balance": 582149.32
+  },
+  {
+   "sr_no": 172,
+   "tran_id": "S5355680",
+   "date": "2026-06-20",
+   "description": "172   S5355680   20-Jun-2026   20-Jun-2026   UPI/617170892271        NA       18090.00    600239.32",
+   "debit": 0.0,
+   "credit": 18090.0,
+   "balance": 600239.32
+  },
+  {
+   "sr_no": 173,
+   "tran_id": "S5338551",
+   "date": "2026-06-20",
+   "description": "173   S5338551   20-Jun-2026   20-Jun-2026   UPI/387341411064        NA       21200.00    621439.32",
+   "debit": 0.0,
+   "credit": 21200.0,
+   "balance": 621439.32
+  },
+  {
+   "sr_no": 174,
+   "tran_id": "S5802041",
+   "date": "2026-06-20",
+   "description": "174   S5802041   20-Jun-2026   20-Jun-2026   UPI/559621449104        NA        2000.00    623439.32",
+   "debit": 0.0,
+   "credit": 2000.0,
+   "balance": 623439.32
+  },
+  {
+   "sr_no": 175,
+   "tran_id": "S6070490",
+   "date": "2026-06-21",
+   "description": "175   S6070490   21-Jun-2026   21-Jun-2026   UPI/430758832363        NA       30000.00    653439.32",
+   "debit": 0.0,
+   "credit": 30000.0,
+   "balance": 653439.32
+  },
+  {
+   "sr_no": 176,
+   "tran_id": "S6062966",
+   "date": "2026-06-21",
+   "description": "176   S6062966   21-Jun-2026   21-Jun-2026   UPI/617286824562        NA       20000.00    673439.32",
+   "debit": 0.0,
+   "credit": 20000.0,
+   "balance": 673439.32
+  },
+  {
+   "sr_no": 177,
+   "tran_id": "S6076433",
+   "date": "2026-06-21",
+   "description": "177   S6076433   21-Jun-2026   21-Jun-2026   UPI/617285400059        NA       10085.00    683524.32",
+   "debit": 0.0,
+   "credit": 10085.0,
+   "balance": 683524.32
+  },
+  {
+   "sr_no": 178,
+   "tran_id": "S6281820",
+   "date": "2026-06-21",
+   "description": "178   S6281820   21-Jun-2026   21-Jun-2026   UPI/884810102966        NA        9000.00    692524.32",
+   "debit": 0.0,
+   "credit": 9000.0,
+   "balance": 692524.32
+  },
+  {
+   "sr_no": 179,
+   "tran_id": "S6382113",
+   "date": "2026-06-22",
+   "description": "179   S6382113   22-Jun-2026   22-Jun-2026   UPI/230683022225        NA       30000.00    722524.32",
+   "debit": 0.0,
+   "credit": 30000.0,
+   "balance": 722524.32
+  },
+  {
+   "sr_no": 180,
+   "tran_id": "S6629305",
+   "date": "2026-06-22",
+   "description": "180   S6629305   22-Jun-2026   22-Jun-2026   UPI/702125695679        NA       19970.00    742494.32",
+   "debit": 0.0,
+   "credit": 19970.0,
+   "balance": 742494.32
+  },
+  {
+   "sr_no": 181,
+   "tran_id": "S6680631",
+   "date": "2026-06-22",
+   "description": "181   S6680631   22-Jun-2026   22-Jun-2026   MMT/IMPS/617310       61950.00      NA       680544.32",
+   "debit": 61950.0,
+   "credit": 0.0,
+   "balance": 680544.32
+  },
+  {
+   "sr_no": 182,
+   "tran_id": "S6756930",
+   "date": "2026-06-22",
+   "description": "182   S6756930   22-Jun-2026   22-Jun-2026   UPI/110064899297      23940.00      NA       656604.32",
+   "debit": 23940.0,
+   "credit": 0.0,
+   "balance": 656604.32
+  },
+  {
+   "sr_no": 183,
+   "tran_id": "S6962224",
+   "date": "2026-06-22",
+   "description": "183   S6962224   22-Jun-2026   22-Jun-2026           NEFT-           NA       125985.00   782589.32",
+   "debit": 0.0,
+   "credit": 125985.0,
+   "balance": 782589.32
+  },
+  {
+   "sr_no": 184,
+   "tran_id": "S6967029",
+   "date": "2026-06-22",
+   "description": "184   S6967029   22-Jun-2026   22-Jun-2026   MMT/IMPS/617366         NA       12060.00    794649.32",
+   "debit": 0.0,
+   "credit": 12060.0,
+   "balance": 794649.32
+  },
+  {
+   "sr_no": 185,
+   "tran_id": "S6991024",
+   "date": "2026-06-22",
+   "description": "185   S6991024   22-Jun-2026   22-Jun-2026           NEFT-         NA     200000.00   994649.32",
+   "debit": 0.0,
+   "credit": 200000.0,
+   "balance": 994649.32
+  },
+  {
+   "sr_no": 186,
+   "tran_id": "S7043791",
+   "date": "2026-06-22",
+   "description": "186   S7043791   22-Jun-2026   22-Jun-2026   MMT/IMPS/617366       NA     11670.00    1006319.32",
+   "debit": 0.0,
+   "credit": 11670.0,
+   "balance": 1006319.32
+  },
+  {
+   "sr_no": 187,
+   "tran_id": "S7119372",
+   "date": "2026-06-22",
+   "description": "187   S7119372   22-Jun-2026   22-Jun-2026   MMT/IMPS/617318 145999.00       NA       860320.32",
+   "debit": 145999.0,
+   "credit": 0.0,
+   "balance": 860320.32
+  },
+  {
+   "sr_no": 188,
+   "tran_id": "S7122111",
+   "date": "2026-06-22",
+   "description": "188   S7122111   22-Jun-2026   22-Jun-2026   MMT/IMPS/617366       NA     11200.00    871520.32",
+   "debit": 0.0,
+   "credit": 11200.0,
+   "balance": 871520.32
+  },
+  {
+   "sr_no": 189,
+   "tran_id": "S7119272",
+   "date": "2026-06-22",
+   "description": "189   S7119272   22-Jun-2026   22-Jun-2026   UPI/110066937932 36401.00       NA       835119.32",
+   "debit": 36401.0,
+   "credit": 0.0,
+   "balance": 835119.32
+  },
+  {
+   "sr_no": 190,
+   "tran_id": "S7424726",
+   "date": "2026-06-23",
+   "description": "190   S7424726   23-Jun-2026   23-Jun-2026   UPI/654014093247      NA      1000.00    836119.32",
+   "debit": 0.0,
+   "credit": 1000.0,
+   "balance": 836119.32
+  },
+  {
+   "sr_no": 191,
+   "tran_id": "S7553790",
+   "date": "2026-06-23",
+   "description": "191   S7553790   23-Jun-2026   23-Jun-2026   UPI/294816219695      NA     21360.00    857479.32",
+   "debit": 0.0,
+   "credit": 21360.0,
+   "balance": 857479.32
+  },
+  {
+   "sr_no": 192,
+   "tran_id": "S7749082",
+   "date": "2026-06-23",
+   "description": "192   S7749082   23-Jun-2026   23-Jun-2026   UPI/031034187343      NA      4585.00    862064.32",
+   "debit": 0.0,
+   "credit": 4585.0,
+   "balance": 862064.32
+  },
+  {
+   "sr_no": 193,
+   "tran_id": "S7865644",
+   "date": "2026-06-23",
+   "description": "193   S7865644   23-Jun-2026   23-Jun-2026   UPI/388090532152      NA      2000.00    864064.32",
+   "debit": 0.0,
+   "credit": 2000.0,
+   "balance": 864064.32
+  },
+  {
+   "sr_no": 194,
+   "tran_id": "S7866212",
+   "date": "2026-06-23",
+   "description": "194   S7866212   23-Jun-2026   23-Jun-2026   UPI/357257255280      NA      300.00     864364.32",
+   "debit": 0.0,
+   "credit": 300.0,
+   "balance": 864364.32
+  },
+  {
+   "sr_no": 195,
+   "tran_id": "M352819",
+   "date": "2026-06-23",
+   "description": "195   M352819    23-Jun-2026   23-Jun-2026       CLG/ANAND         NA     350000.00   1214364.32",
+   "debit": 0.0,
+   "credit": 350000.0,
+   "balance": 1214364.32
+  },
+  {
+   "sr_no": 196,
+   "tran_id": "S7960313",
+   "date": "2026-06-23",
+   "description": "196   S7960313   23-Jun-2026   23-Jun-2026   UPI/617461077436      NA     13800.00    1228164.32",
+   "debit": 0.0,
+   "credit": 13800.0,
+   "balance": 1228164.32
+  },
+  {
+   "sr_no": 197,
+   "tran_id": "S7959320",
+   "date": "2026-06-23",
+   "description": "197   S7959320   23-Jun-2026   23-Jun-2026   UPI/177802061900      NA     10000.00    1238164.32",
+   "debit": 0.0,
+   "credit": 10000.0,
+   "balance": 1238164.32
+  },
+  {
+   "sr_no": 198,
+   "tran_id": "S7961100",
+   "date": "2026-06-23",
+   "description": "198   S7961100   23-Jun-2026   23-Jun-2026   UPI/860410440917      NA      7200.00    1245364.32",
+   "debit": 0.0,
+   "credit": 7200.0,
+   "balance": 1245364.32
+  },
+  {
+   "sr_no": 199,
+   "tran_id": "S8438224",
+   "date": "2026-06-24",
+   "description": "199   S8438224   24-Jun-2026   24-Jun-2026   UPI/617502879118      NA     25000.00    1270364.32",
+   "debit": 0.0,
+   "credit": 25000.0,
+   "balance": 1270364.32
+  },
+  {
+   "sr_no": 200,
+   "tran_id": "S8528006",
+   "date": "2026-06-24",
+   "description": "200   S8528006   24-Jun-2026   24-Jun-2026    Mob alrt Chg Feb-  29.50       NA       1270334.82",
+   "debit": 29.5,
+   "credit": 0.0,
+   "balance": 1270334.82
+  },
+  {
+   "sr_no": 201,
+   "tran_id": "S8534573",
+   "date": "2026-06-24",
+   "description": "201   S8534573   24-Jun-2026   24-Jun-2026   MMT/IMPS/617512 45000.00        NA       1225334.82",
+   "debit": 45000.0,
+   "credit": 0.0,
+   "balance": 1225334.82
+  },
+  {
+   "sr_no": 202,
+   "tran_id": "S8559479",
+   "date": "2026-06-24",
+   "description": "202   S8559479   24-Jun-2026   24-Jun-2026      IMPS ChgFeb-     230.10      NA       1225104.72",
+   "debit": 230.1,
+   "credit": 0.0,
+   "balance": 1225104.72
+  },
+  {
+   "sr_no": 203,
+   "tran_id": "S8574882",
+   "date": "2026-06-24",
+   "description": "203   S8574882   24-Jun-2026   24-Jun-2026   UPI/522067014434      NA     18000.00    1243104.72",
+   "debit": 0.0,
+   "credit": 18000.0,
+   "balance": 1243104.72
+  },
+  {
+   "sr_no": 204,
+   "tran_id": "S8734011",
+   "date": "2026-06-24",
+   "description": "204   S8734011   24-Jun-2026   24-Jun-2026   UPI/606278840553      NA     12000.00    1255104.72",
+   "debit": 0.0,
+   "credit": 12000.0,
+   "balance": 1255104.72
+  },
+  {
+   "sr_no": 205,
+   "tran_id": "S8733007",
+   "date": "2026-06-24",
+   "description": "205   S8733007   24-Jun-2026   24-Jun-2026   UPI/677112709967   NA       18000.00   1273104.72",
+   "debit": 0.0,
+   "credit": 18000.0,
+   "balance": 1273104.72
+  },
+  {
+   "sr_no": 206,
+   "tran_id": "S9500050",
+   "date": "2026-06-25",
+   "description": "206   S9500050   25-Jun-2026   25-Jun-2026   UPI/227099884184   NA       30000.00   1303104.72",
+   "debit": 0.0,
+   "credit": 30000.0,
+   "balance": 1303104.72
+  },
+  {
+   "sr_no": 207,
+   "tran_id": "S9703190",
+   "date": "2026-06-25",
+   "description": "207   S9703190   25-Jun-2026   25-Jun-2026   UPI/897918982401   NA       14900.00   1318004.72",
+   "debit": 0.0,
+   "credit": 14900.0,
+   "balance": 1318004.72
+  },
+  {
+   "sr_no": 208,
+   "tran_id": "S9732538",
+   "date": "2026-06-25",
+   "description": "208   S9732538   25-Jun-2026   25-Jun-2026   UPI/473591838758   NA       65000.00   1383004.72",
+   "debit": 0.0,
+   "credit": 65000.0,
+   "balance": 1383004.72
+  },
+  {
+   "sr_no": 209,
+   "tran_id": "S269872",
+   "date": "2026-06-26",
+   "description": "209   S269872    26-Jun-2026   26-Jun-2026   RTGS/ICICR42026 720000.00     NA       663004.72",
+   "debit": 720000.0,
+   "credit": 0.0,
+   "balance": 663004.72
+  },
+  {
+   "sr_no": 210,
+   "tran_id": "S481648",
+   "date": "2026-06-26",
+   "description": "210   S481648    26-Jun-2026   26-Jun-2026   MMT/IMPS/617714 100000.00     NA       563004.72",
+   "debit": 100000.0,
+   "credit": 0.0,
+   "balance": 563004.72
+  },
+  {
+   "sr_no": 211,
+   "tran_id": "S482308",
+   "date": "2026-06-26",
+   "description": "211   S482308    26-Jun-2026   26-Jun-2026   MMT/IMPS/617715 200000.00     NA       363004.72",
+   "debit": 200000.0,
+   "credit": 0.0,
+   "balance": 363004.72
+  },
+  {
+   "sr_no": 212,
+   "tran_id": "S962599",
+   "date": "2026-06-27",
+   "description": "212   S962599    27-Jun-2026   27-Jun-2026   UPI/964573500106   NA       11165.00   374169.72",
+   "debit": 0.0,
+   "credit": 11165.0,
+   "balance": 374169.72
+  },
+  {
+   "sr_no": 213,
+   "tran_id": "S991701",
+   "date": "2026-06-27",
+   "description": "213   S991701    27-Jun-2026   27-Jun-2026   UPI/844417478154   NA       7500.00    381669.72",
+   "debit": 0.0,
+   "credit": 7500.0,
+   "balance": 381669.72
+  },
+  {
+   "sr_no": 214,
+   "tran_id": "S1203624",
+   "date": "2026-06-27",
+   "description": "214   S1203624   27-Jun-2026   27-Jun-2026   UPI/309326604159   NA       30000.00   411669.72",
+   "debit": 0.0,
+   "credit": 30000.0,
+   "balance": 411669.72
+  },
+  {
+   "sr_no": 215,
+   "tran_id": "S1225792",
+   "date": "2026-06-27",
+   "description": "215   S1225792   27-Jun-2026   27-Jun-2026   UPI/672250411751   NA       2740.00    414409.72",
+   "debit": 0.0,
+   "credit": 2740.0,
+   "balance": 414409.72
+  },
+  {
+   "sr_no": 216,
+   "tran_id": "S1283616",
+   "date": "2026-06-27",
+   "description": "216   S1283616   27-Jun-2026   27-Jun-2026   UPI/617829575002   NA       25000.00   439409.72",
+   "debit": 0.0,
+   "credit": 25000.0,
+   "balance": 439409.72
+  },
+  {
+   "sr_no": 217,
+   "tran_id": "S1325473",
+   "date": "2026-06-27",
+   "description": "217   S1325473   27-Jun-2026   27-Jun-2026           NEFT-      NA       55122.00   494531.72",
+   "debit": 0.0,
+   "credit": 55122.0,
+   "balance": 494531.72
+  },
+  {
+   "sr_no": 218,
+   "tran_id": "S1638594",
+   "date": "2026-06-28",
+   "description": "218   S1638594   28-Jun-2026   28-Jun-2026   UPI/617972620105   NA       35000.00   529531.72",
+   "debit": 0.0,
+   "credit": 35000.0,
+   "balance": 529531.72
+  },
+  {
+   "sr_no": 219,
+   "tran_id": "S1644183",
+   "date": "2026-06-28",
+   "description": "219   S1644183   28-Jun-2026   28-Jun-2026   UPI/476375608944   NA       15000.00   544531.72",
+   "debit": 0.0,
+   "credit": 15000.0,
+   "balance": 544531.72
+  },
+  {
+   "sr_no": 220,
+   "tran_id": "S1676206",
+   "date": "2026-06-28",
+   "description": "220   S1676206   28-Jun-2026   28-Jun-2026   UPI/434459441076   NA       16900.00   561431.72",
+   "debit": 0.0,
+   "credit": 16900.0,
+   "balance": 561431.72
+  },
+  {
+   "sr_no": 221,
+   "tran_id": "S1766755",
+   "date": "2026-06-28",
+   "description": "221   S1766755   28-Jun-2026   28-Jun-2026   MMT/IMPS/617920 50000.00      NA       511431.72",
+   "debit": 50000.0,
+   "credit": 0.0,
+   "balance": 511431.72
+  }
+ ]
+}
