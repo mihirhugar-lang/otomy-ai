@@ -1956,11 +1956,12 @@ function pdfTableBlock(title,headers,rows,footer){
 function pdfFullTableForId(id){
   if(id==='sales-tbl'){
     const rows=sortedRows(_allData.sales,'sales');
-    let tot=0,totTransport=0,totmt=0,totmdp=0;
-    _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);});
-    return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','Mode','Vehicle','Ticket'],rows.map(r=>{
-      return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR(_saleTotal(r)),r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
-    }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),'','','']);
+    let tot=0,totTransport=0,totmt=0,totmdp=0,totCash=0,totBank=0,totCredit=0;
+    _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);const _ch=_saleChannels(r);totCash+=_ch.cash;totBank+=_ch.upi;totCredit+=_ch.credit;});
+    return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','Cash','Bank / UPI','Credit','Mode','Vehicle','Ticket'],rows.map(r=>{
+      const ch=_saleChannels(r);
+      return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR(_saleTotal(r)),ch.cash?fmtINR(ch.cash):'-',ch.upi?fmtINR(ch.upi):'-',ch.credit?fmtINR(ch.credit):'-',r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
+    }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),fmtINR(totCash),fmtINR(totBank),fmtINR(totCredit),'','','']);
   }
   if(id==='exp-tbl'){
     const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'-'}).name:'-'};
@@ -2490,14 +2491,15 @@ function renderSales(){
   applyTableRangeMode('sales','sales-tbl');
   const rows=sortedRows(_allData.sales,'sales'),cur=_page.sales,size=pageSizeFor('sales',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   // totals always over ALL rows
-  let tot=0,totTransport=0,totmt=0,totmdp=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);});
-  let html='<table class="sales-table"><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
+  let tot=0,totTransport=0,totmt=0,totmdp=0,totCash=0,totBank=0,totCredit=0;_allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);const _ch=_saleChannels(r);totCash+=_ch.cash;totBank+=_ch.upi;totCredit+=_ch.credit;});
+  let html='<table class="sales-table"><thead><tr>'+thSort('sales','date','Date')+thSort('sales','customer_name','Customer')+thSort('sales','material','Material')+thSort('sales','mdp_ton','MDP Ton')+thSort('sales','qty_mt','Qty MT')+thSort('sales','rate_per_mt','Rate')+'<th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>Cash</th><th>Bank / UPI</th><th>Credit</th>'+thSort('sales','payment_mode','Mode')+thSort('sales','vehicle_no','Vehicle')+thSort('sales','ticket_no','Ticket')+'</tr></thead><tbody>';
   slice.forEach(r=>{
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
-    html+=`<tr><td>${r.date}</td><td>${r.customer_name||'—'}${erp}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
+    const ch=_saleChannels(r);
+    html+=`<tr><td>${r.date}</td><td>${r.customer_name||'—'}${erp}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
-  if(!slice.length)html+='<tr><td colspan="12" class="empty">No sales for this period</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td></td><td></td><td></td></tr></tfoot></table>`;
+  if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
   document.getElementById('sales-tbl').innerHTML=html;
   document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
 }
