@@ -1,0 +1,47 @@
+name: Mirror Apr-May sales+receipts (one-shot)
+# Replace otomy's Apr-May archive SALES (with cash/credit/upi split fields) and RECEIPTS (gross
+# payment_received in notes) with localhost's exact data, so customer names + sales splits are
+# consistent between the two -> the same-day-spot overlap in the Credit Repayment tile aligns with
+# localhost. This makes otomy's Apr-May a mirror of the Mac DB (per user's explicit request).
+on:
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull data state from Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+      - name: Mirror Apr/May sales + receipts from localhost
+        run: |
+          python3 - <<'PY'
+          import json
+          mir = json.load(open("seed/aprmay_mirror.json"))
+          for m in ["2026-04", "2026-05"]:
+              p = f"data/archive/{m}.json"
+              d = json.load(open(p))
+              os_, orr = len(d.get("sales", [])), len(d.get("receipts", []))
+              d["sales"] = mir[m]["sales"]
+              d["receipts"] = mir[m]["receipts"]
+              json.dump(d, open(p, "w"))
+              print(f"  {m}: sales {os_} -> {len(d['sales'])} | receipts {orr} -> {len(d['receipts'])}")
+          PY
+      - name: Verify dashboard parity guard
+        run: python3 scripts/verify_dashboard_parity.py
+      - name: Push updated archive months back to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          aws s3 cp data/archive/2026-04.json "s3://otomy-data/archive/2026-04.json" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+          aws s3 cp data/archive/2026-05.json "s3://otomy-data/archive/2026-05.json" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+          echo "Mirrored Apr+May sales+receipts to R2."
