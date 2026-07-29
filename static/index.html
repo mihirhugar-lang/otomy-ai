@@ -200,6 +200,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .report-table tbody tr:hover{background:#ffefcf}
 .report-table tfoot td{background:#f6ead7;font-weight:800;padding:10px 12px;border-top:2px solid #b45309}
 .ticket-list{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#7c3d00;line-height:1.6;word-break:break-word}
+/* Compact sales table + wider Ticket No column so long date ranges fit more ticket numbers */
+.customer-sales-table th,.customer-sales-table td{padding:8px 8px}
+.customer-sales-table th:nth-child(3),.customer-sales-table td:nth-child(3){min-width:210px;max-width:380px}
 .metric-note{font-size:11px;color:#8a6b46;margin-top:6px}
 .cash-card{border-top:4px solid #175cd3}
 .cash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -352,9 +355,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .customer-sales-table th:nth-child(2)::after{content:"Mat."}
   #print-area.dashboard-print .customer-sales-table th:nth-child(3)::after{content:"Ticket"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(4)::after{content:"Qty"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(5)::after{content:"Sale"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(5)::after{content:"MDP"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(6)::after{content:"Price"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(7)::after{content:"MDP"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(7)::after{content:"Sale"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(8)::after{content:"Bank"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(9)::after{content:"Cash"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(11)::after{content:"Credit"}
@@ -2391,9 +2394,9 @@ function renderControlRoom(data){
       <td>${esc(r.material||'—')}</td>
       <td><div class="ticket-list">${ticketLines}</div></td>
       <td>${fmtNum(r.qty_mt,2)}</td>
-      <td>${fmtINR(r.amount)}</td>
-      <td>${fmtINR(r.qty_mt?r.amount/r.qty_mt:0)}</td>
       <td>${fmtNum(r.ticket_count?(_num(r.mdp_ton)/r.ticket_count):_num(r.mdp_ton),2)}</td>
+      <td>${fmtINR(r.qty_mt?r.amount/r.qty_mt:0)}</td>
+      <td>${fmtINR(r.amount)}</td>
       <td>${fmtINR(r.bank_received||0)}</td>
       <td>${fmtINR(r.cash_received||0)}</td>
       <td>${fmtINR(r.paid_against_sale||0)}</td>
@@ -2471,9 +2474,9 @@ function renderControlRoom(data){
       <h3>Customer Wise Sales</h3>
       <div class="report-table-wrap">
         <table class="report-table customer-sales-table">
-          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>Sale Amount</th><th>Price (₹/MT)</th><th>MDP/Tonne</th><th>Bank / UPI Paid Against Sale</th><th>Cash Paid Against Sale</th><th>Total Paid Against Sale</th><th>Credit Sale</th></tr></thead>
+          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>MDP/Tonne</th><th>Price (₹/MT)</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Total Paid</th><th>Credit Sale</th></tr></thead>
           <tbody>${customerSalesRows}</tbody>
-          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtNum(_num(salesTotals.mdp_ton),2)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
+          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtNum(_num(salesTotals.mdp_ton),2)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
