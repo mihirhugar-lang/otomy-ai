@@ -1,0 +1,43 @@
+name: Dump otomy data (diagnostic)
+# Manually-triggered: pull the live R2 data and print archive-month totals + balance config so we can
+# compare otomy's actual numbers against localhost. Read-only — writes nothing back to R2.
+on:
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull data state from Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+      - name: Dump archive totals + director-adjusted expense
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          sys.path.insert(0, "scripts")
+          import gha_sync as g
+          print("=== balance_anchors.json ===")
+          try:
+              cfg=json.load(open("data/balance_anchors.json"))
+              print("  statement_file:", cfg.get("bank_statement_file"))
+              for a in cfg.get("anchors", []): print("  anchor", a["date"], "bank", a["bank"], "cash", a["cash"])
+          except Exception as e: print("  (none)", e)
+          print("\n=== archive month totals (LIVE from R2) ===")
+          for m in ["2026-04","2026-05","2026-06","2026-07"]:
+              p=f"data/archive/{m}.json"
+              if not os.path.exists(p): print(f"  {m}: MISSING"); continue
+              d=json.load(open(p)); s=d.get("sales",[]); e=d.get("expenses",[]); r=d.get("receipts",[])
+              def su(rows,k): return sum(float(x.get(k) or 0) for x in rows)
+              # director-adjusted expense (otomy gha_sync rule, date-scoped)
+              diradj=sum(float(x.get("amount") or 0) for x in e if g._is_director_payment(x.get("category"),x.get("description"),x.get("payment_mode"),x.get("notes"),when=x.get("date")))
+              print(f"  {m}: sales {len(s):>4} amt={su(s,'amount'):>11,.0f} qty={su(s,'qty_mt'):>9,.1f} | exp {len(e):>4} amt={su(e,'amount'):>11,.0f} (director-adj excl {diradj:>10,.0f}) | rec {len(r):>3} amt={su(r,'amount'):>11,.0f}")
+          print("\n=== snapshot files present (control/ledger) ===")
+          import glob
+          for f in sorted(glob.glob("data/snapshot/api/*.json"))[:3]: print("  ", os.path.basename(f))
+          print("  total snapshot files:", len(glob.glob("data/snapshot/api/*.json")))
+          PY
