@@ -1,0 +1,57 @@
+name: Dump credit-repayment components (diagnostic)
+# Read-only: pull live R2, replicate _reclassifySales FY tile math (pay per customer, spot-sale per
+# customer, overlap) so we can compare against localhost and localize the ~3L gap. Writes nothing back.
+on:
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull data state from Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+      - name: Compute FY credit-repayment tile components
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from collections import defaultdict
+          FROM="2026-04-01"; TO="2026-07-29"
+          def num(x):
+              try: return float(x or 0)
+              except: return 0.0
+          def norm(x): return str('-' if x is None else x).strip().upper()
+          def inr(d): return d and FROM <= str(d)[:10] <= TO
+          def saletotal(s): return num(s.get("amount")) + num(s.get("transport_charge"))
+          def credit(s):
+              cash,cr,upi = num(s.get("cash_amount")), num(s.get("credit_amount")), num(s.get("upi_amount"))
+              if cash+cr+upi>0: return cr
+              t=saletotal(s); mode=str(s.get("payment_mode") or "Credit")
+              if mode.lower()=="credit": return t
+              return 0.0
+          def rpa(r):
+              m=re.search(r'payment_received=([\d.]+)', str(r.get("notes") or ""))
+              return float(m.group(1)) if m else num(r.get("amount"))
+          spot=defaultdict(float); pay=defaultdict(float); paymon=defaultdict(float)
+          for m in ["2026-04","2026-05","2026-06","2026-07"]:
+              p=f"data/archive/{m}.json"
+              if not os.path.exists(p): continue
+              d=json.load(open(p))
+              for s in d.get("sales",[]):
+                  if inr(s.get("date")): spot[norm(s.get("customer_name"))] += saletotal(s)-credit(s)
+              for r in d.get("receipts",[]):
+                  if inr(r.get("date")):
+                      v=rpa(r); pay[norm(r.get("customer_name"))]+=v; paymon[m]+=v
+          overlap=sum(min(max(spot.get(k,0),0),pay[k]) for k in pay)
+          tile=sum(pay.values())-overlap
+          print("=== OTOMY FY credit-repayment tile components (live) ===")
+          print(f"  total payment_received = {sum(pay.values()):,.0f}   (localhost 32,411,486)")
+          for m in ["2026-04","2026-05","2026-06","2026-07"]: print(f"     {m} pay = {paymon[m]:,.0f}")
+          print(f"  total spot-sale (amt-credit) = {sum(spot.values()):,.0f}   (localhost 9,718,402)")
+          print(f"  overlap stripped = {overlap:,.0f}   (localhost 2,061,810)")
+          print(f"  => TILE = {tile:,.0f}   (localhost 30,349,676)")
+          PY
