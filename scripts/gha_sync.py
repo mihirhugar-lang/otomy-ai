@@ -487,7 +487,7 @@ def fetch_sales(sess, from_d, to_d):
                     "vehicle_no": cols[4].strip(),
                     "material": _norm_material(cols[5]),
                     "rate_per_mt": _num(cols[6]),
-                    "qty_mt": qty, "mdp_ton": qty,
+                    "qty_mt": qty, "mdp_ton": 0.0,  # real MDP Ton is applied from ListSale splits; never default to qty
                     "amount": material_amount,
                     "transport_charge": transport_charge,
                     "payment_mode": _norm_pay(cols[9]),
