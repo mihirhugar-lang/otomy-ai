@@ -308,6 +308,12 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print{padding:0!important;background:#fffdf8!important;font-family:Georgia,'Times New Roman',serif}
   #print-area.dashboard-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   #print-area.dashboard-print h3{font-size:11px!important;margin-bottom:4px!important}
+  /* Print consistency: make every block table match the Customer-Wise-Sales look (Georgia serif, 9.5px) */
+  #print-area.dashboard-print .cashbook-table,#print-area.dashboard-print .tally-ledger{font-family:Georgia,'Times New Roman',serif!important;font-size:9.5px!important;background:#fffdf8!important;color:#111827!important;border-color:#cfcfcf!important}
+  #print-area.dashboard-print .cashbook-table th,#print-area.dashboard-print .tally-ledger th{background:#1a237e!important;color:#fff!important;font-family:inherit!important;font-size:9.5px!important;padding:6px 8px!important}
+  #print-area.dashboard-print .cashbook-table td,#print-area.dashboard-print .tally-ledger td{font-family:inherit!important;font-size:9.5px!important;color:#111827!important;padding:4px 6px!important}
+  /* Print: darken the light-grey date subtitles in block titles so they read clearly */
+  #print-area.dashboard-print h3 span,#print-area .card h3 span{color:#37474f!important;font-weight:600!important}
   #print-area.dashboard-print .print-break-before{break-before:auto!important;page-break-before:auto!important}
   #print-area.dashboard-print .print-section{break-inside:auto!important;page-break-inside:auto!important;margin:0 0 5px 0!important;padding:6px 7px!important}
   #print-area.dashboard-print tr{break-inside:auto!important;page-break-inside:auto!important}
