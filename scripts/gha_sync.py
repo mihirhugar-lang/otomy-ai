@@ -1288,7 +1288,7 @@ def build_control(sales, expenses, from_d, to_d,
         k  = (c, m)
         g  = by_customer.setdefault(k, {
             "customer_name": c, "material": m,
-            "ticket_count": 0, "qty_mt": 0.0, "amount": 0.0,
+            "ticket_count": 0, "qty_mt": 0.0, "amount": 0.0, "mdp_ton": 0.0,
             "bank_received": 0.0, "cash_received": 0.0,
             "paid_against_sale": 0.0, "credit_sale_amount": 0.0, "tickets": [],
         })
@@ -1298,6 +1298,7 @@ def build_control(sales, expenses, from_d, to_d,
         s_cash, s_credit, s_upi = _sale_channels(s)
         g["ticket_count"] += 1
         g["qty_mt"]        += _num(s["qty_mt"])
+        g["mdp_ton"]       += _num(s.get("mdp_ton"))
         g["amount"]        += amt
         g["credit_sale_amount"] += s_credit
         g["cash_received"]      += s_cash
@@ -1318,6 +1319,7 @@ def build_control(sales, expenses, from_d, to_d,
             "tickets":       g["tickets"],
             "qty_mt":               round(g["qty_mt"], 2),
             "amount":               round(g["amount"], 2),
+            "mdp_ton":              round(g["mdp_ton"], 3),
             "bank_received":        round(g["bank_received"], 2),
             "cash_received":        round(g["cash_received"], 2),
             "paid_against_sale":    round(g["paid_against_sale"], 2),
@@ -1459,6 +1461,7 @@ def build_control(sales, expenses, from_d, to_d,
             "ticket_count":       sum(r["ticket_count"]      for r in csr),
             "qty_mt":             round(sum(r["qty_mt"]       for r in csr), 2),
             "amount":             round(sum(r["amount"]       for r in csr), 2),
+            "mdp_ton":            round(sum(r["mdp_ton"]      for r in csr), 3),
             "bank_received":      round(sum(r["bank_received"]  for r in csr), 2),
             "cash_received":      round(sum(r["cash_received"]  for r in csr), 2),
             "paid_against_sale":  round(sum(r["paid_against_sale"] for r in csr), 2),

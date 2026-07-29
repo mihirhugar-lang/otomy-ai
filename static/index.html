@@ -345,7 +345,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .payment-table th:nth-child(1),#print-area.dashboard-print .payment-table td:nth-child(1){width:9%!important}
   #print-area.dashboard-print .payment-table th:nth-child(2),#print-area.dashboard-print .payment-table td:nth-child(2){width:22%!important}
   #print-area.dashboard-print .payment-table th:nth-child(n+4),#print-area.dashboard-print .payment-table td:nth-child(n+4){width:11.5%!important;text-align:right!important}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(8),#print-area.dashboard-print .customer-sales-table td:nth-child(8){display:none!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(10),#print-area.dashboard-print .customer-sales-table td:nth-child(10){display:none!important}
   #print-area.dashboard-print .customer-sales-table th{font-size:0!important;line-height:1!important;white-space:normal!important}
   #print-area.dashboard-print .customer-sales-table th::after{font-size:5.5px!important;line-height:1!important;display:block!important}
   #print-area.dashboard-print .customer-sales-table th:nth-child(1)::after{content:"Customer"}
@@ -353,9 +353,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .customer-sales-table th:nth-child(3)::after{content:"Ticket"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(4)::after{content:"Qty"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(5)::after{content:"Sale"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(6)::after{content:"Bank"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(7)::after{content:"Cash"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(9)::after{content:"Credit"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(6)::after{content:"Price"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(7)::after{content:"MDP"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(8)::after{content:"Bank"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(9)::after{content:"Cash"}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(11)::after{content:"Credit"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(1),#print-area.dashboard-print .customer-sales-table td:nth-child(1){width:20%!important}
   #print-area.dashboard-print .customer-sales-table th:nth-child(2),#print-area.dashboard-print .customer-sales-table td:nth-child(2){width:9%!important}
   #print-area.dashboard-print .customer-sales-table th:nth-child(3),#print-area.dashboard-print .customer-sales-table td:nth-child(3){width:14%!important}
@@ -1064,9 +1066,9 @@ function _archiveCustomerSales(sales){
     const customer=(s.customer_name||'Cash Sale').trim()||'Cash Sale';
     const material=(s.material||'Mixed').trim()||'Mixed';
     const key=`${customer}||${material}`;
-    if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
+    if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,mdp_ton:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
     const g=map.get(key), amount=_saleTotal(s), mode=s.payment_mode||'Credit';
-    g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.ticket_nos.push(s.ticket_no||'—');
+    g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.mdp_ton+=_num(s.mdp_ton);g.ticket_nos.push(s.ticket_no||'—');
     const ch=_saleChannels(s);
     g.credit_sale_amount+=ch.credit;
     g.cash_received+=ch.cash;
@@ -1078,6 +1080,7 @@ function _archiveCustomerSales(sales){
     ...g,
     qty_mt:Math.round(g.qty_mt*100)/100,
     amount:Math.round(g.amount*100)/100,
+    mdp_ton:Math.round(g.mdp_ton*1000)/1000,
     bank_received:Math.round(g.bank_received*100)/100,
     cash_received:Math.round(g.cash_received*100)/100,
     paid_against_sale:Math.round(g.paid_against_sale*100)/100,
@@ -1239,7 +1242,7 @@ async function _archiveControl(from,to){
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
     input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
-    customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
+    customer_sales_totals:{ticket_count:customerSales.reduce((s,r)=>s+r.ticket_count,0),qty_mt:Math.round(customerSales.reduce((s,r)=>s+r.qty_mt,0)*100)/100,amount:Math.round(customerSales.reduce((s,r)=>s+r.amount,0)*100)/100,mdp_ton:Math.round(customerSales.reduce((s,r)=>s+_num(r.mdp_ton),0)*1000)/1000,bank_received:Math.round(customerSales.reduce((s,r)=>s+r.bank_received,0)*100)/100,cash_received:Math.round(customerSales.reduce((s,r)=>s+r.cash_received,0)*100)/100,paid_against_sale:Math.round(customerSales.reduce((s,r)=>s+r.paid_against_sale,0)*100)/100,credit_sale_amount:Math.round(customerSales.reduce((s,r)=>s+r.credit_sale_amount,0)*100)/100},
     customer_repayments:repayments,customer_repayments_total:Math.round(repayments.reduce((s,r)=>s+_num(r.amount),0)*100)/100,customer_repayments_payment_total:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,customer_repayments_bank_total:Math.round(repayments.reduce((s,r)=>s+_num(r.bank_received),0)*100)/100,customer_repayments_cash_total:Math.round(repayments.reduce((s,r)=>s+_num(r.cash_received),0)*100)/100,
     machine_summary:[],expense_rows:expenseRows,trend,top_receivables:balances.top_receivables||[],top_payables:balances.top_payables||[],alerts:[{level:'good',title:'Archive data loaded',detail:'Historical range built from monthly Otomy archive.'}],
   };
@@ -2360,12 +2363,14 @@ function renderControlRoom(data){
       <td><div class="ticket-list">${ticketLines}</div></td>
       <td>${fmtNum(r.qty_mt,2)}</td>
       <td>${fmtINR(r.amount)}</td>
+      <td>${fmtINR(r.qty_mt?r.amount/r.qty_mt:0)}</td>
+      <td>${fmtNum(r.ticket_count?(_num(r.mdp_ton)/r.ticket_count):_num(r.mdp_ton),2)}</td>
       <td>${fmtINR(r.bank_received||0)}</td>
       <td>${fmtINR(r.cash_received||0)}</td>
       <td>${fmtINR(r.paid_against_sale||0)}</td>
       <td>${fmtINR(r.credit_sale_amount||0)}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="9" class="empty">No sales in this period</td></tr>';
+  }).join('')||'<tr><td colspan="11" class="empty">No sales in this period</td></tr>';
   const salesTotals=data.customer_sales_totals||{};
   const machineRows=(data.machine_summary||[]).map(r=>`<tr>
       <td>${esc(r.machine)}</td>
@@ -2437,9 +2442,9 @@ function renderControlRoom(data){
       <h3>Customer Wise Sales</h3>
       <div class="report-table-wrap">
         <table class="report-table customer-sales-table">
-          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI Paid Against Sale</th><th>Cash Paid Against Sale</th><th>Total Paid Against Sale</th><th>Credit Sale</th></tr></thead>
+          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>Sale Amount</th><th>Price (₹/MT)</th><th>MDP/Tonne</th><th>Bank / UPI Paid Against Sale</th><th>Cash Paid Against Sale</th><th>Total Paid Against Sale</th><th>Credit Sale</th></tr></thead>
           <tbody>${customerSalesRows}</tbody>
-          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
+          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtNum(salesTotals.ticket_count?(_num(salesTotals.mdp_ton)/salesTotals.ticket_count):0,2)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
