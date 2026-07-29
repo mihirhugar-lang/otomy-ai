@@ -1534,11 +1534,17 @@ async function _reloadActiveSectionAfterSync(){
   if(section==='ops')return loadOpsDefaults();
   if(section==='ledger')return loadLedgerView();
 }
+function _fetchT(url,opts,ms){
+  // fetch with an abort timeout so a stalled request can't hang the auto-refresh loop
+  const c=new AbortController();
+  const id=setTimeout(()=>c.abort(),ms||8000);
+  return fetch(url,Object.assign({},opts||{},{signal:c.signal})).finally(()=>clearTimeout(id));
+}
 async function _currentSyncStamp(){
   if(isStaticSnapshotHost()){
     const now=Date.now();
-    const manifestReq=fetch(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
-    const appReq=fetch(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
+    const manifestReq=_fetchT(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
+    const appReq=_fetchT(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
       .then(r=>r.ok?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:'')
       .catch(()=>'');
     const [data, appStamp]=await Promise.all([manifestReq, appReq]);
@@ -1546,8 +1552,8 @@ async function _currentSyncStamp(){
     const codeStamp=appStamp||OTOMY_APP_VERSION;
     return `${dataStamp}|${codeStamp}`;
   }
-  const r=await fetch(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'});
-  if(!r.ok)return null;
+  const r=await _fetchT(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'}).catch(()=>null);
+  if(!r||!r.ok)return null;
   const data=await r.json();
   return data.last_sync||data.generated_at||data.updated_at||null;
 }
@@ -2257,6 +2263,17 @@ let _dashDebounceTimer = null;
 function _debouncedLoadDash(){ clearTimeout(_dashDebounceTimer); _dashDebounceTimer = setTimeout(loadDash, 400); }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
+let _dashRetried=false;
+function _dashUnavailable(){
+  // Fetch came back empty/unauthorized (usually an expired Cloudflare Access session or a mid-deploy
+  // swap). Auto-retry once after a short delay; if it still fails, show a clear reload prompt instead
+  // of a raw "undefined is not an object" error.
+  const f=document.getElementById('dash-from').value||mtdStart();
+  const t=document.getElementById('dash-to').value||today();
+  if(!_dashRetried){_dashRetried=true;try{_dashCache.control.delete(`${f}|${t}`);}catch(e){}setTimeout(()=>loadDash(),1500);return;}
+  const el=document.getElementById('control-room');
+  if(el)el.innerHTML='<div class="control-alert danger"><strong>Couldn\'t load dashboard data</strong><span>Your session may have expired. <button onclick="location.reload()" style="background:#fff;color:#1f2937;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;cursor:pointer;margin-left:8px;font-weight:600">Reload</button></span></div>';
+}
 async function loadDash(){
   const seq=++_dashLoadSeq;
   const d=document.getElementById('dash-date').value;
@@ -2265,9 +2282,11 @@ async function loadDash(){
   try{
     const controlData=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     if(seq!==_dashLoadSeq)return;
+    if(!controlData||!controlData.summary){_dashUnavailable();return;}
+    _dashRetried=false;
     renderDashSummary(controlData,d);
     renderControlRoom(controlData);
-  }catch(e){flash('Dashboard error: '+e.message,false);}
+  }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
 }
 
 async function loadControlRoom(){
