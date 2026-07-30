@@ -100,9 +100,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
 .tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
-.sales-table{min-width:1120px}
+.sales-table{min-width:960px}
 .sales-table th,.sales-table td{white-space:nowrap}
 .sales-table td:nth-child(2){min-width:150px;white-space:normal}
+/* Numeric columns (MDP Ton … Credit = cols 4–12) hug their content and right-align, so short values like MDP don't leave a gap before Qty MT; the Customer column absorbs the slack and the table fits the content area like the dashboard sale block */
+.sales-table th:nth-child(n+4):nth-child(-n+12),.sales-table td:nth-child(n+4):nth-child(-n+12){width:1%;text-align:right}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th.sortable:hover{background:#3b3b3b}
