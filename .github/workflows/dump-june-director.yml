@@ -1,0 +1,54 @@
+name: Dump June DIRECTOR-2 rows (read-only diagnostic)
+on:
+  workflow_dispatch:
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull data state from Cloudflare R2 (read-only)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+      - name: Inspect June archive DIRECTOR-2 / KUMAR rows
+        run: |
+          python3 - <<'PY'
+          import json, os
+          p="data/archive/2026-06.json"
+          print("exists:", os.path.exists(p))
+          d=json.load(open(p))
+          print("archive keys:", list(d.keys()))
+          exp=d.get("expenses",[])
+          print("June expense rows:", len(exp))
+
+          def txt(e): return " ".join(str(e.get(k) or "") for k in ("category","description","payment_mode","notes")).upper()
+
+          # 1) the two rows in question: PLANT VISIT KUMAR SIR, ~300 / ~500
+          print("\n=== rows with 'PLANT VISIT' + 'KUMAR' ===")
+          for e in exp:
+              t=txt(e)
+              if "PLANT VISIT" in t and "KUMAR" in t:
+                  print(f"  date={e.get('date')} | category={e.get('category')!r} | notes={e.get('notes')!r} | amount={e.get('amount')}")
+
+          # 2) replicate frontend _isDirectorPayment (June: name-anywhere, DIRECTOR category kept)
+          def is_dir(cat,desc,mode,notes):
+              vals=[cat,desc,mode,notes]
+              text=" ".join(str(v or "") for v in vals).upper()
+              if "DIRECTOR" in str(vals[0] or "").upper(): return False
+              if not ("PRASHANT" in text or "KUMAR" in text): return False
+              return True  # June onward
+
+          kept=sum(float(e.get("amount") or 0) for e in exp if not is_dir(e.get("category"),e.get("description"),e.get("payment_mode"),e.get("notes")))
+          excl=sum(float(e.get("amount") or 0) for e in exp if is_dir(e.get("category"),e.get("description"),e.get("payment_mode"),e.get("notes")))
+          raw=sum(float(e.get("amount") or 0) for e in exp)
+          print(f"\notomy June EXPENSES: raw={raw:,.0f} director_excluded={excl:,.0f} kept(adj)={kept:,.0f}")
+          print("localhost June: raw=8,494,409  director_excluded=3,350,579-800=3,349,779  kept(adj part)=...")
+
+          # 3) any DIRECTOR-category rows this month + their notes
+          print("\n=== all rows whose category contains DIRECTOR ===")
+          for e in exp:
+              if "DIRECTOR" in str(e.get("category") or "").upper():
+                  print(f"  date={e.get('date')} | category={e.get('category')!r} | notes={e.get('notes')!r} | amount={e.get('amount')}")
+          PY
