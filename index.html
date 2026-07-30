@@ -109,6 +109,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 /* Ledger View: same content-hugging + right-aligned numbers so columns look proportional and the last metric columns don't drift off to the side */
 .ledger-view-table th,.ledger-view-table td{width:1%;white-space:nowrap}
 .ledger-view-table th:not(:first-child),.ledger-view-table td:not(:first-child){text-align:right}
+.ledger-view-table tfoot .ledger-avg-row td{background:#eef0fa;font-weight:600;border-top:1px solid #c5cae9}
+.preset-dates select{border:1.5px solid #c9b98f;border-radius:4px;padding:5px 8px;font-size:12px;background:#fffdf5;color:#c2610c;font-weight:700}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th.sortable:hover{background:#3b3b3b}
@@ -791,9 +793,9 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="card">
     <div class="preset-bar no-print">
       <span class="preset-label">Month:</span>
-      <button class="pbtn" onclick="document.getElementById('ledger-month').value=monthNow();loadLedgerView()">This Month</button>
-      <button class="pbtn" onclick="document.getElementById('ledger-month').value=lastMonthYM();loadLedgerView()">Last Month</button>
-      <div class="preset-dates"><input type="month" id="ledger-month" onchange="loadLedgerView()"></div>
+      <button class="pbtn" onclick="loadLedgerView(monthNow())">This Month</button>
+      <button class="pbtn" onclick="loadLedgerView(lastMonthYM())">Last Month</button>
+      <div class="preset-dates"><select id="ledger-month" onchange="loadLedgerView()"></select></div>
       <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Print / PDF</button>
     </div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
@@ -2979,8 +2981,24 @@ function renderStatement(){
 async function delBankTxn(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
 // ── Ledger View ───────────────────────────────────────────────────────────
-async function loadLedgerView(){
-  const ym=document.getElementById('ledger-month').value||monthNow();
+function _populateLedgerMonths(){
+  const sel=document.getElementById('ledger-month');
+  if(!sel||sel.tagName!=='SELECT'||sel.options.length)return;
+  const now=new Date(), cy=now.getFullYear(), cm=now.getMonth()+1;
+  let y=2026,m=4; const opts=[];   // FY starts April 2026; grows automatically as months pass
+  while(y<cy||(y===cy&&m<=cm)){
+    const ym=`${y}-${String(m).padStart(2,'0')}`;
+    opts.push(`<option value="${ym}">${new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}</option>`);
+    m++; if(m>12){m=1;y++;}
+  }
+  sel.innerHTML=opts.reverse().join('');           // newest month first
+  sel.value=`${cy}-${String(cm).padStart(2,'0')}`; // default to current month
+}
+async function loadLedgerView(targetYm){
+  _populateLedgerMonths();
+  const sel=document.getElementById('ledger-month');
+  if(targetYm)sel.value=targetYm;
+  const ym=sel.value||monthNow();
   const[yr,mo]=ym.split('-');
   try{
     const data=await api(`/api/dashboard/ledger-view?year=${yr}&month=${parseInt(mo)}`);
@@ -3024,7 +3042,24 @@ function renderLedgerView(data){
   });
   if(!rows.length)html+='<tr><td colspan="14" class="empty">No ledger data for this month</td></tr>';
   const tProfit=_num(t.sale_amount)-_num(t.expenses);
-  html+=`</tbody><tfoot><tr>
+  const _n=rows.length||1, _avg=k=>rows.reduce((s,r)=>s+_num(r[k]),0)/_n, _sum=k=>rows.reduce((s,r)=>s+_num(r[k]),0);
+  const _aProfit=_sum('sale_amount')-_sum('expenses');
+  html+=`</tbody><tfoot><tr class="ledger-avg-row">
+    <td><strong>Average / Day</strong></td>
+    <td>${fmtINR(_avg('sale_amount'))}</td>
+    <td>${fmtINR(_avg('spot_sale_cash'))}</td>
+    <td>${fmtINR(_avg('spot_sale_bank'))}</td>
+    <td>${fmtINR(_avg('credit_sale_amount'))}</td>
+    <td>${fmtINR(_avg('credit_repayment'))}</td>
+    <td>${fmtINR(_avg('expenses'))}</td>
+    <td>${fmtINR(_avg('cash_balance_office'))}</td>
+    <td>${fmtINR(_avg('bank_balance'))}</td>
+    <td>${fmtNum(_avg('boulder_input_mt'),1)} MT</td>
+    <td>${per(_sum('expenses'),_sum('qty_mt'))}</td>
+    <td>${per(_sum('expenses'),_sum('boulder_input_mt'))}</td>
+    <td>${per(_aProfit,_sum('qty_mt'))}</td>
+    <td>${per(_aProfit,_sum('boulder_input_mt'))}</td>
+  </tr><tr>
     <td><strong>Total</strong></td>
     <td><strong>${fmtINR(t.sale_amount||0)}</strong></td>
     <td><strong>${fmtINR(t.spot_sale_cash||0)}</strong></td>
