@@ -3025,7 +3025,7 @@ function renderLedgerView(data){
     <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
     <div class="kpi navy"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
     <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
+    <div class="kpi"><div class="kpi-label">Cash in Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
   const per=(n,d)=>d?fmtINR(n/d):'—';
