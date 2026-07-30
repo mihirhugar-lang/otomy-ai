@@ -103,8 +103,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 .sales-table{min-width:960px}
 .sales-table th,.sales-table td{white-space:nowrap}
 .sales-table td:nth-child(2){min-width:150px;white-space:normal}
-/* Numeric columns (MDP Ton … Credit = cols 4–12) hug their content and right-align, so short values like MDP don't leave a gap before Qty MT; the Customer column absorbs the slack and the table fits the content area like the dashboard sale block */
-.sales-table th:nth-child(n+4):nth-child(-n+12),.sales-table td:nth-child(n+4):nth-child(-n+12){width:1%;text-align:right}
+/* Proportional widths: every column hugs its content except Customer (col 2), which absorbs the slack — no huge gaps, and the footer lines up (footer no longer uses colspan). Numbers right-aligned. */
+.sales-table th:not(:nth-child(2)),.sales-table td:not(:nth-child(2)){width:1%}
+.sales-table th:nth-child(n+4):nth-child(-n+12),.sales-table td:nth-child(n+4):nth-child(-n+12){text-align:right}
+/* Ledger View: same content-hugging + right-aligned numbers so columns look proportional and the last metric columns don't drift off to the side */
+.ledger-view-table th,.ledger-view-table td{width:1%;white-space:nowrap}
+.ledger-view-table th:not(:first-child),.ledger-view-table td:not(:first-child){text-align:right}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
 thead th.sortable{cursor:pointer;user-select:none}
 thead th.sortable:hover{background:#3b3b3b}
@@ -2546,7 +2550,7 @@ function renderSales(){
     html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
   if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
   document.getElementById('sales-tbl').innerHTML=html;
   document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
 }
@@ -2998,7 +3002,7 @@ function renderLedgerView(data){
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
   const per=(n,d)=>d?fmtINR(n/d):'—';
-  let html='<table><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Expenses / Tonne Sale</th><th>Expenses / Boulder Input</th><th>Profit / Tonne Sale</th><th>Profit / Boulder Input</th></tr></thead><tbody>';
+  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash Balance In Office</th><th>Bank Balance</th><th>Boulders Input</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
