@@ -1622,7 +1622,7 @@ function startSyncAutoRefresh(){
   }
   checkForFreshSync(true);
   clearInterval(_syncRefreshTimer);
-  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),30000);
+  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden)checkForFreshSync(false);
