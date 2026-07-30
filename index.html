@@ -1598,8 +1598,13 @@ async function checkForFreshSync(force=false){
     const stamp=await _currentSyncStamp();
     if(!stamp)return;
     if(_lastSeenSyncStamp && stamp!==_lastSeenSyncStamp){
+      // Static-site stamp = "data|code". Only a CODE change needs a full page reload (to load the
+      // new app build); a DATA-only change is refreshed silently in place, so the user stays on the
+      // page they're browsing instead of being thrown back to the Dashboard.
+      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|')[1]!==String(stamp).split('|')[1];
       _lastSeenSyncStamp=stamp;
-      if(_reloadStaticPageForSync(stamp))return;
+      _rememberStaticSyncStamp(stamp);
+      if(codeChanged && _reloadStaticPageForSync(stamp))return;
       await _reloadActiveSectionAfterSync();
       flash('Latest sync data loaded');
     }else if(!_lastSeenSyncStamp || force){
@@ -1682,6 +1687,7 @@ function resetRangeToToday(section){
   if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btn=[...bar.querySelectorAll('.pbtn')].find(b=>b.textContent.trim()==='Today');if(btn)btn.classList.add('act');}
 }
 function nav(name){
+  try{sessionStorage.setItem('cx_active_section',name);}catch(e){}  // remember page so a refresh stays here
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelector(`.nav-item[onclick="nav('${name}')"]`).classList.add('active');
@@ -2265,7 +2271,11 @@ window.onload=async function(){
   document.getElementById('dash-date').value=t;
   ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   ['rpt-month','gst-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
-  await loadDash();
+  // Restore the page the user was on before a refresh (same tab/session only). A brand-new
+  // session has nothing saved, so first-time open still lands on the Dashboard.
+  let _bootSection='dashboard';
+  try{const s=sessionStorage.getItem('cx_active_section');if(s&&document.getElementById('section-'+s))_bootSection=s;}catch(e){}
+  if(_bootSection!=='dashboard'){nav(_bootSection);}else{await loadDash();}
   startSyncAutoRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
     printDashboard(false);
