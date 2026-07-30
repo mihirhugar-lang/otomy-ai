@@ -236,6 +236,11 @@ _DIRECTOR_SHARE_ONLY_BEFORE = "2026-06-01"
 
 def _is_director_payment(*values, when=None):
     text = " ".join(str(value or "") for value in values).upper()
+    # Director 1/2 are directors, not shareholders — their spend is a normal expense,
+    # never a shareholder drawing (even if a note names Kumar/Prashant). Mirrors
+    # dashboard.py:_is_director_payment and index.html:_isDirectorPayment.
+    if values and "DIRECTOR" in str(values[0] or "").upper():
+        return False
     localhost_operating_expense_labels = (
         "CASH GIVEN TO KUMAR SIR",
         "PRASHANTH SIR (NJP) LODGE EXP",
