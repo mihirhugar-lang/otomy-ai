@@ -46,9 +46,13 @@ jobs:
           print(f"\notomy June EXPENSES: raw={raw:,.0f} director_excluded={excl:,.0f} kept(adj)={kept:,.0f}")
           print("localhost June: raw=8,494,409  director_excluded=3,350,579-800=3,349,779  kept(adj part)=...")
 
-          # 3) any DIRECTOR-category rows this month + their notes
-          print("\n=== all rows whose category contains DIRECTOR ===")
-          for e in exp:
-              if "DIRECTOR" in str(e.get("category") or "").upper():
-                  print(f"  date={e.get('date')} | category={e.get('category')!r} | notes={e.get('notes')!r} | amount={e.get('amount')}")
+          # 3) LABOUR + PARTS rows (the ₹800 gap is here, not expenses)
+          lab=d.get("labour",[]); prt=d.get("parts",[])
+          print(f"\n=== otomy June LABOUR rows ({len(lab)}) total={sum(float(x.get('amount') or 0) for x in lab):,.2f} ===")
+          for x in lab:
+              print(f"  date={x.get('date')} | worker={x.get('worker_name')!r} | type={x.get('worker_type')!r} | amount={x.get('amount')}")
+          print(f"=== otomy June PARTS rows ({len(prt)}) total={sum(float(x.get('total_amount') or 0) for x in prt):,.2f} ===")
+          for x in prt:
+              print(f"  date={x.get('date')} | part={x.get('part_name')!r} | amount={x.get('total_amount')}")
+          print("\nlocalhost June labour = 1,750 (Mahesh 600 / Suresh 450 / Ramesh 700), parts = 0")
           PY
