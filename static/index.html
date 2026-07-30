@@ -1624,9 +1624,18 @@ function startSyncAutoRefresh(){
   clearInterval(_syncRefreshTimer);
   _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
+const AWAY_RESET_MS=5*60*1000; // away >5 min → land back on Dashboard on return
+let _hiddenAt=null;
+function _markAway(){try{sessionStorage.setItem('cx_left_at',String(Date.now()));}catch(e){}}
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden)checkForFreshSync(false);
+  if(document.hidden){_hiddenAt=Date.now();_markAway();return;}
+  const away=_hiddenAt?Date.now()-_hiddenAt:0;
+  _hiddenAt=null;
+  try{sessionStorage.removeItem('cx_left_at');}catch(e){}
+  if(away>AWAY_RESET_MS && _activeSectionName()!=='dashboard'){nav('dashboard');return;}
+  checkForFreshSync(false);
 });
+window.addEventListener('pagehide',_markAway);
 function valByPath(row,key){return key.split('.').reduce((v,k)=>v==null?undefined:v[k],row);}
 function normSortVal(v){
   if(v==null)return'';
@@ -2273,7 +2282,7 @@ window.onload=async function(){
   // Restore the page the user was on before a refresh (same tab/session only). A brand-new
   // session has nothing saved, so first-time open still lands on the Dashboard.
   let _bootSection='dashboard';
-  try{const s=sessionStorage.getItem('cx_active_section');if(s&&document.getElementById('section-'+s))_bootSection=s;}catch(e){}
+  try{const s=sessionStorage.getItem('cx_active_section');const leftAt=parseInt(sessionStorage.getItem('cx_left_at')||'0',10);const awayLong=leftAt&&(Date.now()-leftAt)>AWAY_RESET_MS;if(s&&document.getElementById('section-'+s)&&!awayLong)_bootSection=s;sessionStorage.removeItem('cx_left_at');}catch(e){}
   if(_bootSection!=='dashboard'){nav(_bootSection);}else{await loadDash();}
   startSyncAutoRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
