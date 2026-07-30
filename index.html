@@ -443,6 +443,13 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .report-table-wrap{max-height:520px;overflow:auto}
 .report-table thead th{position:sticky;top:0;z-index:1}
 .report-table{overflow:visible !important}
+/* Sale & Ledger page tables behave like dashboard blocks: fixed-height scroll box + sticky header + side scrollbar */
+#sales-tbl,#ledger-tbl{max-height:520px;overflow:auto}
+#sales-tbl table thead th,#ledger-tbl table thead th{position:sticky;top:0;z-index:2}
+/* Date fields shown in orange across every page (from/to/day/month pickers, their labels, topbar date) */
+.preset-dates input{color:#c2610c !important;font-weight:700}
+.preset-dates label{color:#c2610c !important;font-weight:700}
+.topbar-date{color:#c2610c !important;font-weight:700}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 </head>
@@ -660,7 +667,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
   <!-- Bank Book -->
   <div class="card" style="border-top:3px solid #1565c0">
-    <h3 style="color:#1565c0">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— all bank/UPI receipts &amp; payments, with opening balance</span></h3>
+    <h3 style="color:#1565c0">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— all bank/UPI receipts &amp; payments, with opening balance</span></h3>
     <div class="preset-bar no-print">
       <span class="preset-label">Period:</span>
       <button class="pbtn act" onclick="preset('erpbank','today',this)">Today</button>
@@ -684,7 +691,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
   <!-- Cash Book -->
   <div class="card" style="border-top:3px solid #2e7d32">
-    <h3 style="color:#2e7d32">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— all cash receipts &amp; payments (incl. site expenses), with opening balance</span></h3>
+    <h3 style="color:#2e7d32">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— all cash receipts &amp; payments (incl. site expenses), with opening balance</span></h3>
     <div class="preset-bar no-print">
       <span class="preset-label">Period:</span>
       <button class="pbtn act" onclick="preset('erpcash','today',this)">Today</button>
@@ -2489,7 +2496,7 @@ function renderControlRoom(data){
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
     </div>
     <div class="card print-section">
-      <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3>
+      <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3>
       <div class="tbl-wrap" style="max-height:520px;overflow:auto">
         <table class="cashbook-table">
           <thead><tr><th>Date</th><th>Particulars</th><th>Party</th><th>Mode</th><th style="text-align:right">Cash</th><th style="text-align:right">Bank / UPI</th></tr></thead>
@@ -2500,8 +2507,8 @@ function renderControlRoom(data){
       </div>
       <div class="metric-note">Director share / drawings (Prashant &amp; Kumar) are excluded — capital withdrawals, not company expenses. Ties to Operating Expenses.</div>
     </div>
-    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
-    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#777">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
   `;
   renderDashboardCashBooks(data.period.from,data.period.to);
 }
@@ -2781,7 +2788,7 @@ function renderCustLedger(){
   // ── Tally-style Ledger Account (Sale=Debit, Receipt=Credit; balance is receivable = Dr), range-aware ──
   const cTotDebit=cInRange.reduce((s,r)=>s+(r.type==='sale'?(r.debit||r.amount||0):0),0);
   const cTotCredit=cInRange.reduce((s,r)=>s+(r.type==='receipt'?(r.credit||r.amount||0):0),0);
-  html+=`<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(cRangeNote)} · ${esc(cSrcNote)})</span></h3>`;
+  html+=`<div id="cust-ledger-summary-print"><h3 style="font-size:16px;margin:14px 0 8px;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#c2610c">(${esc(cRangeNote)} · ${esc(cSrcNote)})</span></h3>`;
   html+='<table class="tally-ledger"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
   html+=`<tr style="background:#f4f7f4"><td>—</td><td><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${_fmtDrCr(cOpening,false)}</td></tr>`;
   cInRange.forEach(r=>{
@@ -2878,7 +2885,7 @@ function renderVendLedger(){
     <div class="kpi navy"><div class="kpi-label">Closing Payable</div><div class="kpi-value">${_fmtDrCr(closing,true)}</div></div>
   </div>`;
   // ── Tally-style Ledger Account (range-aware running balance) ──
-  html+=`<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:8px 0;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#777">(${esc(rangeNote)} · ${esc(srcNote)})</span></h3>`;
+  html+=`<div id="vend-ledger-summary-print"><h3 style="font-size:16px;margin:8px 0;color:#2e7d32">Ledger Account <span style="font-size:11px;font-weight:400;color:#c2610c">(${esc(rangeNote)} · ${esc(srcNote)})</span></h3>`;
   html+='<table class="tally-ledger"><thead><tr><th>Date</th><th>Particulars</th><th>Vch Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
   html+=`<tr style="background:#f4f7f4"><td>—</td><td><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${_fmtDrCr(opening,true)}</td></tr>`;
   rows.forEach(r=>{
