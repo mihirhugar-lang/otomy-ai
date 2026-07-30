@@ -1332,7 +1332,7 @@ let _customers=[], _vendors=[], _bankAccounts=[], _musterWorkers=[];
 // Pagination state — keyed by section
 const _page={sales:1,expenses:1,boulders:1,machines:1,labour:1,parts:1,erpbank:1,erpcash:1};
 const _sort={
-  sales:{key:'amount',dir:'desc'},
+  sales:{key:'ticket_no',dir:'desc'},
   expenses:{key:'amount',dir:'desc'},
   customers:{key:'latest_sale_date',dir:'desc'},
   vendors:{key:'payable',dir:'desc'},
@@ -2543,7 +2543,7 @@ function renderSales(){
   slice.forEach(r=>{
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
     const ch=_saleChannels(r);
-    html+=`<tr><td>${r.date}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
+    html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
   if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
   html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL (all ${_allData.sales.length})</strong></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
