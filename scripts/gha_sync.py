@@ -2720,6 +2720,75 @@ def build_customer_range_rows(customers_full, all_sales, range_sales, range_repa
     ))
     return rows
 
+def build_gstr1(sales_rows, name_to_gstin, exports_config, year, month):
+    """Compute a GSTR-1 payload for one month from sale rows, mirroring the live
+    backend (routers/exports.py:export_gstr1). Amounts are GST-inclusive, so the
+    taxable value is amount / (1 + rate/100). B2B when the customer has a valid
+    15-char GSTIN, else rolled into the B2C summary. Keeps otomy's static snapshot
+    identical to what localhost returns instead of shipping an empty stub."""
+    gstin = (exports_config or {}).get("gstin", "") or ""
+    state_code = (exports_config or {}).get("state_code", "29") or "29"
+    fp = f"{month:02d}{year}"
+    prefix = f"{year}-{month:02d}-"
+    b2b = {}
+    b2cs_taxable = b2cs_cgst = b2cs_sgst = 0.0
+    total_taxable = 0.0
+    total_qty = 0.0
+    for s in sales_rows:
+        d = str(s.get("date") or "")
+        if not d.startswith(prefix):
+            continue
+        rate = _num(s.get("gst_rate")) or 5.0
+        amount = _num(s.get("amount")) + _num(s.get("transport_charge"))
+        taxable = round(amount / (1 + rate / 100), 2)
+        cgst = round(taxable * (rate / 2) / 100, 2)
+        sgst = round(taxable * (rate / 2) / 100, 2)
+        total_taxable += taxable
+        total_qty += _num(s.get("qty_mt"))
+        cust_gstin = (name_to_gstin.get((s.get("customer_name") or "").strip().lower(), "") or "").strip()
+        if len(cust_gstin) == 15:
+            entry = b2b.setdefault(cust_gstin, {"ctin": cust_gstin, "inv": []})
+            try:
+                idt = datetime.strptime(d[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+            except ValueError:
+                idt = d
+            entry["inv"].append({
+                "inum": s.get("ticket_no") or f"INV{s.get('id')}",
+                "idt": idt,
+                "val": round(amount, 2),
+                "pos": state_code,
+                "rchrg": "N",
+                "itms": [{"num": 1, "itm_det": {
+                    "txval": taxable, "rt": rate, "igst": 0,
+                    "cgst": cgst, "sgst": sgst, "cess": 0,
+                }}],
+            })
+        else:
+            b2cs_taxable += taxable
+            b2cs_cgst += cgst
+            b2cs_sgst += sgst
+    gstr1 = {
+        "gstin": gstin,
+        "fp": fp,
+        "gt": round(total_taxable, 2),
+        "cur_gt": round(total_taxable, 2),
+    }
+    if b2b:
+        gstr1["b2b"] = list(b2b.values())
+    gstr1["b2cs"] = [{
+        "sply_tp": "INTRA", "pos": state_code, "typ": "OE", "rt": 5,
+        "txval": round(b2cs_taxable, 2), "igst": 0,
+        "cgst": round(b2cs_cgst, 2), "sgst": round(b2cs_sgst, 2), "cess": 0,
+    }] if b2cs_taxable > 0 else []
+    b2b_cgst = sum(itm["itm_det"]["cgst"] for c in b2b.values() for inv in c["inv"] for itm in inv["itms"])
+    b2b_sgst = sum(itm["itm_det"]["sgst"] for c in b2b.values() for inv in c["inv"] for itm in inv["itms"])
+    gstr1["hsn"] = {"data": [{
+        "num": 1, "hsn_sc": "2517", "desc": "Crushed Stone / Aggregate", "uqc": "MT",
+        "qty": round(total_qty, 3), "val": round(total_taxable, 2), "txval": round(total_taxable, 2),
+        "igst": 0, "cgst": round(b2cs_cgst + b2b_cgst, 2), "sgst": round(b2cs_sgst + b2b_sgst, 2), "cess": 0,
+    }]} if total_taxable > 0 else {"data": []}
+    return gstr1
+
 def write_snapshot_bundle(
     today,
     yesterday,
@@ -2952,10 +3021,20 @@ def write_snapshot_bundle(
         f"/api/dashboard/monthly?year={today.year}&month={today.month}",
         {"year": today.year, "month": today.month, "sales": {}, "expenses": {}, "pnl": {}},
     )
-    write_snapshot(
-        f"/api/exports/gstr1?year={today.year}&month={today.month}",
-        {"gstin": "", "fp": today.strftime("%m%Y"), "b2b": [], "b2cs": [], "hsn": {"data": []}},
-    )
+    # GSTR-1: compute a real payload per month that has sales (mirrors the live
+    # backend export) so otomy no longer serves an empty stub. Match sale -> customer
+    # by name because sale rows always carry customer_name.
+    name_to_gstin = {(c.get("name") or "").strip().lower(): (c.get("gstin") or "").strip() for c in customers_full}
+    gstr1_months = {(today.year, today.month)}
+    for s in all_sales:
+        d = str(s.get("date") or "")
+        if len(d) >= 7:
+            gstr1_months.add((int(d[:4]), int(d[5:7])))
+    for yr, mo in sorted(gstr1_months):
+        write_snapshot(
+            f"/api/exports/gstr1?year={yr}&month={mo}",
+            build_gstr1(all_sales, name_to_gstin, exports_config, yr, mo),
+        )
     (DATA_DIR / "snapshot").mkdir(parents=True, exist_ok=True)
     with open(DATA_DIR / "snapshot" / "manifest.json", "w") as f:
         json.dump(
