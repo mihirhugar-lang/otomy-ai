@@ -495,6 +495,7 @@ def fetch_sales(sess, from_d, to_d):
                 dd, mm, yyyy = cols[2].split("-")
                 tickets.append({
                     "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
+                    "sale_time": cols[3].strip(),
                     "customer_name": party, "ticket_no": cols[1].strip(),
                     "vehicle_no": cols[4].strip(),
                     "material": _norm_material(cols[5]),
