@@ -3030,7 +3030,7 @@ function renderLedgerView(data){
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
   const per=(n,d)=>d?fmtINR(n/d):'—';
-  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Sale Cash</th><th>Spot Sale Bank/UPI</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
+  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Credit Repayment</th><th>Expenses</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
