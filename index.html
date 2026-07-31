@@ -109,6 +109,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 /* Ledger View: same content-hugging + right-aligned numbers so columns look proportional and the last metric columns don't drift off to the side */
 .ledger-view-table{table-layout:fixed;width:100%;font-size:12px}
 .ledger-view-table th,.ledger-view-table td{white-space:nowrap;padding:4px 5px;overflow:hidden;text-overflow:ellipsis}
+.ledger-view-table th{white-space:normal;overflow:visible;text-overflow:clip;font-size:10px;line-height:1.15;vertical-align:bottom;letter-spacing:-.1px}
 .ledger-view-table th:first-child,.ledger-view-table td:first-child{width:7.5%}
 .ledger-view-table th:not(:first-child),.ledger-view-table td:not(:first-child){text-align:right}
 #ledger-summary .kpi{padding:13px 13px}
@@ -276,6 +277,12 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .tbl-wrap,.report-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .tbl-wrap.no-side-scroll{overflow-x:visible}
   table,.report-table{min-width:760px;font-size:12px}
+  /* Ledger View on mobile: same feel as the Sales table — natural column widths that
+     scroll horizontally with readable numbers, instead of squeezing 15 cols into the viewport. */
+  .ledger-view-table{table-layout:auto;width:auto;min-width:1000px;font-size:12px}
+  .ledger-view-table th,.ledger-view-table td{white-space:nowrap;overflow:visible;text-overflow:clip;width:1%;padding:9px 9px}
+  .ledger-view-table th:first-child,.ledger-view-table td:first-child{width:1%}
+  .ledger-view-table th{font-size:11px;vertical-align:middle;line-height:1.2}
   .tbl-wrap.no-side-scroll table{min-width:0;font-size:11px}
   thead th,.report-table thead th{padding:8px 9px;font-size:10px}
   tbody td,tfoot td,.report-table tbody td,.report-table tfoot td{padding:8px 9px}
