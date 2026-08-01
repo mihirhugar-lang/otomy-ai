@@ -4423,6 +4423,17 @@ def main():
             (sync_start, yesterday),
             (sync_start, today),
         ])
+        # The browser also requests a completed-month range from the Cash/Bank pages.
+        # Publish those ranges from the same canonical builder so a month view cannot
+        # fall back to a separate client calculation either.
+        month_cursor = sync_start.replace(day=1)
+        while month_cursor <= historical_end:
+            next_month = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+            month_from = max(sync_start, month_cursor)
+            month_to = min(next_month - timedelta(days=1), historical_end)
+            if month_from <= month_to:
+                cashbook_ranges.append((month_from, month_to))
+            month_cursor = next_month
         # Historical dashboard ranges can ask for one exact day (for example 31-Jul).
         # Publish the same canonical cashbook object for every day in the completed window so
         # the browser never falls back to a second balance calculation for a historical day.
