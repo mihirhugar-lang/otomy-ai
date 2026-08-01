@@ -1169,6 +1169,11 @@ def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debt
     # --- Phase 3: parallel fetch all customer ledger rows ---
     def _process_one(task):
         day, cid, curr = task
+        # Match localhost's import_customer_credit_receipts: a repayment with no identifiable
+        # customer name is skipped (_get_or_create_customer("") -> None -> continue). Otherwise a
+        # blank-name row can't net against its same-day spot sale and inflates the cash/bank book.
+        if not str(curr.get("name", "")).strip():
+            return []
         rows = fetch_customer_ledger_rows(_clone_sess(sess), day, day, cid)
         total_debit = 0.0
         total_credit = 0.0
