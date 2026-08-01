@@ -1,4 +1,4 @@
-const CACHE = 'crusherops-v3';
+const CACHE = 'crusherops-v4';
 
 self.addEventListener('install', event => {
   event.waitUntil(
