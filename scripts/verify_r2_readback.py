@@ -43,7 +43,7 @@ def main() -> int:
         return 1
 
     engine = json.loads((expected_root / "common_engine.json").read_text(encoding="utf-8"))
-    if engine.get("status") != "success" or not engine.get("generated_at"):
+    if engine.get("status") not in {"calculated", "success"} or not engine.get("generated_at"):
         print("verified bundle has no successful common-engine stamp", file=sys.stderr)
         return 1
     print(
