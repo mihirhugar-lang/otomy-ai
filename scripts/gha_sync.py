@@ -4423,6 +4423,13 @@ def main():
             (sync_start, yesterday),
             (sync_start, today),
         ])
+        # Historical dashboard ranges can ask for one exact day (for example 31-Jul).
+        # Publish the same canonical cashbook object for every day in the completed window so
+        # the browser never falls back to a second balance calculation for a historical day.
+        cashbook_ranges.extend(
+            (sync_start + timedelta(days=offset), sync_start + timedelta(days=offset))
+            for offset in range((historical_end - sync_start).days + 1)
+        )
     for book_from, book_to in cashbook_ranges:
         if book_to < book_from:
             continue
