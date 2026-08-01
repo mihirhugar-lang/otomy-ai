@@ -1,0 +1,65 @@
+name: Common engine sync
+
+on:
+  # Manual until the first cloud run is compared against localhost. The old
+  # sync workflows remain disabled and must not be re-enabled.
+  workflow_dispatch:
+    inputs:
+      sync_mode:
+        description: "Common-engine rebuild mode"
+        type: choice
+        options:
+          - full
+          - recent
+        default: full
+      full_from:
+        description: "Full rebuild start date (YYYY-MM-DD)"
+        required: false
+        default: "2026-04-01"
+
+concurrency:
+  group: otomy-common-engine-sync
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull current R2 state
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exact-timestamps --only-show-errors
+
+      - name: Install dependencies
+        run: python3 -m pip install --quiet requests
+
+      - name: Run the single Loctell common engine
+        env:
+          ERP_BASE: ${{ secrets.ERP_BASE }}
+          ERP_ORG: ${{ secrets.ERP_ORG }}
+          ERP_USER: ${{ secrets.ERP_USER }}
+          ERP_PASS: ${{ secrets.ERP_PASS }}
+          OTOMY_SYNC_MODE: ${{ github.event.inputs.sync_mode || 'full' }}
+          OTOMY_FULL_FROM: ${{ github.event.inputs.full_from || '2026-04-01' }}
+          OTOMY_RECENT_DAYS: "7"
+          OTOMY_ERP_RETRIES: "3"
+          OTOMY_ERP_RETRY_DELAY: "1.5"
+          OTOMY_DEBTOR_WORKERS: "4"
+          OTOMY_BALANCE_WORKERS: "4"
+        run: python3 scripts/gha_sync.py
+
+      - name: Verify the generated common bundle
+        run: python3 scripts/verify_dashboard_parity.py
+
+      - name: Publish the verified bundle to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors

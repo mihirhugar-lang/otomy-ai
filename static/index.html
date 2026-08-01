@@ -3468,13 +3468,13 @@ async function _buildCashBookFallback(from,to){
   const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
   const spotCash={},spotBank={},rkey=row=>`${_partyKey(row)}|${row.date}`;
   saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
-  const cashRows=[],bankRows=[],mk=(d,part,party,inn,out)=>({date:String(d).slice(0,10),particulars:part,party:party||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
-  saleRows.forEach(s=>{const ch=_saleChannels(s),nm=s.customer_name||'Customer';if(ch.cash)cashRows.push(mk(s.date,'Spot sale (cash)',nm,ch.cash,0));if(ch.upi)bankRows.push(mk(s.date,'Spot sale (UPI/Bank)',nm,ch.upi,0));});
+  const cashRows=[],bankRows=[],mk=(d,part,party,inn,out,kind)=>({date:String(d).slice(0,10),particulars:part,party:party||'',kind:kind||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
+  saleRows.forEach(s=>{const ch=_saleChannels(s),nm=s.customer_name||'Customer';if(ch.cash)cashRows.push(mk(s.date,'Spot sale (cash)',nm,ch.cash,0,'sale'));if(ch.upi)bankRows.push(mk(s.date,'Spot sale (UPI/Bank)',nm,ch.upi,0,'sale'));});
   receipts.forEach(r=>{const amt=_receiptPaymentAmount(r);if(amt<=0)return;const k=rkey(r),nm=r.customer_name||'Customer';
-    if(_payChannel(r.mode)==='cash'){const ov=Math.min(amt,spotCash[k]||0);spotCash[k]=(spotCash[k]||0)-ov;const net=amt-ov;if(net>0.5)cashRows.push(mk(r.date,'Customer payment (cash)',nm,net,0));}
-    else{const ov=Math.min(amt,spotBank[k]||0);spotBank[k]=(spotBank[k]||0)-ov;const net=amt-ov;if(net>0.5)bankRows.push(mk(r.date,'Customer payment (UPI/Bank)',nm,net,0));}});
-  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;if(ch==='cash'&&_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01')return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt));});
-  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?1:0)-(b.adjustment?1:0))||(b.in-a.in);
+    if(_payChannel(r.mode)==='cash'){const ov=Math.min(amt,spotCash[k]||0);spotCash[k]=(spotCash[k]||0)-ov;const net=amt-ov;if(net>0.5)cashRows.push(mk(r.date,'Customer payment (cash)',nm,net,0,'receipt'));}
+    else{const ov=Math.min(amt,spotBank[k]||0);spotBank[k]=(spotBank[k]||0)-ov;const net=amt-ov;if(net>0.5)bankRows.push(mk(r.date,'Customer payment (UPI/Bank)',nm,net,0,'receipt'));}});
+  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;if(ch==='cash'&&_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01')return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt,'expense'));});
+  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?0:1)-(b.adjustment?0:1))||(b.in-a.in);
   cashRows.sort(bySort);bankRows.sort(bySort);
   const cashCheckpoints=(((cfg&&cfg.anchors)||[])
     .filter(a=>a.cash!=null&&String(a.date)>=from&&String(a.date)<=to)
@@ -3495,7 +3495,7 @@ async function _buildCashBookFallback(from,to){
       (cpByDate[d]||[]).forEach(c=>{
         const gap=Math.round((c.target-running)*100)/100;
         if(Math.abs(gap)>0.5){
-          const adj={date:d,particulars:'Verified balance adjustment ('+c.source+')',party:'',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true};
+          const adj={date:d,particulars:'Verified balance adjustment ('+c.source+')',party:'',kind:'adjustment',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true};
           running=Math.round((running+adj.in-adj.out)*100)/100;adj.balance=running;shown.push(adj);
         }
       });

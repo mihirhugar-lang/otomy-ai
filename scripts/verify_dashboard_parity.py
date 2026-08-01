@@ -283,6 +283,35 @@ def verify_daily_balance_chain() -> None:
         number_value(today.get(field), f"today_close.{field}")
     print("Daily balance chain passed: yesterday closing equals today's opening for cash and bank.")
 
+
+def verify_no_balance_adjustment_rows() -> None:
+    """Only localhost's two named verified anchor rows may appear in a book."""
+    forbidden = []
+    allowed = {
+        "Verified balance adjustment (physical cash count)",
+        "Verified balance adjustment (bank statement)",
+    }
+
+    def visit(value, path):
+        if isinstance(value, dict):
+            particulars = str(value.get("particulars") or "")
+            if value.get("kind") == "adjustment" and particulars not in allowed:
+                forbidden.append(path)
+            for key, child in value.items():
+                visit(child, f"{path}.{key}")
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, f"{path}[{index}]")
+
+    for path in (ROOT / "data").rglob("*.json"):
+        try:
+            visit(json.loads(path.read_text()), str(path.relative_to(ROOT)))
+        except (OSError, json.JSONDecodeError):
+            continue
+    if forbidden:
+        fail(f"published data contains forbidden balance-adjustment rows: {forbidden[:3]}")
+    print("Balance-row guard passed: no residual or generic adjustment rows are published.")
+
 def verify_sync_tolerance_guard() -> None:
     source = (ROOT / "scripts" / "gha_sync.py").read_text()
     required = (
@@ -645,6 +674,7 @@ def main() -> None:
         print("Code-only parity guard passed.")
         return
     verify_daily_balance_chain()
+    verify_no_balance_adjustment_rows()
     verify_all_dashboard_presets()
     verify_bank_page_presets()
     verify_customer_page_presets()
