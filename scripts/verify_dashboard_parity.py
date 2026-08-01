@@ -13,6 +13,7 @@ import base64
 import datetime as dt
 import importlib.util
 import json
+import os
 import sys
 import argparse
 from pathlib import Path
@@ -103,7 +104,12 @@ def read_json(path: Path) -> dict:
 
 
 def required_preset_ranges() -> dict[str, tuple[dt.date, dt.date]]:
-    today = dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    configured_as_of = os.environ.get("OTOMY_VERIFY_AS_OF", "").strip()
+    today = (
+        dt.date.fromisoformat(configured_as_of)
+        if configured_as_of
+        else dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    )
     week_start = today - dt.timedelta(days=today.weekday())
     last_month_end = today.replace(day=1) - dt.timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
@@ -240,6 +246,12 @@ def verify_frontend_guard() -> None:
         "await renderControlRoom(controlData)",
         "_cashbook.bank=book.bank",
         "_cashbook.cash=book.cash",
+        "const OtomyDataEngine={",
+        "await OtomyDataEngine.range(",
+        "OtomyDataEngine.summarize(",
+        "OtomyDataEngine.day(",
+        "const snapshotPreferredPath=new Set(",
+        "String(requestedTo)>=today()",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")
