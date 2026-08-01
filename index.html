@@ -2497,8 +2497,8 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,1)} MT</strong></div>
           <!-- Row 3: Balances -->
-          <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
-          <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
+          <div class="control-metric"><span>Bank Balance</span><strong id="d-bank-bal">${fmtINR(s.bank_balance||0)}</strong></div>
+          <div class="control-metric"><span>Cash Balance In Office</span><strong id="d-cash-office">${fmtINR(s.cash_balance_office||0)}</strong></div>
           <div class="control-metric"><span>Credit Repayment</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
           <div class="control-metric"><span>Avg Rate / Tonne</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
         </div>
@@ -2977,8 +2977,8 @@ async function loadBankSummary(){
     const s=data.summary||{};
     const paymentReceivedTile=_reclassifySales(data).paymentReceived;
     sumDiv.innerHTML=`
-      <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
-      <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
+      <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(_cashbook.bank?.closing ?? s.bank_balance ?? 0)}</div><div class="kpi-sub">Bank book movements · ${esc(from)} to ${esc(to)}</div></div>
+      <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(_cashbook.cash?.closing ?? s.cash_balance_office ?? 0)}</div><div class="kpi-sub">Cash book movements · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
       <div class="kpi blue"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Credit repayment on older dues (same-day counts as Spot)</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
@@ -3416,6 +3416,11 @@ async function renderDashboardCashBooks(from,to){
     const book=await _buildCashBook(from,to);
     if(bb)bb.innerHTML=_cashBookHTML(book,'bank');
     if(cb)cb.innerHTML=_cashBookHTML(book,'cash');
+    // Balance tiles read the SAME movement-based closing as the book (no overlay/plug),
+    // so the tiles match the Cash/Bank Book and localhost.
+    const _bt=document.getElementById('d-bank-bal'),_ct=document.getElementById('d-cash-office');
+    if(_bt&&book.bank)_bt.textContent=fmtINR(book.bank.closing);
+    if(_ct&&book.cash)_ct.textContent=fmtINR(book.cash.closing);
   }catch(e){if(bb)bb.innerHTML='<div class="empty">Cash/Bank book unavailable</div>';}
 }
 
