@@ -38,19 +38,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore data state (cache)
-        uses: actions/cache@v4
-        with:
-          path: data
-          key: otomy-data-${{ github.run_id }}
-          restore-keys: otomy-data-
+      # NOTE: the actions/cache step was removed 2026-08-01. It restored the previous run's
+      # data/ with a fresh mtime, so `aws s3 sync` treated the stale local copy as up-to-date
+      # and skipped downloading files edited directly in R2 (e.g. balance_anchors.json / the
+      # pin statement). The sync then pushed the stale copy back, silently reverting the edit.
+      # R2 holds the full sync state, so pulling it fresh each run is authoritative and correct.
 
       - name: Pull data state from Cloudflare R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exact-timestamps --only-show-errors
 
       - name: Install dependencies
         run: python3 -m pip install --quiet requests
