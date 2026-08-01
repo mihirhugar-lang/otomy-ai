@@ -3098,12 +3098,19 @@ def main():
     # When the anchor predates the sync window (e.g. a 28-Jun anchor while August's "last month" is
     # July), the days between the anchor and the window start (29-30 Jun) fall in a gap and the
     # cash/bank balance comes out short by exactly those movements. Floor the archive window to the
-    # anchor date so its month's archive is loaded and those movements are always counted.
+    # anchor date so its month's archive is loaded and those movements are always counted. In a
+    # monthly (on-demand) sync also floor the FETCH/refresh window itself to the anchor, so that
+    # post-anchor sliver is re-fetched and its receipts re-derived fresh (named/deduped) rather than
+    # left as stale stripped archive rows — this is what lets otomy self-compute straight from the
+    # anchor with no external pin. Only extends coverage by the few days between anchor and window.
+    anchor_date = None
     try:
         _anchors = _balance_overlay().get("anchors", [])
         if _anchors:
-            _anchor_date = date.fromisoformat(str(_anchors[-1]["date"]))
-            archive_start = min(archive_start, _anchor_date)
+            anchor_date = date.fromisoformat(str(_anchors[-1]["date"]))
+            archive_start = min(archive_start, anchor_date)
+            if sync_mode in {"monthly", "month", "current_last_month"}:
+                sync_start = min(sync_start, anchor_date)
     except Exception as _e:
         print(f"  anchor-floor skipped: {_e}")
     MERGE_PROTECT_BEFORE_DATE = sync_start.isoformat()
@@ -3558,12 +3565,31 @@ def main():
             last_month_end,
         )
     repayments_last_month = require_repayments("last month", repayments_last_month)
+    # Re-derive the sliver between the balance anchor and the last-month window (e.g. 28-30 Jun when
+    # the anchor is 28-Jun and last month is July) fresh from ERP, so those post-anchor days carry
+    # named/deduped receipts and net exactly like localhost — instead of the stale stripped rows the
+    # archive keeps there. Lets the overlay self-compute straight from the anchor (no pin needed).
+    anchor_gap_repayments = []
+    gap_start = gap_end = None
+    if anchor_date is not None and anchor_date < last_month_start and debtors_today_fresh:
+        gap_start = anchor_date
+        gap_end = last_month_start - timedelta(days=1)
+        try:
+            anchor_gap_repayments = compute_range_repayments(
+                "anchor-gap", gap_start, gap_end, gap_start - timedelta(days=1), gap_end)
+            print(f"  anchor-gap repayments recomputed ({gap_start}..{gap_end}): {len(anchor_gap_repayments)} rows")
+        except ErpFetchError as e:
+            print(f"  anchor-gap repayments skipped: {e}")
+            gap_start = gap_end = None
+    # Archive receipts cover months before the anchor; drop any date the anchor-gap re-derivation
+    # now owns so a stale stripped row can't sit beside its fresh named version.
     archive_repayments = [
         row for row in archive_receipts_to_repayments(archive_rows.get("receipts"))
         if str(row.get("date", ""))[:10] < str(last_month_start)
+        and not (gap_start is not None and str(gap_start) <= str(row.get("date", ""))[:10] <= str(gap_end))
     ]
     repayment_map = {}
-    for row in archive_repayments + repayments_last_month + repayments_mtd:
+    for row in archive_repayments + anchor_gap_repayments + repayments_last_month + repayments_mtd:
         key = (
             row.get("date", ""),
             row.get("customer_name", ""),
