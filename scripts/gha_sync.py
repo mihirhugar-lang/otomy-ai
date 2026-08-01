@@ -3776,6 +3776,37 @@ def main():
     # ── control room JSON ─────────────────────────────────────────────────────
     today_bank_balance, today_cash_balance = operating_balance_for(today)
     yesterday_bank_balance, yesterday_cash_balance = operating_balance_for(yesterday)
+    # Publish the daily balance chain explicitly. This is the authoritative hand-off between
+    # yesterday's closing book and today's opening book; the frontend uses it for the two live
+    # dates while historical ranges continue to derive from the anchor + movement engine.
+    write("balance_daily.json", {
+        "generated_at": datetime.now(IST).isoformat(timespec="seconds"),
+        "source": "github-actions / loctell.com ERP balance overlay",
+        "as_of": str(today),
+        "previous_close": {
+            "as_of": str(yesterday),
+            "bank_balance": round(yesterday_bank_balance, 2),
+            "cash_balance_office": round(yesterday_cash_balance, 2),
+        },
+        "today_opening": {
+            "as_of": str(yesterday),
+            "bank_balance": round(yesterday_bank_balance, 2),
+            "cash_balance_office": round(yesterday_cash_balance, 2),
+        },
+        "today_close": {
+            "as_of": str(today),
+            "bank_balance": round(today_bank_balance, 2),
+            "cash_balance_office": round(today_cash_balance, 2),
+        },
+    })
+    print(
+        f"  Verified opening ({yesterday} close): bank ₹{yesterday_bank_balance:,.2f} "
+        f"| cash ₹{yesterday_cash_balance:,.2f}"
+    )
+    print(
+        f"  Verified closing ({today}): bank ₹{today_bank_balance:,.2f} "
+        f"| cash ₹{today_cash_balance:,.2f}"
+    )
     ctrl_today = build_control(
         sales_for(today, today), exp_for(today, today), today, today,
         boulders=boulders_today, debtors=debtors_for(today), creditors=creditors_for(today),
