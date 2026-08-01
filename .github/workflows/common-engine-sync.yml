@@ -1,8 +1,10 @@
 name: Common engine sync
 
 on:
-  # Manual until the first cloud run is compared against localhost. The old
-  # sync workflows remain disabled and must not be re-enabled.
+  # The common engine is the only Otomy data writer. It runs in GitHub Actions,
+  # so a sleeping/offline Mac cannot make the cloud dashboard stale.
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       sync_mode:
@@ -24,6 +26,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -45,8 +48,8 @@ jobs:
           ERP_ORG: ${{ secrets.ERP_ORG }}
           ERP_USER: ${{ secrets.ERP_USER }}
           ERP_PASS: ${{ secrets.ERP_PASS }}
-          OTOMY_SYNC_MODE: ${{ github.event.inputs.sync_mode || 'full' }}
-          OTOMY_FULL_FROM: ${{ github.event.inputs.full_from || '2026-04-01' }}
+          OTOMY_SYNC_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
+          OTOMY_FULL_FROM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.full_from || '2026-04-01' }}
           OTOMY_RECENT_DAYS: "7"
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
@@ -62,4 +65,14 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --only-show-errors
+
+      - name: Read back and verify the exact R2 bundle
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          readback_dir="$(mktemp -d)"
+          aws s3 sync "s3://otomy-data" "$readback_dir" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exact-timestamps --only-show-errors
+          python3 scripts/verify_r2_readback.py data "$readback_dir"
