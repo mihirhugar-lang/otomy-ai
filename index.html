@@ -930,11 +930,16 @@ function _archiveAllowedForRange(from,to){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  const preferSnapshotFirst=new Set([
+  const snapshotPreferredPath=new Set([
     '/api/dashboard/control',
     '/api/sync/erp/bank',
     '/api/sync/erp/cash',
   ]).has(u.pathname);
+  // Completed historical ranges must come from the same archive engine as
+  // Books and Ledger. Only a request ending today is allowed to use the live
+  // sync snapshot, preventing tiles from drifting away from the books.
+  const requestedTo=u.searchParams.get('to_date');
+  const preferSnapshotFirst=snapshotPreferredPath&&(!requestedTo||String(requestedTo)>=today());
   if(!preferSnapshotFirst){
     const archived=await archiveFetch(url);
     if(archived!==null)return archived;
@@ -976,6 +981,55 @@ async function _loadArchiveRange(from,to){
 function _rowsInRange(months,section,from,to){
   return months.flatMap(m=>m[section]||[]).filter(r=>r.date>=from&&r.date<=to);
 }
+// One client-side source for every historical range. Dashboard tiles, Sales,
+// Expenses, Operations, Ledger View, and Cash/Bank books all load the same
+// monthly payload through this engine before deriving their page-specific view.
+const OtomyDataEngine={
+  _ranges:new Map(),
+  async range(from,to){
+    const key=`${from}|${to}`;
+    let pending=this._ranges.get(key);
+    if(!pending){
+      pending=_loadArchiveRange(from,to);
+      this._ranges.set(key,pending);
+    }
+    return (await pending)||[];
+  },
+  clear(){this._ranges.clear();},
+  rows(months,section,from,to){return _rowsInRange(months,section,from,to);},
+  summarize(months,from,to){
+    const sales=this.rows(months,'sales',from,to), expenses=this.rows(months,'expenses',from,to),
+      receipts=this.rows(months,'receipts',from,to), boulders=this.rows(months,'boulders',from,to),
+      labour=this.rows(months,'labour',from,to), parts=this.rows(months,'parts',from,to),
+      machines=this.rows(months,'machines',from,to);
+    const sum=(rows,field)=>rows.reduce((total,row)=>total+_num(row&&row[field]),0);
+    return {
+      sales,expenses,receipts,boulders,labour,parts,machines,
+      sales_total:sales.reduce((total,row)=>total+_saleTotal(row),0),
+      sales_qty_mt:sum(sales,'qty_mt'),
+      boulder_input_mt:sum(boulders,'total_tonnes'),
+      boulder_trips:sum(boulders,'trips'),
+      expenses_total:sum(expenses,'amount'),
+      labour_total:sum(labour,'amount'),
+      parts_total:sum(parts,'total_amount'),
+      receipts_total:receipts.reduce((total,row)=>total+_receiptPaymentAmount(row),0),
+      machine_hours:sum(machines,'running_hours'),
+      machine_fuel_liters:sum(machines,'fuel_liters'),
+      cash_collected:sales.reduce((total,row)=>total+_saleSpotAmount(row),0),
+    };
+  },
+  day(months,day){
+    return {
+      sales:this.rows(months,'sales',day,day),
+      expenses:this.rows(months,'expenses',day,day),
+      receipts:this.rows(months,'receipts',day,day),
+      boulders:this.rows(months,'boulders',day,day),
+      labour:this.rows(months,'labour',day,day),
+      parts:this.rows(months,'parts',day,day),
+      machines:this.rows(months,'machines',day,day),
+    };
+  },
+};
 function _num(v){const n=Number(v||0);return Number.isFinite(n)?n:0;}
 function _saleTotal(r){return _num(r&&(r.amount!=null?r.amount:r.debit))+_num(r&&r.transport_charge);}
 function _payChannel(mode){
@@ -1110,7 +1164,7 @@ async function _archiveOperatingBalances(toDate=today()){
   const nextDay=d=>localISO(new Date(new Date(`${d}T00:00:00`).getTime()+86400000));
   const from=[nextDay(cashCutoff||anchorDate),nextDay(bankCutoff||anchorDate)].sort()[0];
   if(to>=from){
-    const months=await _loadArchiveRange(from,to);
+    const months=await OtomyDataEngine.range(from,to);
     const inCash=dt=>cashCutoff===null||String(dt)>cashCutoff;
     const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
     const saleRows=_rowsInRange(months,'sales',from,to);
@@ -1274,21 +1328,16 @@ function _archiveVendorRows(balance,idByName={}){
   }));
 }
 async function _archiveControl(from,to){
-  const months=await _loadArchiveRange(from,to);
+  const months=await OtomyDataEngine.range(from,to);
   if(!months.length)return null;
-  const sales=_rowsInRange(months,'sales',from,to);
-  const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to);
-  const boulders=_rowsInRange(months,'boulders',from,to);
-  const labour=_rowsInRange(months,'labour',from,to);
-  const parts=_rowsInRange(months,'parts',from,to);
-  const machines=_rowsInRange(months,'machines',from,to);
+  const metrics=OtomyDataEngine.summarize(months,from,to);
+  const {sales,expenses,receipts,boulders,labour,parts,machines}=metrics;
   const balances=_archiveBalanceAsOf(months,to);
-  const totalSales=sales.reduce((s,r)=>s+_saleTotal(r),0);
-  const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
-  const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
-  const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
-  const cashCollected=sales.reduce((s,r)=>s+_saleSpotAmount(r),0);
+  const totalSales=metrics.sales_total;
+  const totalQty=metrics.sales_qty_mt;
+  const boulderMt=metrics.boulder_input_mt;
+  const boulderTrips=metrics.boulder_trips;
+  const cashCollected=metrics.cash_collected;
   const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes,{when:e.date})).reduce((s,r)=>s+_num(r.amount),0);
   const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes,{when:l.date})).reduce((s,r)=>s+_num(r.amount),0);
   const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes,{when:p.date})).reduce((s,r)=>s+_num(r.total_amount),0);
@@ -1335,14 +1384,15 @@ async function _archiveControl(from,to){
 }
 async function _archiveLedger(year,month){
   const ym=`${year}-${String(month).padStart(2,'0')}`;
-  const payload=await _loadArchiveMonth(ym);
-  if(!payload)return null;
-  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
   const lastDay=(ym===today().substring(0,7))?Number(today().substring(8,10)):days;  // current month: stop at today
+  const rangeEnd=`${ym}-${String(lastDay).padStart(2,'0')}`;
+  const months=await OtomyDataEngine.range(`${ym}-01`,rangeEnd);
+  if(!months.length)return null;
   for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
-    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
+    const dayRows=OtomyDataEngine.day(months,day);
+    const ds=dayRows.sales, de=dayRows.expenses, dr=dayRows.receipts, dl=dayRows.labour, dp=dayRows.parts, db=dayRows.boulders;
     const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0), credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0), spotCash=ds.reduce((s,r)=>s+_saleChannels(r).cash,0), spotBank=ds.reduce((s,r)=>s+_saleChannels(r).upi,0), qty=ds.reduce((s,r)=>s+_num(r.qty_mt),0);
     const operating=await _archiveOperatingBalances(day);
     rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,spot_sale_cash:Math.round(spotCash*100)/100,spot_sale_bank:Math.round(spotBank*100)/100,qty_mt:Math.round(qty*100)/100,credit_sale_amount:Math.round(credit*100)/100,credit_repayment:Math.round(dr.reduce((s,r)=>s+_num(r.payment_received||r.amount),0)*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
@@ -1359,7 +1409,7 @@ async function archiveFetch(url){
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance){
-      const months=from&&to?await _loadArchiveRange(from,to):[];
+      const months=from&&to?await OtomyDataEngine.range(from,to):[];
       return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName());
     }
   }
@@ -1369,7 +1419,7 @@ async function archiveFetch(url){
   }
   if(from&&to){
     if(!_archiveAllowedForRange(from,to))return null;
-    const months=await _loadArchiveRange(from,to);
+    const months=await OtomyDataEngine.range(from,to);
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
@@ -1591,6 +1641,7 @@ const OTOMY_APP_VERSION='2026-07-01-print-pdf-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+  OtomyDataEngine?.clear?.();
 }
 function _rememberStaticSyncStamp(stamp){
   if(!isStaticSnapshotHost()||!stamp)return;
@@ -2068,7 +2119,7 @@ function pdfFullTableForId(id){
     _allData.sales.forEach(r=>{tot+=_saleTotal(r);totTransport+=_num(r.transport_charge);totmt+=r.qty_mt;totmdp+=_num(r.mdp_ton);const _ch=_saleChannels(r);totCash+=_ch.cash;totBank+=_ch.upi;totCredit+=_ch.credit;});
     return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','Cash','Bank / UPI','Credit','Mode','Vehicle','Ticket'],rows.map(r=>{
       const ch=_saleChannels(r);
-      return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR(_saleTotal(r)),ch.cash?fmtINR(ch.cash):'-',ch.upi?fmtINR(ch.upi):'-',ch.credit?fmtINR(ch.credit):'-',r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
+      return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR2(_saleTotal(r)),ch.cash?fmtINR(ch.cash):'-',ch.upi?fmtINR(ch.upi):'-',ch.credit?fmtINR(ch.credit):'-',r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
     }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),fmtINR(totCash),fmtINR(totBank),fmtINR(totCredit),'','','']);
   }
   if(id==='exp-tbl'){
@@ -2080,7 +2131,7 @@ function pdfFullTableForId(id){
   if(id==='boulders-tbl'){
     const rows=_allData.boulders||[];
     const tot=rows.reduce((s,r)=>s+_num(r.total_tonnes),0);
-    return pdfTableBlock('Boulder Input',['Date','Source','Trips','MT/Trip','Total MT'],rows.map(r=>[r.date,r.source,r.trips,r.tonnes_per_trip,`${r.total_tonnes} MT`]),[`TOTAL (${rows.length})`,'','','',`${tot.toFixed(1)} MT`]);
+    return pdfTableBlock('Boulder Input',['Date','Source','Trips','MT/Trip','Total MT'],rows.map(r=>[r.date,r.source,r.trips,Number(r.tonnes_per_trip||0).toFixed(2),`${Number(r.total_tonnes||0).toFixed(2)} MT`]),[`TOTAL (${rows.length})`,'','','',`${tot.toFixed(2)} MT`]);
   }
   if(id==='machines-tbl'){
     const rows=_allData.machines||[];
@@ -2440,7 +2491,7 @@ function renderDashSummary(data,d){
   const bar=document.getElementById('dash-profit-bar');
   bar.className='profit-bar '+(profit>=0?'pos':'neg');
   bar.innerHTML=`<div><div class="pl">Gross Profit — ${esc(label)}</div><div class="pv">${fmtINR(profit)}</div></div><div style="text-align:right"><div class="pl">Margin</div><div style="font-size:22px;font-weight:800">${fmtNum(s.margin_pct||0,1)}%</div></div>`;
-  document.getElementById('d-sales').textContent=fmtINR(s.sales);
+  document.getElementById('d-sales').textContent=fmtINR2(s.sales);
   const _rc=_reclassifySales(data);
   document.getElementById('d-cash').textContent=fmtINR(_rc.spot);
   document.getElementById('d-credit-sale').textContent=fmtINR(_rc.credit);
@@ -2530,14 +2581,14 @@ async function renderControlRoom(data){
         <div class="control-grid">
           <!-- Row 1: Profit -->
           <div class="control-metric"><span>Period Profit</span><strong>${fmtINR(s.profit)}</strong></div>
-          <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,1)}</strong></div>
+          <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,2)}</strong></div>
           <div class="control-metric glass-green"><span>Profit / Tonne</span><strong>${fmtINR2(s.selected_period_profit_per_tonne||0)}</strong></div>
           <div class="control-metric glass-green"><span>Selected Period Profit</span><strong>${fmtINR(s.selected_period_profit_director_adjusted ?? s.profit)}</strong></div>
           <!-- Row 2: Cost & Production -->
           <div class="control-metric"><span>Operating Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
           <div class="control-metric"><span>Expenses / Tonne</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
-          <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,1)} MT</strong></div>
+          <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,2)} MT</strong></div>
           <!-- Row 3: Balances -->
           <div class="control-metric"><span>Bank Balance</span><strong id="d-bank-bal">${fmtINR(s.bank_balance||0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong id="d-cash-office">${fmtINR(s.cash_balance_office||0)}</strong></div>
@@ -2621,7 +2672,7 @@ function renderSales(){
   slice.forEach(r=>{
     const erp=r.erp_synced?'<span class="badge b-paid" title="Synced from ERP" style="font-size:10px;margin-left:2px">ERP</span>':'';
     const ch=_saleChannels(r);
-    html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
+    html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR2(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
   if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
   html+=`</tbody><tfoot><tr><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
@@ -3088,8 +3139,8 @@ function renderLedgerView(data){
     <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
     <div class="kpi navy"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(t.credit_repayment||0)}</div></div>
     <div class="kpi red"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR(t.expenses||0)}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Boulders Input</div><div class="kpi-value">${fmtNum(t.boulder_input_mt||0,1)}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Sale Tonne</div><div class="kpi-value">${fmtNum(t.qty_mt||0,1)}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Boulders Input</div><div class="kpi-value">${fmtNum(t.boulder_input_mt||0,2)}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Sale Tonne</div><div class="kpi-value">${fmtNum(t.qty_mt||0,2)}</div></div>
     <div class="kpi"><div class="kpi-label">Cash in Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
   `;
@@ -3099,7 +3150,7 @@ function renderLedgerView(data){
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
       <td>${esc(r.date)}</td>
-      <td>${fmtINR(r.sale_amount||0)}</td>
+      <td>${fmtINR2(r.sale_amount||0)}</td>
       <td>${fmtINR(r.spot_sale_cash||0)}</td>
       <td>${fmtINR(r.spot_sale_bank||0)}</td>
       <td>${fmtINR(r.credit_sale_amount||0)}</td>
@@ -3107,8 +3158,8 @@ function renderLedgerView(data){
       <td>${fmtINR(r.expenses||0)}</td>
       <td><strong>${fmtINR(r.cash_balance_office||0)}</strong></td>
       <td><strong>${fmtINR(r.bank_balance||0)}</strong></td>
-      <td>${fmtNum(r.boulder_input_mt||0,1)} MT</td>
-      <td>${fmtNum(r.qty_mt||0,1)}</td>
+      <td>${fmtNum(r.boulder_input_mt||0,2)} MT</td>
+      <td>${fmtNum(r.qty_mt||0,2)}</td>
       <td>${per(_num(r.expenses),_num(r.qty_mt))}</td>
       <td>${per(_num(r.expenses),_num(r.boulder_input_mt))}</td>
       <td>${per(profit,_num(r.qty_mt))}</td>
@@ -3121,7 +3172,7 @@ function renderLedgerView(data){
   const _aProfit=_sum('sale_amount')-_sum('expenses');
   html+=`</tbody><tfoot><tr class="ledger-avg-row">
     <td><strong>Average / Day</strong></td>
-    <td>${fmtINR(_avg('sale_amount'))}</td>
+    <td>${fmtINR2(_avg('sale_amount'))}</td>
     <td>${fmtINR(_avg('spot_sale_cash'))}</td>
     <td>${fmtINR(_avg('spot_sale_bank'))}</td>
     <td>${fmtINR(_avg('credit_sale_amount'))}</td>
@@ -3129,15 +3180,15 @@ function renderLedgerView(data){
     <td>${fmtINR(_avg('expenses'))}</td>
     <td>${fmtINR(_avg('cash_balance_office'))}</td>
     <td>${fmtINR(_avg('bank_balance'))}</td>
-    <td>${fmtNum(_avg('boulder_input_mt'),1)} MT</td>
-    <td>${fmtNum(_avg('qty_mt'),1)}</td>
+    <td>${fmtNum(_avg('boulder_input_mt'),2)} MT</td>
+    <td>${fmtNum(_avg('qty_mt'),2)}</td>
     <td>${per(_sum('expenses'),_sum('qty_mt'))}</td>
     <td>${per(_sum('expenses'),_sum('boulder_input_mt'))}</td>
     <td>${per(_aProfit,_sum('qty_mt'))}</td>
     <td>${per(_aProfit,_sum('boulder_input_mt'))}</td>
   </tr><tr>
     <td><strong>Total</strong></td>
-    <td><strong>${fmtINR(t.sale_amount||0)}</strong></td>
+    <td><strong>${fmtINR2(t.sale_amount||0)}</strong></td>
     <td><strong>${fmtINR(t.spot_sale_cash||0)}</strong></td>
     <td><strong>${fmtINR(t.spot_sale_bank||0)}</strong></td>
     <td><strong>${fmtINR(t.credit_sale_amount||0)}</strong></td>
@@ -3145,8 +3196,8 @@ function renderLedgerView(data){
     <td><strong>${fmtINR(t.expenses||0)}</strong></td>
     <td><strong>${fmtINR(t.cash_balance_office||0)}</strong></td>
     <td><strong>${fmtINR(t.bank_balance||0)}</strong></td>
-    <td><strong>${fmtNum(t.boulder_input_mt||0,1)} MT</strong></td>
-    <td><strong>${fmtNum(t.qty_mt||0,1)}</strong></td>
+    <td><strong>${fmtNum(t.boulder_input_mt||0,2)} MT</strong></td>
+    <td><strong>${fmtNum(t.qty_mt||0,2)}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.qty_mt))}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.boulder_input_mt))}</strong></td>
     <td><strong>${per(tProfit,_num(t.qty_mt))}</strong></td>
@@ -3183,9 +3234,9 @@ function renderBoulders(){
   const rows=_allData.boulders,cur=_page.boulders,size=pageSizeFor('boulders',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   let tot=0;rows.forEach(r=>{tot+=r.total_tonnes;});
   let html='<table><thead><tr><th>Date</th><th>Source</th><th>Trips</th><th>MT/Trip</th><th>Total MT</th></tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.source}</td><td>${r.trips}</td><td>${r.tonnes_per_trip}</td><td><strong>${r.total_tonnes} MT</strong></td></tr>`;});
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.source}</td><td>${r.trips}</td><td>${fmtNum(r.tonnes_per_trip,2)}</td><td><strong>${fmtNum(r.total_tonnes,2)} MT</strong></td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="6" class="empty">No entries</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="4"><strong>TOTAL (all ${rows.length})</strong></td><td>${tot.toFixed(1)} MT</td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr><td colspan="4"><strong>TOTAL (all ${rows.length})</strong></td><td>${tot.toFixed(2)} MT</td></tr></tfoot></table>`;
   document.getElementById('boulders-tbl').innerHTML=html;
   document.getElementById('boulders-pager').innerHTML=pagerHTML('boulders',rows.length);
 }
@@ -3385,7 +3436,7 @@ async function _buildCashBook(from,to){
   // older than the refreshed movement archive, which was the original FY mismatch.
   const [openBal,closeBal,cfg]=await Promise.all([_archiveOperatingBalances(prev),_archiveOperatingBalances(to),_balanceConfig()]);
   const corrs=(cfg&&cfg.mode_corrections)||null;
-  const months=await _loadArchiveRange(from,to);
+  const months=await OtomyDataEngine.range(from,to);
   const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
   const spotCash={},spotBank={},rkey=row=>`${_partyKey(row)}|${row.date}`;
   saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
