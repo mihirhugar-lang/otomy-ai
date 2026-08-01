@@ -530,7 +530,7 @@ def verify_pdf_export_guard() -> None:
         "Print / PDF",
         "CrusherOps — Dashboard Daily Report",
         "&nbsp;|&nbsp; Printed:",
-        "OTOMY_APP_VERSION='2026-07-01-print-pdf-v1'",
+        "OTOMY_APP_VERSION='2026-08-02-stale-guard-v1'",
     )
     for needle in required:
         if needle not in root_html:
