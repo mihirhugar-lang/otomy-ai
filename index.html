@@ -3366,12 +3366,9 @@ async function _buildCashBook(from,to){
   const adjDate=anchorsInRange.length?anchorsInRange[anchorsInRange.length-1]:to;
   const fin=(rows,opening,closing,channel)=>{
     let running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
-    const gap=Math.round((closing-running)*100)/100;
-    if(Math.abs(gap)>0.5){
-      rows.push({date:adjDate,particulars:'Verified balance adjustment ('+(channel==='cash'?'physical cash count':'bank statement')+')',party:'',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true});
-      rows.sort((a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?0:1)-(b.adjustment?0:1))||(b.in-a.in));
-      running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
-    }
+    // No "Verified balance adjustment" plug: the book closes on its own itemized movements
+    // (opening + movements), matching localhost. We do NOT force a tie-out to the control/overlay
+    // closing, which was dragging the correct movement-based balance to a different number.
     return {opening:Math.round(opening*100)/100,rows,total_in:Math.round(rows.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(rows.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
   };
   return {from,to,opening_as_of:prev,
