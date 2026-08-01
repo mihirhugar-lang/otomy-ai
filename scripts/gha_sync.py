@@ -1717,13 +1717,16 @@ def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-    if section in {"sales", "expenses", "cash", "bank"}:
+    if section in {"sales", "expenses", "cash", "bank", "receipts"}:
         # Fresh fetch is authoritative for its window. Every section we re-pull in full over
         # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
         # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
         # beside its refreshed version — otomy reconciles to the live ERP exactly like the local
-        # DB does. Older (protected) dates keep their archive untouched. (Receipts already do
-        # this via archive_repayments being filtered to < last_month_start.)
+        # DB does. Older (protected) dates keep their archive untouched. Receipts are included so
+        # a re-derived window drops repayment rows the fresh ERP derivation no longer produces —
+        # mirroring localhost's import_customer_credit_receipts, which deletes the range and
+        # re-imports. (Incoming all_repayments covers June-archive + fresh last-month + fresh MTD,
+        # so the dropped [cutoff, today] window is always fully re-supplied.)
         _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
         existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
     protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
