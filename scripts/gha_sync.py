@@ -1846,8 +1846,20 @@ def write_archive_updates(today, all_sales, all_expenses, cash_rows, bank_rows, 
         by_month.setdefault(month, {}).setdefault("receipts", []).append({
             "id": f"gha-{day}-{idx}",
             "date": day,
-            "customer_id": None,
+            # Persist the FULL repayment identity so archived receipts net exactly like
+            # localhost's build_cashbook: customer_name enables same-day spot<->repayment
+            # netting, and payment_received (gross) is what the cash/bank book uses (the bare
+            # `amount` is already net of the ledger sale-adjustment and must NOT be used as the
+            # movement). Reader (archive_receipts_to_repayments) + _row_quality already expect
+            # these fields; the writer just wasn't populating them.
+            "customer_id": row.get("erp_customer_id"),
+            "customer_name": row.get("customer_name"),
             "amount": row.get("amount", 0.0),
+            "payment_received": row.get("payment_received", row.get("amount", 0.0)),
+            "cash_received": row.get("cash_received", 0.0),
+            "bank_received": row.get("bank_received", 0.0),
+            "sale_adjusted": row.get("sale_adjusted", 0.0),
+            "balance": row.get("balance"),
             "mode": row.get("mode", "Cash"),
             "reference": row.get("reference", ""),
             "notes": (
