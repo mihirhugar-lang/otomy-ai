@@ -917,7 +917,10 @@ function _withoutVendorPaymentRows(rows){
   return Array.isArray(rows)?rows.filter(row=>!_isVendorPaymentBankRow(row)):rows;
 }
 function fiveMinuteCacheBust(){
-  return Math.floor(Date.now()/300000);
+  // R2 is the source of truth and can change between two requests while the page stays open.
+  // A unique query key prevents an intermediary or an old browser cache from serving the prior
+  // snapshot even if it ignores no-store on a response.
+  return Date.now();
 }
 function _archiveAllowedForRange(from,to){
   if(!to)return false;
@@ -1665,11 +1668,22 @@ async function api(url,opts={}){
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
-const OTOMY_APP_VERSION='2026-07-01-print-pdf-v1';
+const OTOMY_APP_VERSION='2026-08-02-stale-guard-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
   OtomyDataEngine?.clear?.();
+  // These caches feed operating balances and entity-ledger links. Leaving any of them alive
+  // after a cloud sync makes an already-open tab display yesterday's data beside fresh rows.
+  _dailyBalanceCache=undefined;
+  _balCfgCache=undefined;
+  _bankStmtCache=undefined;
+  _custIdByNameCache=null;
+  _vendIdByNameCache=null;
+  if(typeof _cashbook!=='undefined'){
+    _cashbook.cash=null;
+    _cashbook.bank=null;
+  }
 }
 function _rememberStaticSyncStamp(stamp){
   if(!isStaticSnapshotHost()||!stamp)return;
@@ -1710,11 +1724,12 @@ async function _currentSyncStamp(){
   if(isStaticSnapshotHost()){
     const now=Date.now();
     const manifestReq=_fetchT(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
+    const engineReq=_fetchT(`/data/common_engine.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
     const appReq=_fetchT(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
       .then(r=>r.ok?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:'')
       .catch(()=>'');
-    const [data, appStamp]=await Promise.all([manifestReq, appReq]);
-    const dataStamp=data?.generated_at||'';
+    const [data, engine, appStamp]=await Promise.all([manifestReq, engineReq, appReq]);
+    const dataStamp=`${data?.generated_at||''}|${engine?.generated_at||''}|${engine?.version||''}`;
     const codeStamp=appStamp||OTOMY_APP_VERSION;
     return `${dataStamp}|${codeStamp}`;
   }

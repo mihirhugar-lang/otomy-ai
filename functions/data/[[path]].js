@@ -27,8 +27,10 @@ export async function onRequestGet(context) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
-  // Data changes every ~10 min; never let a stale copy be cached.
-  headers.set("cache-control", "no-store");
+  // Data changes every sync; never let a browser, proxy, or edge cache reuse an old object.
+  headers.set("cache-control", "no-store, no-cache, max-age=0, must-revalidate");
+  headers.set("pragma", "no-cache");
+  headers.set("expires", "0");
   if (key.endsWith(".json")) headers.set("content-type", "application/json");
 
   return new Response(object.body, { headers });
