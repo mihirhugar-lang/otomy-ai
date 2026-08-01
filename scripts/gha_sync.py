@@ -2818,7 +2818,10 @@ def write_snapshot_bundle(
     balance_snapshots,
     archive_balances,
     customer_ledgers_full=None,
+    overlay_repayments=None,
 ):
+    if overlay_repayments is None:
+        overlay_repayments = repayments
     week_start = today - timedelta(days=today.weekday())
     last_week_start = week_start - timedelta(days=7)
     last_week_end = week_start - timedelta(days=1)
@@ -2967,7 +2970,7 @@ def write_snapshot_bundle(
             summary["payables"] = round(_num(archive_balance.get("payables")), 2)
             control["top_receivables"] = archive_balance.get("top_receivables", [])
             control["top_payables"] = archive_balance.get("top_payables", [])
-        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments)
+        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, overlay_repayments)
         if overlay_balance:
             summary = control.setdefault("summary", {})
             summary["bank_balance"] = overlay_balance[0]
@@ -3556,6 +3559,20 @@ def main():
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
+    # The balance overlay must net RAW customer receipts (like localhost's receipts table),
+    # NOT the debtor-derived last-month/MTD repayments — those drift ~₹88k bank / ₹63k cash
+    # because they're reconstructed from debtor-balance snapshots. Archive receipts cover the
+    # full anchor->today window and tie out to localhost to the rupee (verified Jun 29–30).
+    # Use archive receipts for every day before today; keep the freshest (debtor-derived)
+    # rows for today only, since the archive may not yet hold today's just-entered receipts.
+    _today_iso = str(today)
+    overlay_repayments = [
+        row for row in archive_receipts_to_repayments(archive_rows.get("receipts"))
+        if str(row.get("date", ""))[:10] < _today_iso
+    ] + [
+        row for row in all_repayments
+        if str(row.get("date", ""))[:10] >= _today_iso
+    ]
     # Match localhost Bank & Cash page: ERP rows plus derived bank/UPI sales,
     # expenses, and customer credit repayments. Bank statement rows are used
     # for balance anchoring only, not for the transaction table.
@@ -3669,7 +3686,7 @@ def main():
     operating_cash_balance = round(operating_cash_balance, 2)
 
     def operating_balance_for(as_of):
-        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments)
+        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, overlay_repayments)
         if overlay:
             return overlay
         return operating_bank_balance, operating_cash_balance
@@ -4012,6 +4029,7 @@ def main():
         balance_snapshots,
         archive_balances,
         customer_ledgers_full,
+        overlay_repayments=overlay_repayments,
     )
     cleanup_excluded_customer_receipt_artifacts()
 
