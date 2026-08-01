@@ -3339,20 +3339,18 @@ async function downloadGSTR1(){
 const _cashbook={cash:null,bank:null};
 async function _buildCashBook(from,to){
   const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
-  // Opening/closing come from the SAME /api/dashboard/control the dashboard tiles use (server
-  // snapshot for standard ranges, client engine otherwise), so the book always ties out to the
-  // dashboard's Cash-in-Office / Bank Balance. Fall back to the client engine if control is absent.
-  const _ctlBal=async(f,t,d)=>{
-    try{const c=await api(`/api/dashboard/control?from_date=${f}&to_date=${t}`);const s=c&&c.summary;
-      if(s&&(s.cash_balance_office!=null||s.bank_balance!=null))return {cash_balance_office:_num(s.cash_balance_office),bank_balance:_num(s.bank_balance)};
-    }catch(e){}
-    return await _archiveOperatingBalances(d);
-  };
-  const [openBal,closeBal,cfg]=await Promise.all([_ctlBal(prev,prev,prev),_ctlBal(from,to,to),_balanceConfig()]);
+  // Balance = latest verified anchor (physical cash count + ICICI statement) on/before the range,
+  // PLUS this book's OWN itemized movements after that anchor — exactly how localhost derives it.
+  // The display "opening" is that running balance at `from`-1 and the closing is it at `to`. This
+  // never reads the overlay/control balance, so the book (and the tiles that read it) can't drift
+  // by a reconciliation "adjustment" that only surfaces once a day rolls over.
+  const cfg=await _balanceConfig();
   const corrs=(cfg&&cfg.mode_corrections)||null;
-  const anchorsInRange=(((cfg&&cfg.anchors)||[]).map(a=>String(a.date)).filter(d=>d>=from&&d<=to)).sort();
-  const months=await _loadArchiveRange(from,to);
-  const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
+  const anchors=(((cfg&&cfg.anchors)||[]).slice()).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const anchor=[...anchors].reverse().find(a=>String(a.date)<=prev)||[...anchors].reverse().find(a=>String(a.date)<=to)||anchors[0]||{date:prev,cash:0,bank:0};
+  const moveFrom=localISO(new Date(new Date(`${String(anchor.date)}T00:00:00`).getTime()+86400000));
+  const months=await _loadArchiveRange(moveFrom,to);
+  const saleRows=_rowsInRange(months,'sales',moveFrom,to),receipts=_rowsInRange(months,'receipts',moveFrom,to),expenses=_rowsInRange(months,'expenses',moveFrom,to);
   const spotCash={},spotBank={},rkey=(n,d)=>`${String(n||'').trim().toUpperCase()}|${d}`;
   saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s.customer_name,s.date);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
   const cashRows=[],bankRows=[],mk=(d,part,party,inn,out)=>({date:String(d).slice(0,10),particulars:part,party:party||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
@@ -3363,17 +3361,14 @@ async function _buildCashBook(from,to){
   expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt));});
   const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||(b.in-a.in);
   cashRows.sort(bySort);bankRows.sort(bySort);
-  const adjDate=anchorsInRange.length?anchorsInRange[anchorsInRange.length-1]:to;
-  const fin=(rows,opening,closing,channel)=>{
-    let running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
-    // No "Verified balance adjustment" plug: the book closes on its own itemized movements
-    // (opening + movements), matching localhost. We do NOT force a tie-out to the control/overlay
-    // closing, which was dragging the correct movement-based balance to a different number.
-    return {opening:Math.round(opening*100)/100,rows,total_in:Math.round(rows.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(rows.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
+  const fin=(rows,base)=>{
+    // Run the balance from the anchor across ALL movements after it; the display range only
+    // controls which rows are shown. Opening = balance just before `from`; closing = balance at `to`.
+    let running=Math.round(_num(base)*100)/100,opening=running;const shown=[];
+    rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;if(r.date<from){opening=running;}else{r.balance=running;shown.push(r);}});
+    return {opening:Math.round(opening*100)/100,rows:shown,total_in:Math.round(shown.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(shown.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
   };
-  return {from,to,opening_as_of:prev,
-    cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,'cash'),
-    bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,'bank')};
+  return {from,to,opening_as_of:prev,cash:fin(cashRows,anchor.cash),bank:fin(bankRows,anchor.bank)};
 }
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
