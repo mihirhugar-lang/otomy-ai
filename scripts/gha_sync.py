@@ -3429,6 +3429,12 @@ def main():
     saved_yesterday = saved_repayments(yesterday, yesterday)
     saved_mtd = saved_repayments(month_start, today)
     saved_last_month = saved_repayments(last_month_start, last_month_end)
+    # A monthly (on-demand) sync must REFRESH last-month + MTD repayments from ERP rather than reuse
+    # a stale saved control snapshot. The overlay balance nets these repayments against spot sales;
+    # if they're stale, recent receipt edits are missed and cash/bank stays off. Force a recompute.
+    if sync_mode in {"monthly", "month", "current_last_month"}:
+        saved_mtd = None
+        saved_last_month = None
 
     # ── Fresh ERP fetch is authoritative for the whole live window ──────────────
     # An ERP data-entry correction (an entry edited, or a duplicate removed) can land
