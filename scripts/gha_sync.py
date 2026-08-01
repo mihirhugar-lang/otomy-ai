@@ -2858,6 +2858,22 @@ def write_snapshot_bundle(
             end = today.replace(day=end_day)
             if (start, end) not in ranges:
                 ranges.append((start, end))
+    # Regenerate single-day control snapshots back to the balance anchor. A cash/bank book's opening
+    # is control(previous-day); if that historical single-day snapshot is stale (written months ago
+    # before the receipts were reconciled) the book range opens on a wrong figure. Rewriting one
+    # snapshot per day from the anchor to today keeps every historical range opening self-computed
+    # and correct — cheap (~a day's worth per day since the anchor).
+    try:
+        _hist_anchors = _balance_overlay().get("anchors", [])
+        if _hist_anchors:
+            _ad = date.fromisoformat(str(_hist_anchors[-1]["date"]))
+            _dd = _ad
+            while _dd <= today:
+                if (_dd, _dd) not in ranges:
+                    ranges.append((_dd, _dd))
+                _dd += timedelta(days=1)
+    except Exception as _e:
+        print(f"  historical single-day snapshot backfill skipped: {_e}")
 
     control_by_range = {
         (today, today): controls["today"],
