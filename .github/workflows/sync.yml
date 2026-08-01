@@ -1,15 +1,17 @@
 name: Refresh JSON data
 on:
-  schedule:
-    # GitHub cron is UTC; IST = UTC+5:30.
-    # Daytime 06:00-23:00 IST (= 00:30-17:30 UTC): every 10 min.
-    - cron: '30,40,50 0 * * *'   # 00:30-00:50 UTC  (06:00-06:20 IST)
-    - cron: '*/10 1-16 * * *'    # 01:00-16:59 UTC  (06:30-22:29 IST)
-    - cron: '0,10,20 17 * * *'   # 17:00-17:20 UTC  (22:30-22:50 IST)
-    # Night 23:00-06:00 IST (= 17:30-00:30 UTC): every 30 min.
-    - cron: '30 17 * * *'        # 17:30 UTC        (23:00 IST)
-    - cron: '0,30 18-23 * * *'   # 18:00-23:30 UTC  (23:30-05:00 IST)
-    - cron: '0 0 * * *'          # 00:00 UTC        (05:30 IST)
+  # Scheduled auto-sync DISABLED on request (2026-08-01): the every-10-min cron kept
+  # recomputing and re-drifting otomy's cash/bank balances overnight (yesterday correct,
+  # today off by the reconciliation adjustment). otomy now syncs ON-DEMAND ONLY — dispatch
+  # this workflow (sync_mode: monthly) when otomy needs a data refresh. Re-enable by
+  # uncommenting the schedule block below.
+  # schedule:
+  #   - cron: '30,40,50 0 * * *'
+  #   - cron: '*/10 1-16 * * *'
+  #   - cron: '0,10,20 17 * * *'
+  #   - cron: '30 17 * * *'
+  #   - cron: '0,30 18-23 * * *'
+  #   - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       full_cust_ledgers:
