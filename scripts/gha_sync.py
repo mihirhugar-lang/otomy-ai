@@ -3074,6 +3074,18 @@ def main():
         sync_start = today - timedelta(days=recent_days - 1)
         sync_label = f"last {recent_days} days"
     archive_start = min(sync_start, last_month_start)
+    # The balance overlay runs from the latest verified anchor and needs EVERY movement after it.
+    # When the anchor predates the sync window (e.g. a 28-Jun anchor while August's "last month" is
+    # July), the days between the anchor and the window start (29-30 Jun) fall in a gap and the
+    # cash/bank balance comes out short by exactly those movements. Floor the archive window to the
+    # anchor date so its month's archive is loaded and those movements are always counted.
+    try:
+        _anchors = _balance_overlay().get("anchors", [])
+        if _anchors:
+            _anchor_date = date.fromisoformat(str(_anchors[-1]["date"]))
+            archive_start = min(archive_start, _anchor_date)
+    except Exception as _e:
+        print(f"  anchor-floor skipped: {_e}")
     MERGE_PROTECT_BEFORE_DATE = sync_start.isoformat()
     print(f"  Sync mode: {sync_mode} ({sync_label}); fetching {sync_start} to {today}")
     local_seed = load_local_seed()
