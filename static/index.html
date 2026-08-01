@@ -934,12 +934,18 @@ async function snapshotFetch(url){
     '/api/dashboard/control',
     '/api/sync/erp/bank',
     '/api/sync/erp/cash',
+    '/api/sync/erp/cashbook',
   ]).has(u.pathname);
   // Completed historical ranges must come from the same archive engine as
   // Books and Ledger. Only a request ending today is allowed to use the live
   // sync snapshot, preventing tiles from drifting away from the books.
   const requestedTo=u.searchParams.get('to_date');
-  const preferSnapshotFirst=snapshotPreferredPath&&(!requestedTo||String(requestedTo)>=today());
+  // Yesterday's dashboard is a published close, not an unfinished live day. Prefer the
+  // generated snapshot for it so every tile uses the same full-window ERP result; the old
+  // archive-first branch could repaint yesterday from stale monthly rows.
+  const preferSnapshotFirst=snapshotPreferredPath&&(
+    !requestedTo || String(requestedTo)>=today() || String(requestedTo)===yesterday()
+  );
   if(!preferSnapshotFirst){
     const archived=await archiveFetch(url);
     if(archived!==null)return archived;
@@ -1389,6 +1395,28 @@ async function _archiveLedger(year,month){
   const rangeEnd=`${ym}-${String(lastDay).padStart(2,'0')}`;
   const months=await OtomyDataEngine.range(`${ym}-01`,rangeEnd);
   if(!months.length)return null;
+  const storedRows=months.flatMap(monthPayload=>
+    (monthPayload.ledger||[]).filter(row=>row.date>=`${ym}-01`&&row.date<=rangeEnd)
+  );
+  if(storedRows.length){
+    const storedTotals=months.find(monthPayload=>Array.isArray(monthPayload.ledger)&&monthPayload.ledger.length)?.ledger_totals||{};
+    return {year,month,rows:storedRows,totals:{
+      sale_trips:storedRows.reduce((s,r)=>s+_num(r.sale_trips),0),
+      sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.sale_amount),0)*100)/100,
+      spot_sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_amount),0)*100)/100,
+      spot_sale_cash:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_cash),0)*100)/100,
+      spot_sale_bank:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_bank),0)*100)/100,
+      qty_mt:Math.round(storedRows.reduce((s,r)=>s+_num(r.qty_mt),0)*100)/100,
+      credit_sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.credit_sale_amount),0)*100)/100,
+      credit_repayment:Math.round(storedRows.reduce((s,r)=>s+_num(r.credit_repayment),0)*100)/100,
+      expenses:Math.round(storedRows.reduce((s,r)=>s+_num(r.expenses),0)*100)/100,
+      boulder_input_mt:Math.round(storedRows.reduce((s,r)=>s+_num(r.boulder_input_mt),0)*100)/100,
+      boulder_trips:Math.round(storedRows.reduce((s,r)=>s+_num(r.boulder_trips),0)*100)/100,
+      cash_balance_office:storedRows.length?storedRows[storedRows.length-1].cash_balance_office:0,
+      bank_balance:storedRows.length?storedRows[storedRows.length-1].bank_balance:0,
+      ...storedTotals,
+    }};
+  }
   for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
     const dayRows=OtomyDataEngine.day(months,day);
@@ -3430,7 +3458,7 @@ async function downloadGSTR1(){
 // loctell's cash ledger), so every payment shows and the running balance ties out to the dashboard
 // tiles. Opening balance is carried forward to the chosen from-date. Mirrors localhost's backend.
 const _cashbook={cash:null,bank:null};
-async function _buildCashBook(from,to){
+async function _buildCashBookFallback(from,to){
   const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
   // Use the same archive/anchor engine for both opening and closing. Snapshot control ranges can be
   // older than the refreshed movement archive, which was the original FY mismatch.
@@ -3472,18 +3500,20 @@ async function _buildCashBook(from,to){
         }
       });
     });
-    // A residual is a visible safety net for a partially refreshed archive; a complete refresh
-    // should need only the dated physical-count / bank-statement checkpoints above.
-    const residual=Math.round((_num(closing)-running)*100)/100;
-    if(Math.abs(residual)>0.5){
-      const adj={date:to,particulars:'Verified balance adjustment (residual)',party:'',in:residual>0?residual:0,out:residual<0?-residual:0,adjustment:true};
-      running=Math.round((running+adj.in-adj.out)*100)/100;adj.balance=running;shown.push(adj);
-    }
     return {opening:Math.round(_num(opening)*100)/100,rows:shown,total_in:Math.round(shown.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(shown.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
   };
   return {from,to,opening_as_of:prev,
     cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,cashCheckpoints),
     bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,bankCheckpoints)};
+}
+async function _buildCashBook(from,to){
+  // Prefer the server-generated book. It is built once from the same canonical data used by the
+  // dashboard and Ledger View, so a stale browser archive cannot invent a residual balance row.
+  try{
+    const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
+    if(canonical&&canonical.cash&&canonical.bank)return canonical;
+  }catch(e){/* older snapshots fall through to the compatibility builder */}
+  return _buildCashBookFallback(from,to);
 }
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
