@@ -490,8 +490,11 @@ def fetch_sales(sess, from_d, to_d):
                 qty = _num(cols[7])
                 if qty == 0: continue
                 material_amount = _num(cols[8])
-                net_amount = _num(cols[13] if len(cols) > 13 else (cols[10] if len(cols) > 10 else cols[8]))
-                transport_charge = max(net_amount - material_amount, 0.0)
+                # Gross Sales must follow Loctell's Gross Total column. Net
+                # Amount is a separate round-off field and may be below
+                # Material Amount; clamping it caused ticket-level drift.
+                gross_total = _num(cols[10] if len(cols) > 10 else (cols[13] if len(cols) > 13 else cols[8]))
+                transport_charge = round(gross_total - material_amount, 2)
                 dd, mm, yyyy = cols[2].split("-")
                 tickets.append({
                     "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
