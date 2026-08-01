@@ -252,9 +252,17 @@ def verify_frontend_guard() -> None:
         "OtomyDataEngine.day(",
         "const snapshotPreferredPath=new Set(",
         "String(requestedTo)>=today()",
+        "String(requestedTo)===yesterday()",
+        "'/api/sync/erp/cashbook'",
+        "async function _buildCashBookFallback(",
+        "const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`)",
+        "const storedRows=months.flatMap(",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")
+    if "Verified balance adjustment (residual)" in root_html:
+        fail("frontend must not render a generic residual balance adjustment")
+    print("Frontend balance-chain guard passed: canonical cashbook/ledger paths are wired and residual rows are forbidden.")
 
 
 def verify_daily_balance_chain() -> None:
