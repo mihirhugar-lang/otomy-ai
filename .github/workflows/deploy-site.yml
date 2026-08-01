@@ -5,6 +5,14 @@ name: Deploy site to Pages
 # longer bundles data and does NOT need to run on a schedule — the 10-min sync keeps
 # R2 current and the site reads it live. Run this only when the frontend/Function changes.
 on:
+  push:
+    paths:
+      - "index.html"
+      - "static/**"
+      - "functions/**"
+      - "service-worker.js"
+      - "CNAME"
+      - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
 concurrency:
