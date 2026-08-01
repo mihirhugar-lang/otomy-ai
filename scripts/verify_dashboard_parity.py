@@ -234,6 +234,34 @@ def verify_frontend_guard() -> None:
                 "dashboard snapshotFetch must not overwrite visible tile values "
                 f"after loading the snapshot; found {needle!r}"
             )
+    for needle in (
+        "async function _dailyOperatingBalance(toDate)",
+        "balance_daily.json",
+        "await renderControlRoom(controlData)",
+        "_cashbook.bank=book.bank",
+        "_cashbook.cash=book.cash",
+    ):
+        if needle not in root_html:
+            fail(f"frontend balance-chain guard missing {needle!r}")
+
+
+def verify_daily_balance_chain() -> None:
+    payload = read_json(ROOT / "data" / "balance_daily.json")
+    previous = payload.get("previous_close") or {}
+    opening = payload.get("today_opening") or {}
+    today = payload.get("today_close") or {}
+    if previous.get("as_of") != opening.get("as_of"):
+        fail("balance_daily.json today_opening must use the previous close date")
+    for field in ("bank_balance", "cash_balance_office"):
+        previous_value = round(number_value(previous.get(field), f"previous_close.{field}"), 2)
+        opening_value = round(number_value(opening.get(field), f"today_opening.{field}"), 2)
+        if previous_value != opening_value:
+            fail(
+                f"balance_daily.json opening chain broken for {field}: "
+                f"previous_close={previous_value} today_opening={opening_value}"
+            )
+        number_value(today.get(field), f"today_close.{field}")
+    print("Daily balance chain passed: yesterday closing equals today's opening for cash and bank.")
 
 def verify_sync_tolerance_guard() -> None:
     source = (ROOT / "scripts" / "gha_sync.py").read_text()
@@ -596,6 +624,7 @@ def main() -> None:
     if args.code_only:
         print("Code-only parity guard passed.")
         return
+    verify_daily_balance_chain()
     verify_all_dashboard_presets()
     verify_bank_page_presets()
     verify_customer_page_presets()

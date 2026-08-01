@@ -1026,7 +1026,30 @@ function _partyKey(row){
   if(id!=null&&String(id).trim()!=='')return String(id).trim().toUpperCase();
   return String(row&&(row.customer_name||row.customer||row.name)||'').trim().toUpperCase();
 }
-let _balCfgCache, _bankStmtCache;
+let _balCfgCache, _bankStmtCache, _dailyBalanceCache;
+async function _dailyOperatingBalance(toDate){
+  const to=String(toDate||today()).slice(0,10),now=today();
+  const previous=localISO(new Date(new Date(`${now}T00:00:00`).getTime()-86400000));
+  // The sync writes this small, explicit chain after calculating the live overlay:
+  // yesterday closing == today's opening. Use it only for those two dates; all historical
+  // dates still use the anchor + movement engine below.
+  if(to!==now&&to!==previous)return null;
+  if(_dailyBalanceCache===undefined){
+    _dailyBalanceCache=fetch(`/data/balance_daily.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'})
+      .then(r=>r.ok?r.json():null).catch(()=>null);
+  }
+  const payload=await _dailyBalanceCache;
+  let row=null;
+  if(payload&&payload.as_of===now&&to===now)row=payload.today_close;
+  if(!row&&payload&&payload.previous_close&&String(payload.previous_close.as_of).slice(0,10)===to)row=payload.previous_close;
+  if(!row&&payload&&payload.today_close&&String(payload.today_close.as_of).slice(0,10)===to)row=payload.today_close;
+  if(!row||row.bank_balance==null||row.cash_balance_office==null)return null;
+  return {
+    bank_balance:Math.round(_num(row.bank_balance)*100)/100,
+    cash_balance_office:Math.round(_num(row.cash_balance_office)*100)/100,
+    operating_balance_from:String(row.as_of||to).slice(0,10),
+  };
+}
 async function _balanceConfig(){
   if(_balCfgCache!==undefined)return _balCfgCache;
   _balCfgCache=await fetch(`/data/balance_anchors.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
@@ -1052,8 +1075,10 @@ function _modeOverride(corrs,e){
   return null;
 }
 async function _archiveOperatingBalances(toDate=today()){
-  const cfg=await _balanceConfig();
   const to=toDate||today();
+  const daily=await _dailyOperatingBalance(to);
+  if(daily)return daily;
+  const cfg=await _balanceConfig();
   // Anchor each book to its own latest verified truth point on/before `to`. Bank and cash do not
   // necessarily share a cutoff: bank follows the ICICI statement, while cash follows the latest
   // physical count. This is the same opening/cutoff rule used by localhost.
@@ -2366,7 +2391,7 @@ async function loadDash(){
     if(!controlData||!controlData.summary){_dashUnavailable();return;}
     _dashRetried=false;
     renderDashSummary(controlData,d);
-    renderControlRoom(controlData);
+    await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
 }
 
@@ -2375,7 +2400,7 @@ async function loadControlRoom(){
   const t=document.getElementById('dash-to').value||today();
   try{
     const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
-    renderControlRoom(data);
+    await renderControlRoom(data);
   }catch(e){
     const el=document.getElementById('control-room');
     if(el)el.innerHTML=`<div class="control-alert danger"><strong>Control room error</strong><span>${esc(e.message)}</span></div>`;
@@ -2424,7 +2449,7 @@ function renderDashSummary(data,d){
   document.getElementById('d-profit-mt').textContent=fmtINR2(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
 
-function renderControlRoom(data){
+async function renderControlRoom(data){
   const s=data.summary||{};
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const _rc=_reclassifySales(data);
@@ -2565,7 +2590,7 @@ function renderControlRoom(data){
     <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
   `;
-  renderDashboardCashBooks(data.period.from,data.period.to);
+  await renderDashboardCashBooks(data.period.from,data.period.to);
 }
 // ── Sales ──────────────────────────────────────────────────────────────────
 function calcSale(){document.getElementById('s-amt').value=((parseFloat(document.getElementById('s-qty').value)||0)*(parseFloat(document.getElementById('s-rate').value)||0)).toFixed(2);}
@@ -3448,6 +3473,10 @@ async function renderDashboardCashBooks(from,to){
   if(!bb&&!cb)return;
   try{
     const book=await _buildCashBook(from,to);
+    // Every balance tile and both embedded books use this exact object. The previous code only
+    // painted the embedded tables, leaving other balance cards on a separate/stale source.
+    _cashbook.bank=book.bank;
+    _cashbook.cash=book.cash;
     if(bb)bb.innerHTML=_cashBookHTML(book,'bank');
     if(cb)cb.innerHTML=_cashBookHTML(book,'cash');
     // Balance tiles read the SAME live book closing shown below (opening from the control snapshot +
