@@ -1019,6 +1019,13 @@ function _receiptPaymentAmount(row){
   const noted=_receiptNoteAmount(row.notes,'payment_received');
   return noted==null?_num(row.amount!=null?row.amount:row.credit):_num(noted);
 }
+// Localhost keys spot sales and customer receipts by ERP customer id. Older archive rows may
+// not have that id, so use the normalized customer name only as the compatibility fallback.
+function _partyKey(row){
+  const id=row&&(row.customer_id!=null?row.customer_id:row.erp_customer_id);
+  if(id!=null&&String(id).trim()!=='')return String(id).trim().toUpperCase();
+  return String(row&&(row.customer_name||row.customer||row.name)||'').trim().toUpperCase();
+}
 let _balCfgCache, _bankStmtCache;
 async function _balanceConfig(){
   if(_balCfgCache!==undefined)return _balCfgCache;
@@ -1047,48 +1054,57 @@ function _modeOverride(corrs,e){
 async function _archiveOperatingBalances(toDate=today()){
   const cfg=await _balanceConfig();
   const to=toDate||today();
-  // Anchor to the latest verified truth point (ICICI statement + cash count) on/before `to`.
-  // Fall back to manifest opening if no anchor config is present.
-  let anchorDate, bank, cash;
+  // Anchor each book to its own latest verified truth point on/before `to`. Bank and cash do not
+  // necessarily share a cutoff: bank follows the ICICI statement, while cash follows the latest
+  // physical count. This is the same opening/cutoff rule used by localhost.
+  let anchorDate, bank, cash, cashCutoff, bankCutoff;
   const anchors=((cfg&&cfg.anchors)||[]).filter(a=>String(a.date)<=to).sort((a,b)=>String(a.date)<String(b.date)?-1:1);
   if(anchors.length){
     const a=anchors[anchors.length-1];
     anchorDate=String(a.date); bank=_num(a.bank); cash=_num(a.cash);
+    cashCutoff=anchorDate; bankCutoff=anchorDate;
   }else{
     const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
     const opening=(manifest&&manifest.operating_balance_opening)||{};
     anchorDate=String(opening.as_of||'').slice(0,10)||'2025-02-13';
     bank=_num(opening.bank_balance); cash=_num(opening.cash_balance_office);
+    cashCutoff=anchorDate; bankCutoff=anchorDate;
   }
   const corrs=(cfg&&cfg.mode_corrections)||null;
   // BANK: use the actual ICICI statement running balance (exact). After statement end, add bank movements.
-  let bankCutoff=null;
   const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
   if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
     const le=stmt.rows.filter(r=>String(r.date)<=to);
-    if(le.length){ bank=_num(le[le.length-1].balance); bankCutoff=String(stmt.to); }
+    if(le.length){
+      bank=_num(le[le.length-1].balance);
+      // Use the last statement row actually included in this as-of date. This keeps custom
+      // ranges before the statement end from silently skipping their later movements.
+      bankCutoff=String(le[le.length-1].date||stmt.to).slice(0,10);
+    }
   }
-  const from=localISO(new Date(new Date(`${anchorDate}T00:00:00`).getTime()+86400000));
+  const nextDay=d=>localISO(new Date(new Date(`${d}T00:00:00`).getTime()+86400000));
+  const from=[nextDay(cashCutoff||anchorDate),nextDay(bankCutoff||anchorDate)].sort()[0];
   if(to>=from){
     const months=await _loadArchiveRange(from,to);
+    const inCash=dt=>cashCutoff===null||String(dt)>cashCutoff;
     const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
     const saleRows=_rowsInRange(months,'sales',from,to);
     // Same-day spot receipts are captured by the sale channels below; subtract the same-day,
     // same-channel overlap from ledger repayments so spot payments aren't double-counted.
-    const spotCash={}, spotBank={}, rkey=(name,d)=>`${String(name||'').trim().toUpperCase()}|${d}`;
+    const spotCash={}, spotBank={}, rkey=(row)=>`${_partyKey(row)}|${row.date}`;
     saleRows.forEach(s=>{
-      const ch=_saleChannels(s), k=rkey(s.customer_name,s.date);
-      if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;
+      const ch=_saleChannels(s), k=rkey(s);
+      if(ch.cash&&inCash(s.date))spotCash[k]=(spotCash[k]||0)+ch.cash;
       if(ch.upi&&inBank(s.date))spotBank[k]=(spotBank[k]||0)+ch.upi;
     });
     saleRows.forEach(s=>{
       const ch=_saleChannels(s);
-      cash+=ch.cash;
+      if(inCash(s.date))cash+=ch.cash;
       if(ch.upi&&inBank(s.date))bank+=ch.upi;
     });
     _rowsInRange(months,'receipts',from,to).forEach(r=>{
-      const amount=_receiptPaymentAmount(r), k=rkey(r.customer_name,r.date);
-      if(_payChannel(r.mode)==='cash'){
+      const amount=_receiptPaymentAmount(r), k=rkey(r);
+      if(_payChannel(r.mode)==='cash'&&inCash(r.date)){
         const ov=Math.min(amount,spotCash[k]||0); spotCash[k]=(spotCash[k]||0)-ov; cash+=amount-ov;
       }else if(inBank(r.date)){
         const ov=Math.min(amount,spotBank[k]||0); spotBank[k]=(spotBank[k]||0)-ov; bank+=amount-ov;
@@ -1098,8 +1114,9 @@ async function _archiveOperatingBalances(toDate=today()){
       const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
       // Apr–May only: skip director cash DRAWS (loctell misses the funding cash) so the un-anchored
       // window stays positive. June onward is anchored to physical counts, so draws are kept.
-      if(ch==='cash'){if(!(_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01'))cash-=_num(e.amount);}
-      else if(inBank(e.date))bank-=_num(e.amount);
+      if(ch==='cash'){
+        if(inCash(e.date)&&!(_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01'))cash-=_num(e.amount);
+      }else if(inBank(e.date))bank-=_num(e.amount);
     });
   }
   return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:anchorDate};
@@ -3339,41 +3356,58 @@ async function downloadGSTR1(){
 const _cashbook={cash:null,bank:null};
 async function _buildCashBook(from,to){
   const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
-  // Opening/closing come from the SAME /api/dashboard/control the dashboard tiles use (server
-  // snapshot for standard ranges, client engine otherwise), so the book always ties out to the
-  // dashboard's Cash-in-Office / Bank Balance. Fall back to the client engine if control is absent.
-  const _ctlBal=async(f,t,d)=>{
-    try{const c=await api(`/api/dashboard/control?from_date=${f}&to_date=${t}`);const s=c&&c.summary;
-      if(s&&(s.cash_balance_office!=null||s.bank_balance!=null))return {cash_balance_office:_num(s.cash_balance_office),bank_balance:_num(s.bank_balance)};
-    }catch(e){}
-    return await _archiveOperatingBalances(d);
-  };
-  const [openBal,closeBal,cfg]=await Promise.all([_ctlBal(prev,prev,prev),_ctlBal(from,to,to),_balanceConfig()]);
+  // Use the same archive/anchor engine for both opening and closing. Snapshot control ranges can be
+  // older than the refreshed movement archive, which was the original FY mismatch.
+  const [openBal,closeBal,cfg]=await Promise.all([_archiveOperatingBalances(prev),_archiveOperatingBalances(to),_balanceConfig()]);
   const corrs=(cfg&&cfg.mode_corrections)||null;
-  const anchorsInRange=(((cfg&&cfg.anchors)||[]).map(a=>String(a.date)).filter(d=>d>=from&&d<=to)).sort();
   const months=await _loadArchiveRange(from,to);
   const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
-  const spotCash={},spotBank={},rkey=(n,d)=>`${String(n||'').trim().toUpperCase()}|${d}`;
-  saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s.customer_name,s.date);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
+  const spotCash={},spotBank={},rkey=row=>`${_partyKey(row)}|${row.date}`;
+  saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
   const cashRows=[],bankRows=[],mk=(d,part,party,inn,out)=>({date:String(d).slice(0,10),particulars:part,party:party||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
   saleRows.forEach(s=>{const ch=_saleChannels(s),nm=s.customer_name||'Customer';if(ch.cash)cashRows.push(mk(s.date,'Spot sale (cash)',nm,ch.cash,0));if(ch.upi)bankRows.push(mk(s.date,'Spot sale (UPI/Bank)',nm,ch.upi,0));});
-  receipts.forEach(r=>{const amt=_receiptPaymentAmount(r);if(amt<=0)return;const k=rkey(r.customer_name,r.date),nm=r.customer_name||'Customer';
+  receipts.forEach(r=>{const amt=_receiptPaymentAmount(r);if(amt<=0)return;const k=rkey(r),nm=r.customer_name||'Customer';
     if(_payChannel(r.mode)==='cash'){const ov=Math.min(amt,spotCash[k]||0);spotCash[k]=(spotCash[k]||0)-ov;const net=amt-ov;if(net>0.5)cashRows.push(mk(r.date,'Customer payment (cash)',nm,net,0));}
     else{const ov=Math.min(amt,spotBank[k]||0);spotBank[k]=(spotBank[k]||0)-ov;const net=amt-ov;if(net>0.5)bankRows.push(mk(r.date,'Customer payment (UPI/Bank)',nm,net,0));}});
-  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt));});
-  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||(b.in-a.in);
+  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;if(ch==='cash'&&_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01')return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt));});
+  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?1:0)-(b.adjustment?1:0))||(b.in-a.in);
   cashRows.sort(bySort);bankRows.sort(bySort);
-  const adjDate=anchorsInRange.length?anchorsInRange[anchorsInRange.length-1]:to;
-  const fin=(rows,opening,closing,channel)=>{
-    let running=opening;rows.forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;});
-    // No "Verified balance adjustment" plug: the book closes on its own itemized movements
-    // (opening + movements), matching localhost. We do NOT force a tie-out to the control/overlay
-    // closing, which was dragging the correct movement-based balance to a different number.
-    return {opening:Math.round(opening*100)/100,rows,total_in:Math.round(rows.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(rows.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
+  const cashCheckpoints=(((cfg&&cfg.anchors)||[])
+    .filter(a=>a.cash!=null&&String(a.date)>=from&&String(a.date)<=to)
+    .map(a=>({date:String(a.date),target:_num(a.cash),source:'physical cash count'})));
+  const bankCheckpoints=[];
+  const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
+  if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
+    const le=stmt.rows.filter(r=>String(r.date)<=to);
+    if(le.length){const last=le[le.length-1],date=String(last.date||stmt.to).slice(0,10);if(date>=from&&date<=to)bankCheckpoints.push({date,target:_num(last.balance),source:'bank statement'});}
+  }
+  const fin=(rows,opening,closing,checkpoints)=>{
+    const byDate={};rows.forEach(r=>(byDate[r.date]||(byDate[r.date]=[])).push(r));
+    const cpByDate={};checkpoints.forEach(c=>(cpByDate[c.date]||(cpByDate[c.date]=[])).push(c));
+    const dates=[...new Set([...Object.keys(byDate),...Object.keys(cpByDate)])].sort();
+    const shown=[];let running=Math.round(_num(opening)*100)/100;
+    dates.forEach(d=>{
+      (byDate[d]||[]).sort(bySort).forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;shown.push(r);});
+      (cpByDate[d]||[]).forEach(c=>{
+        const gap=Math.round((c.target-running)*100)/100;
+        if(Math.abs(gap)>0.5){
+          const adj={date:d,particulars:'Verified balance adjustment ('+c.source+')',party:'',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true};
+          running=Math.round((running+adj.in-adj.out)*100)/100;adj.balance=running;shown.push(adj);
+        }
+      });
+    });
+    // A residual is a visible safety net for a partially refreshed archive; a complete refresh
+    // should need only the dated physical-count / bank-statement checkpoints above.
+    const residual=Math.round((_num(closing)-running)*100)/100;
+    if(Math.abs(residual)>0.5){
+      const adj={date:to,particulars:'Verified balance adjustment (residual)',party:'',in:residual>0?residual:0,out:residual<0?-residual:0,adjustment:true};
+      running=Math.round((running+adj.in-adj.out)*100)/100;adj.balance=running;shown.push(adj);
+    }
+    return {opening:Math.round(_num(opening)*100)/100,rows:shown,total_in:Math.round(shown.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(shown.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
   };
   return {from,to,opening_as_of:prev,
-    cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,'cash'),
-    bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,'bank')};
+    cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,cashCheckpoints),
+    bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,bankCheckpoints)};
 }
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
