@@ -54,6 +54,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .topbar-title{font-size:17px;font-weight:900;color:#1f2937}
 .topbar-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
 .topbar-date{font-size:12px;color:#777}
+.engine-status{display:inline-flex;align-items:center;gap:5px;border:1px solid #cfd8dc;border-radius:999px;padding:5px 9px;background:#f8fafc;color:#475569;font-size:11px;font-weight:800;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.engine-status::before{content:'';width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:0 0 auto}
+.engine-status.running{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.engine-status.running::before{background:#16a34a}
+.engine-status.paused{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.engine-status.paused::before{background:#ea580c}
+.engine-status.unknown{border-color:#fecaca;background:#fef2f2;color:#991b1b}.engine-status.unknown::before{background:#dc2626}
 .install-btn{display:none;border:0;border-radius:999px;background:linear-gradient(135deg,#38aeea,#8ee7ff);color:#073f63;font-size:12px;font-weight:900;padding:8px 13px;box-shadow:0 8px 20px rgba(56,174,234,.28);cursor:pointer;white-space:nowrap}
 .install-btn.show{display:inline-flex;align-items:center;gap:6px}
 .content{padding:24px 28px;flex:1}
@@ -243,6 +248,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .topbar-title{font-size:16px;line-height:1.2;flex:1;min-width:0}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
+  .engine-status{font-size:10px;padding:4px 7px;max-width:128px}
   .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
@@ -502,6 +508,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="topbar-title" id="page-title">Dashboard</div>
   <div class="topbar-actions no-print">
     <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
+    <div id="engine-status" class="engine-status" role="status" title="Common engine status">Engine: checking</div>
     <div class="topbar-date" id="topbar-date"></div>
   </div>
 </div>
@@ -1772,6 +1779,36 @@ function startSyncAutoRefresh(){
   clearInterval(_syncRefreshTimer);
   _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
+let _engineStatusTimer=null;
+async function loadEngineStatus(){
+  const el=document.getElementById('engine-status');
+  if(!el)return;
+  try{
+    const stamp=Date.now();
+    const [stateResponse,engineResponse]=await Promise.all([
+      fetch(`/data/control/engine_state.json?_=${stamp}`,{cache:'no-store'}),
+      fetch(`/data/common_engine.json?_=${stamp}`,{cache:'no-store'})
+    ]);
+    const state=stateResponse.ok?await stateResponse.json():{state:'running'};
+    const engine=engineResponse.ok?await engineResponse.json():{};
+    const paused=state.state==='paused';
+    const generated=engine.generated_at?String(engine.generated_at).replace('T',' ').replace(/([+]).*$/,''):'last verified data unknown';
+    el.className=`engine-status ${paused?'paused':'running'}`;
+    el.textContent=paused?'Engine paused':`Engine live · ${generated}`;
+    el.title=paused
+      ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
+      : `Last verified sync: ${generated}`;
+  }catch(e){
+    el.className='engine-status unknown';
+    el.textContent='Engine status unavailable';
+    el.title='Could not read the common-engine status marker';
+  }
+}
+function startEngineStatusRefresh(){
+  loadEngineStatus();
+  clearInterval(_engineStatusTimer);
+  _engineStatusTimer=setInterval(loadEngineStatus,30000);
+}
 const AWAY_RESET_MS=5*60*1000; // away >5 min → land back on Dashboard on return
 let _hiddenAt=null;
 function _markAway(){try{sessionStorage.setItem('cx_left_at',String(Date.now()));}catch(e){}}
@@ -2433,6 +2470,7 @@ window.onload=async function(){
   try{const s=sessionStorage.getItem('cx_active_section');const leftAt=parseInt(sessionStorage.getItem('cx_left_at')||'0',10);const awayLong=leftAt&&(Date.now()-leftAt)>AWAY_RESET_MS;if(s&&document.getElementById('section-'+s)&&!awayLong)_bootSection=s;sessionStorage.removeItem('cx_left_at');}catch(e){}
   if(_bootSection!=='dashboard'){nav(_bootSection);}else{await loadDash();}
   startSyncAutoRefresh();
+  startEngineStatusRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
     printDashboard(false);
   }

@@ -15,7 +15,7 @@ def files(root: Path) -> dict[str, Path]:
     return {
         str(path.relative_to(root)): path
         for path in root.rglob("*")
-        if path.is_file()
+        if path.is_file() and not str(path.relative_to(root)).startswith("control/")
     }
 
 
