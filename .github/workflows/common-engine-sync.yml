@@ -3,8 +3,9 @@ name: Common engine sync
 on:
   # The common engine is the only Otomy data writer. It runs in GitHub Actions,
   # so a sleeping/offline Mac cannot make the cloud dashboard stale.
-  # A Cloudflare Cron Worker dispatches this workflow every 15 minutes. Keeping
-  # the clock outside GitHub avoids dropped/delayed GitHub scheduled events.
+  # A Cloudflare Cron Worker dispatches this workflow every 15 minutes during
+  # the day and once per hour from 11 PM–7 AM IST. Keeping the clock outside
+  # GitHub avoids dropped/delayed GitHub scheduled events.
   workflow_dispatch:
     inputs:
       sync_mode:
