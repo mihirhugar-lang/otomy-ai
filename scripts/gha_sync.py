@@ -4,22 +4,32 @@ GitHub Actions sync script — fetches live data from loctell.com ERP
 and generates JSON files for otomy.ai. Runs on GitHub servers.
 No Mac or local database required.
 """
-import base64, json, re, html as htmllib, os, time
+import base64, json, re, html as htmllib, os, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
-
-from shared_compliance import (
-    build_audit_ca as build_compliance_audit_ca,
-    build_compliance_dataset,
-    build_gstr1 as build_compliance_gstr1,
-    build_gstr2b_reconciliation as build_compliance_gstr2b,
-    build_gstr3b as build_compliance_gstr3b,
-    build_tally_xml as build_compliance_tally_xml,
-)
+try:
+    from shared_compliance import (
+        build_audit_ca as build_compliance_audit_ca,
+        build_compliance_dataset,
+        build_gstr1 as build_compliance_gstr1,
+        build_gstr2b_reconciliation as build_compliance_gstr2b,
+        build_gstr3b as build_compliance_gstr3b,
+        build_tally_xml as build_compliance_tally_xml,
+    )
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from shared_compliance import (
+        build_audit_ca as build_compliance_audit_ca,
+        build_compliance_dataset,
+        build_gstr1 as build_compliance_gstr1,
+        build_gstr2b_reconciliation as build_compliance_gstr2b,
+        build_gstr3b as build_compliance_gstr3b,
+        build_tally_xml as build_compliance_tally_xml,
+    )
 
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
@@ -30,7 +40,7 @@ BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.jso
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 COMMON_ENGINE_NAME = "loctell-common-engine"
-COMMON_ENGINE_VERSION = "2026-08-02.1"
+COMMON_ENGINE_VERSION = "2026-08-02.2-compliance-range-v1"
 
 ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
 ERP_ORG  = os.environ.get("ERP_ORG",  "VMIPL")
@@ -1691,6 +1701,20 @@ def _archive_key(section, row):
             row.get("received", ""),
             row.get("paid", ""),
         ))
+    if section == "vendor_payments":
+        reference = str(row.get("reference") or "").strip()
+        if reference:
+            return "vendor-payments-ref:" + "|".join(str(part) for part in (
+                row.get("date", ""),
+                row.get("mode", ""),
+                reference,
+            ))
+        return "vendor-payments:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("vendor_id", row.get("vendor_name", "")),
+            row.get("amount", ""),
+            row.get("mode", ""),
+        ))
     if row.get("id"):
         return f"{section}:id:{row['id']}"
     parts = [
@@ -1801,7 +1825,7 @@ def _merge_archive_rows(existing, incoming, section):
         # so the dropped [cutoff, today] window is always fully re-supplied.)
         _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
         existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
-    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
+    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash", "vendor_payments"} else set()
     merged = {}
     existing_expense_keys = set()
     for idx, row in enumerate(existing):
@@ -3539,6 +3563,9 @@ def main():
         return []
 
     def saved_vendor_payment_rows(start, end):
+        archived_rows = rows_between_dates(archive_rows.get("vendor_payments", []), start, end)
+        if archived_rows:
+            return [dict(row) for row in archived_rows]
         rows = []
         for row in saved_stream_rows("bank", start, end):
             if row.get("source") != "Vendor Payment" and row.get("bank_name") != "UPI/Bank Vendor Payment":

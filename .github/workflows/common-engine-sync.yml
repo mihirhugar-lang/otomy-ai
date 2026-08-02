@@ -3,8 +3,8 @@ name: Common engine sync
 on:
   # The common engine is the only Otomy data writer. It runs in GitHub Actions,
   # so a sleeping/offline Mac cannot make the cloud dashboard stale.
-  schedule:
-    - cron: '*/15 * * * *'
+  # A Cloudflare Cron Worker dispatches this workflow every 15 minutes. Keeping
+  # the clock outside GitHub avoids dropped/delayed GitHub scheduled events.
   workflow_dispatch:
     inputs:
       sync_mode:
@@ -32,17 +32,70 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check common-engine control state
+        id: initial_control
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          control_file="$RUNNER_TEMP/otomy-engine-state.json"
+          error_file="$RUNNER_TEMP/otomy-engine-state.err"
+          set +e
+          aws s3 cp "s3://otomy-data/control/engine_state.json" "$control_file" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>"$error_file"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            if grep -Eqi '404|not found|does not exist|nosuchkey' "$error_file"; then
+              echo "No control file exists yet; defaulting to running."
+              state="running"
+            else
+              cat "$error_file" >&2
+              echo "Unable to read the engine control state; refusing to run." >&2
+              exit 1
+            fi
+          else
+            state="$(jq -r '.state // "running"' "$control_file")"
+            case "$state" in
+              running|paused) ;;
+              *) echo "Invalid engine control state: $state" >&2; exit 1 ;;
+            esac
+          fi
+          if [ "$state" = "paused" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "state=paused" >> "$GITHUB_OUTPUT"
+            echo "Common engine is PAUSED; no ERP read or R2 write will run."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "state=running" >> "$GITHUB_OUTPUT"
+            echo "Common engine is RUNNING."
+          fi
+
       - name: Pull current R2 state
+        if: steps.initial_control.outputs.enabled == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exact-timestamps --only-show-errors
 
+      - name: Save previous publish manifest
+        if: steps.initial_control.outputs.enabled == 'true'
+        run: |
+          if [ -f data/publish_manifest.json ]; then
+            cp data/publish_manifest.json "$RUNNER_TEMP/otomy-previous-publish-manifest.json"
+          else
+            rm -f "$RUNNER_TEMP/otomy-previous-publish-manifest.json"
+          fi
+
       - name: Install dependencies
+        if: steps.initial_control.outputs.enabled == 'true'
         run: python3 -m pip install --quiet requests
 
       - name: Run the single Loctell common engine
+        if: steps.initial_control.outputs.enabled == 'true'
         env:
           ERP_BASE: ${{ secrets.ERP_BASE }}
           ERP_ORG: ${{ secrets.ERP_ORG }}
@@ -58,21 +111,141 @@ jobs:
         run: python3 scripts/gha_sync.py
 
       - name: Verify the generated common bundle
+        if: steps.initial_control.outputs.enabled == 'true'
         run: python3 scripts/verify_dashboard_parity.py
 
-      - name: Publish the verified bundle to R2
+      - name: Build content delta publish plan
+        if: steps.initial_control.outputs.enabled == 'true'
+        env:
+          OTOMY_REQUESTED_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
+        run: |
+          python3 scripts/delta_manifest.py \
+            --root data \
+            --previous "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --manifest data/publish_manifest.json \
+            --changed-root "$RUNNER_TEMP/otomy-publish-delta" \
+            --changed "$RUNNER_TEMP/otomy-changed-files.txt" \
+            --deleted "$RUNNER_TEMP/otomy-deleted-objects.json" \
+            --plan "$RUNNER_TEMP/otomy-publish-plan.json" \
+            --requested-mode "$OTOMY_REQUESTED_MODE" \
+            --run-id "$GITHUB_RUN_ID"
+
+      - name: Re-check common-engine control before publish
+        id: prepublish_control
+        if: steps.initial_control.outputs.enabled == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --only-show-errors
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          control_file="$RUNNER_TEMP/otomy-engine-state-before-publish.json"
+          error_file="$RUNNER_TEMP/otomy-engine-state-before-publish.err"
+          set +e
+          aws s3 cp "s3://otomy-data/control/engine_state.json" "$control_file" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>"$error_file"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            if grep -Eqi '404|not found|does not exist|nosuchkey' "$error_file"; then
+              state="running"
+            else
+              cat "$error_file" >&2
+              echo "Unable to re-check the engine control state; refusing to publish." >&2
+              exit 1
+            fi
+          else
+            state="$(jq -r '.state // "running"' "$control_file")"
+          fi
+          if [ "$state" = "paused" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "state=paused" >> "$GITHUB_OUTPUT"
+            echo "Engine was paused while this run was processing; verified output will not be published."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "state=running" >> "$GITHUB_OUTPUT"
+            echo "Engine remains running; verified output may be published."
+          fi
 
-      - name: Read back and verify the exact R2 bundle
+      - name: Publish the verified bundle to R2
+        if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          readback_dir="$(mktemp -d)"
-          aws s3 sync "s3://otomy-data" "$readback_dir" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exact-timestamps --only-show-errors
-          python3 scripts/verify_r2_readback.py data "$readback_dir"
+          publish_mode="$(jq -r '.publish_mode' "$RUNNER_TEMP/otomy-publish-plan.json")"
+          if [ "$publish_mode" = "full" ]; then
+            # Keep the readiness marker until all content is uploaded. It is
+            # replaced below only after the full publish succeeds.
+            aws s3 sync data "s3://otomy-data" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+              --delete --exclude "publish_manifest.json" --exclude "control/*" --only-show-errors
+          else
+            aws s3 sync "$RUNNER_TEMP/otomy-publish-delta" "s3://otomy-data" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            if [ -s "$RUNNER_TEMP/otomy-deleted-objects.json" ] && [ "$(jq '.Objects | length' "$RUNNER_TEMP/otomy-deleted-objects.json")" -gt 0 ]; then
+              aws s3api delete-objects \
+                --bucket otomy-data \
+                --delete "file://$RUNNER_TEMP/otomy-deleted-objects.json" \
+                --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+            fi
+          fi
+          # Publish the manifest last. It is the release/readiness marker for
+          # the complete key set represented by this verified engine run.
+          aws s3 cp data/publish_manifest.json "s3://otomy-data/publish_manifest.json" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+
+      - name: Read back and verify the exact R2 bundle
+        if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          publish_mode="$(jq -r '.publish_mode' "$RUNNER_TEMP/otomy-publish-plan.json")"
+          if [ "$publish_mode" = "full" ]; then
+            readback_dir="$(mktemp -d)"
+            aws s3 sync "s3://otomy-data" "$readback_dir" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exclude "control/*" --exact-timestamps --only-show-errors
+            python3 scripts/verify_r2_readback.py data "$readback_dir"
+          else
+            readback_dir="$(mktemp -d)"
+            remote_manifest="$RUNNER_TEMP/otomy-remote-publish-manifest.json"
+            remote_keys="$RUNNER_TEMP/otomy-remote-keys.txt"
+            aws s3 cp "s3://otomy-data/publish_manifest.json" "$remote_manifest" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            aws s3 ls "s3://otomy-data" --recursive \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+              | awk '$4 !~ /^control\// {print $4}' | sort > "$remote_keys"
+            include_args=(--include "publish_manifest.json")
+            while IFS= read -r key; do
+              [ -n "$key" ] && include_args+=(--include "$key")
+            done < "$RUNNER_TEMP/otomy-changed-files.txt"
+            aws s3 cp "s3://otomy-data" "$readback_dir" --recursive \
+              --exclude "*" "${include_args[@]}" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            python3 scripts/verify_r2_delta.py \
+              data "$readback_dir" "$remote_manifest" "$remote_keys" \
+              "$RUNNER_TEMP/otomy-changed-files.txt" "$RUNNER_TEMP/otomy-deleted-objects.json"
+          fi
+
+      - name: Report paused engine
+        if: steps.initial_control.outputs.enabled != 'true'
+        run: |
+          {
+            echo '## Common engine paused'
+            echo
+            echo 'No ERP request, calculation, or R2 publish was performed.'
+            echo 'The last verified dataset remains live.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report publish skipped after pause
+        if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled != 'true'
+        run: |
+          {
+            echo '## Common engine pause observed'
+            echo
+            echo 'The run stopped before publishing because the engine was paused.'
+            echo 'The last verified dataset remains live.'
+          } >> "$GITHUB_STEP_SUMMARY"
