@@ -455,6 +455,7 @@ def load_archive_window(from_d, to_d):
         "sales": [],
         "expenses": [],
         "receipts": [],
+        "vendor_payments": [],
         "cash": [],
         "bank": [],
         "boulders": [],
@@ -1700,6 +1701,20 @@ def _archive_key(section, row):
             row.get("received", ""),
             row.get("paid", ""),
         ))
+    if section == "vendor_payments":
+        reference = str(row.get("reference") or "").strip()
+        if reference:
+            return "vendor-payments-ref:" + "|".join(str(part) for part in (
+                row.get("date", ""),
+                row.get("mode", ""),
+                reference,
+            ))
+        return "vendor-payments:" + "|".join(str(part) for part in (
+            row.get("date", ""),
+            row.get("vendor_id", row.get("vendor_name", "")),
+            row.get("amount", ""),
+            row.get("mode", ""),
+        ))
     if row.get("id"):
         return f"{section}:id:{row['id']}"
     parts = [
@@ -1798,7 +1813,7 @@ def _merge_archive_rows(existing, incoming, section):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-    if section in {"sales", "expenses", "cash", "bank", "receipts"}:
+    if section in {"sales", "expenses", "cash", "bank", "receipts", "vendor_payments"}:
         # Fresh fetch is authoritative for its window. Every section we re-pull in full over
         # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
         # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
@@ -1810,7 +1825,7 @@ def _merge_archive_rows(existing, incoming, section):
         # so the dropped [cutoff, today] window is always fully re-supplied.)
         _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
         existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
-    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash"} else set()
+    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash", "vendor_payments"} else set()
     merged = {}
     existing_expense_keys = set()
     for idx, row in enumerate(existing):
@@ -1922,6 +1937,7 @@ def write_archive_updates(
     for section, rows in (
         ("sales", all_sales),
         ("expenses", all_expenses),
+        ("vendor_payments", vendor_payments),
         ("cash", cash_rows),
         ("bank", bank_rows),
         ("boulders", boulder_rows),
@@ -2005,6 +2021,7 @@ def write_archive_updates(
                 "sales": [],
                 "expenses": [],
                 "receipts": [],
+                "vendor_payments": [],
                 "bank": [],
                 "cash": [],
                 "boulders": [],
@@ -3197,16 +3214,19 @@ def write_snapshot_bundle(
     movement_start = opening_as_of + timedelta(days=1)
 
     # Compliance pages consume one canonical FY window, independent of the recent/full
-    # fetch mode.  The rows are already archive-merged above, so a 15-minute refresh can
-    # update today's records without creating a second GST or CA calculation path.
+    # fetch mode.  Reload the archive after it has been written above: `all_sales`,
+    # `all_expenses`, `repayments`, and `vendor_payments` are intentionally limited to
+    # the current sync window during a 15-minute run.  Using them here was the cause of
+    # April-June GST/AUDIT rows becoming zero while the dashboard archive remained right.
     compliance_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+    compliance_rows = load_archive_window(compliance_start, today)
     compliance_dataset = build_compliance_dataset(
-        all_sales,
-        all_expenses,
-        repayments,
+        compliance_rows.get("sales", []),
+        compliance_rows.get("expenses", []),
+        compliance_rows.get("receipts", []),
         customers_full,
         vendors_full,
-        vendor_payments,
+        compliance_rows.get("vendor_payments", []),
         exports_config,
         compliance_start,
         today,
@@ -3569,6 +3589,9 @@ def main():
         return []
 
     def saved_vendor_payment_rows(start, end):
+        archived_rows = rows_between_dates(archive_rows.get("vendor_payments", []), start, end)
+        if archived_rows:
+            return [dict(row) for row in archived_rows]
         rows = []
         for row in saved_stream_rows("bank", start, end):
             if row.get("source") != "Vendor Payment" and row.get("bank_name") != "UPI/Bank Vendor Payment":
