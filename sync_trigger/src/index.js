@@ -2,12 +2,13 @@ const GITHUB_OWNER = "mihirhugar-lang";
 const GITHUB_REPOSITORY = "otomy-ai";
 const GITHUB_WORKFLOW = "common-engine-sync.yml";
 const GITHUB_REF = "main";
+const FULL_AUDIT_CRON = "30 19 * * *";
 
 function dispatchUrl() {
   return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`;
 }
 
-async function dispatchCommonEngine(env) {
+async function dispatchCommonEngine(env, mode) {
   if (!env.GITHUB_ACTIONS_DISPATCH_TOKEN) {
     throw new Error("GITHUB_ACTIONS_DISPATCH_TOKEN is not configured");
   }
@@ -24,7 +25,7 @@ async function dispatchCommonEngine(env) {
     body: JSON.stringify({
       ref: GITHUB_REF,
       inputs: {
-        sync_mode: "recent",
+        sync_mode: mode,
         full_from: "2026-04-01",
       },
     }),
@@ -37,8 +38,10 @@ async function dispatchCommonEngine(env) {
 }
 
 export default {
-  async scheduled(_controller, env, _ctx) {
-    await dispatchCommonEngine(env);
+  async scheduled(controller, env, _ctx) {
+    const mode = controller.cron === FULL_AUDIT_CRON ? "full" : "recent";
+    console.log(`Dispatching Otomy common engine (${mode}) for cron ${controller.cron}`);
+    await dispatchCommonEngine(env, mode);
   },
 
   async fetch() {
