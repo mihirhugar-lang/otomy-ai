@@ -14,11 +14,13 @@ import datetime as dt
 import importlib.util
 import json
 import os
-import re
 import sys
 import argparse
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shared_compliance import build_compliance_dataset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -275,20 +277,69 @@ def verify_frontend_guard() -> None:
 
 
 def verify_compliance_snapshot() -> None:
+    """Compare the published GST/AUDIT dataset with every archived FY row."""
     configured_as_of = os.environ.get("OTOMY_VERIFY_AS_OF", "").strip()
     as_of = dt.date.fromisoformat(configured_as_of) if configured_as_of else dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
     fy_start = dt.date(as_of.year if as_of.month >= 4 else as_of.year - 1, 4, 1)
     url, dataset = api_snapshot(f"/api/exports/compliance/dataset?from_date={fy_start}&to_date={as_of}")
     if not isinstance(dataset, dict):
         fail(f"{url} must be an object")
-    if (dataset.get("period") or {}).get("from") != str(fy_start) or (dataset.get("period") or {}).get("to") != str(as_of):
-        fail(f"{url} has the wrong FY window")
-    if not (dataset.get("checks") or {}).get("daily_sales_reconcile") or not (dataset.get("checks") or {}).get("daily_tax_reconcile"):
-        fail(f"{url} daily compliance totals do not reconcile")
-    if len(dataset.get("daily") or []) != (as_of - fy_start).days + 1:
-        fail(f"{url} must contain one daily row for every date in the FY window")
-    if not re.fullmatch(r"[0-9]{2}[A-Z0-9]{13}", str((dataset.get("company") or {}).get("gstin") or "")):
-        fail(f"{url} company GSTIN is not valid")
+
+    archive = {"sales": [], "expenses": [], "receipts": [], "vendor_payments": []}
+    month = fy_start.replace(day=1)
+    while month <= as_of:
+        path = ROOT / "data" / "archive" / f"{month:%Y-%m}.json"
+        if path.exists():
+            payload = read_json(path)
+            for section in archive:
+                archive[section].extend(
+                    row for row in (payload.get(section) or [])
+                    if str(fy_start) <= str(row.get("date", ""))[:10] <= str(as_of)
+                )
+        if month.month == 12:
+            month = month.replace(year=month.year + 1, month=1)
+        else:
+            month = month.replace(month=month.month + 1)
+
+    customers = read_json(ROOT / "data" / "customers.json")
+    vendors = read_json(ROOT / "data" / "vendors.json")
+    seed_path = ROOT / "data" / "local_seed.json"
+    if seed_path.exists():
+        seed = read_json(seed_path)
+        config = dict((seed.get("endpoints") or {}).get("exports_config") or {})
+    else:
+        # R2 installations created before the seed was made optional do not have
+        # local_seed.json.  The engine still publishes the exact config it used.
+        _, config_payload = api_snapshot("/api/exports/config")
+        config = dict(config_payload or {}) if isinstance(config_payload, dict) else {}
+    expected = build_compliance_dataset(
+        archive["sales"],
+        archive["expenses"],
+        archive["receipts"],
+        customers if isinstance(customers, list) else [],
+        vendors if isinstance(vendors, list) else [],
+        archive["vendor_payments"],
+        config,
+        fy_start,
+        as_of,
+    )
+
+    if dataset.get("period") != expected.get("period"):
+        fail(f"{url} period mismatch: published={dataset.get('period')} expected={expected.get('period')}")
+    for section in archive:
+        if dataset.get(section) != expected.get(section):
+            fail(
+                f"{url} {section} mismatch: "
+                f"published={len(dataset.get(section) or [])} expected={len(expected.get(section) or [])}"
+            )
+    if dataset.get("daily") != expected.get("daily"):
+        fail(f"{url} daily rows do not exactly match the full FY archive")
+    if dataset.get("totals") != expected.get("totals"):
+        fail(f"{url} totals do not exactly match the full FY archive")
+    for field in ("daily_sales_reconcile", "daily_tax_reconcile"):
+        if not (dataset.get("checks") or {}).get(field):
+            fail(f"{url} check {field} failed")
+
     month = fy_start.replace(day=1)
     checked = 0
     while month <= as_of:
@@ -315,7 +366,14 @@ def verify_compliance_snapshot() -> None:
     tally_url, tally = api_snapshot(f"/api/exports/audit-ca/tally.xml?from_date={fy_start}&to_date={as_of}")
     if not isinstance(tally, dict) or not str(tally.get("content") or "").lstrip().startswith("<?xml"):
         fail(f"{tally_url} must contain the shared Tally XML payload")
-    print(f"Compliance snapshot guard passed for FY {fy_start} to {as_of} and {checked} tax months.")
+    print(
+        "Compliance archive parity passed: "
+        f"{len(dataset.get('sales') or [])} sales, "
+        f"{len(dataset.get('expenses') or [])} expenses, "
+        f"{len(dataset.get('receipts') or [])} receipts, "
+        f"{len(dataset.get('vendor_payments') or [])} vendor payments, "
+        f"FY {fy_start} to {as_of}; {checked} tax months."
+    )
 
 
 def verify_daily_balance_chain() -> None:
@@ -598,6 +656,23 @@ def verify_pdf_export_guard() -> None:
     print("PDF print guard passed: all page PDF buttons use the browser print flow.")
 
 
+def verify_compliance_code_guard() -> None:
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    required = (
+        "compliance_rows = load_archive_window(compliance_start, today)",
+        'compliance_rows.get("sales", [])',
+        'compliance_rows.get("expenses", [])',
+        'compliance_rows.get("receipts", [])',
+        'compliance_rows.get("vendor_payments", [])',
+        '"vendor_payments": [],',
+        '("vendor_payments", vendor_payments)',
+    )
+    for needle in required:
+        if needle not in source:
+            fail(f"compliance code guard missing {needle!r}")
+    print("Compliance code guard passed: GST/AUDIT CA uses the full archived FY window.")
+
+
 def verify_customer_page_presets() -> None:
     checked = 0
     for preset, (start, end) in required_preset_ranges().items():
@@ -723,6 +798,7 @@ def main() -> None:
     verify_no_vendor_payment_bank_guard()
     verify_customer_page_guard()
     verify_pdf_export_guard()
+    verify_compliance_code_guard()
     if args.code_only:
         print("Code-only parity guard passed.")
         return
