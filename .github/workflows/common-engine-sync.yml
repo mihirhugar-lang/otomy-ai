@@ -4,7 +4,9 @@ on:
   # The common engine is the only Otomy data writer. It runs in GitHub Actions,
   # so a sleeping/offline Mac cannot make the cloud dashboard stale.
   schedule:
-    - cron: '*/15 * * * *'
+    # Keep the 15-minute cadence, but avoid GitHub's exact quarter-hour
+    # load peaks where scheduled events are more likely to be delayed.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       sync_mode:
