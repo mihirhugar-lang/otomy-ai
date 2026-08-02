@@ -19,6 +19,7 @@ from typing import Any
 
 
 MANIFEST_NAME = "publish_manifest.json"
+CONTROL_PREFIX = "control/"
 MANIFEST_VERSION = 1
 
 
@@ -36,7 +37,7 @@ def _file_map(root: Path) -> dict[str, dict[str, Any]]:
         if not path.is_file():
             continue
         relative = path.relative_to(root).as_posix()
-        if relative == MANIFEST_NAME:
+        if relative == MANIFEST_NAME or relative.startswith(CONTROL_PREFIX):
             continue
         files[relative] = {
             "sha256": _sha256(path),
