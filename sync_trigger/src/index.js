@@ -2,8 +2,25 @@ const GITHUB_OWNER = "mihirhugar-lang";
 const GITHUB_REPOSITORY = "otomy-ai";
 const GITHUB_WORKFLOW = "common-engine-sync.yml";
 const GITHUB_REF = "main";
-const FULL_AUDIT_CRON = "30 19 * * *";
 const ENGINE_STATE_KEY = "control/engine_state.json";
+
+function indiaClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const value = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return { hour: value("hour"), minute: value("minute") };
+}
+
+function shouldDispatchRecent(now = new Date()) {
+  const { hour, minute } = indiaClock(now);
+  // Daytime (07:00–22:45 IST) stays at 15-minute freshness. Overnight uses
+  // only the top-of-hour slot, so GitHub/R2 does no extra sync work at :15–:45.
+  return !(hour >= 23 || hour < 7) || minute === 0;
+}
 
 async function readEngineState(env) {
   if (!env.OTOMY_DATA) {
@@ -58,14 +75,17 @@ async function dispatchCommonEngine(env, mode) {
 
 export default {
   async scheduled(controller, env, _ctx) {
+    if (!shouldDispatchRecent()) {
+      console.log(`Overnight hourly policy: skipping ${controller.cron} dispatch`);
+      return;
+    }
     const state = await readEngineState(env);
     if (state.state === "paused") {
       console.log(`Common engine is paused; skipping ${controller.cron} dispatch`);
       return;
     }
-    const mode = controller.cron === FULL_AUDIT_CRON ? "full" : "recent";
-    console.log(`Dispatching Otomy common engine (${mode}) for cron ${controller.cron}`);
-    await dispatchCommonEngine(env, mode);
+    console.log(`Dispatching Otomy common engine (recent) for cron ${controller.cron}`);
+    await dispatchCommonEngine(env, "recent");
   },
 
   async fetch(request, env) {
