@@ -13,22 +13,22 @@ from zoneinfo import ZoneInfo
 import requests
 try:
     from shared_compliance import (
-        build_audit_ca,
+        build_audit_ca as build_compliance_audit_ca,
         build_compliance_dataset,
         build_gstr1 as build_compliance_gstr1,
-        build_gstr2b_reconciliation,
+        build_gstr2b_reconciliation as build_compliance_gstr2b,
         build_gstr3b as build_compliance_gstr3b,
-        build_tally_xml,
+        build_tally_xml as build_compliance_tally_xml,
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from shared_compliance import (
-        build_audit_ca,
+        build_audit_ca as build_compliance_audit_ca,
         build_compliance_dataset,
         build_gstr1 as build_compliance_gstr1,
-        build_gstr2b_reconciliation,
+        build_gstr2b_reconciliation as build_compliance_gstr2b,
         build_gstr3b as build_compliance_gstr3b,
-        build_tally_xml,
+        build_tally_xml as build_compliance_tally_xml,
     )
 
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
@@ -40,7 +40,7 @@ BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.jso
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 COMMON_ENGINE_NAME = "loctell-common-engine"
-COMMON_ENGINE_VERSION = "2026-08-02.1-compliance-v1"
+COMMON_ENGINE_VERSION = "2026-08-02.2-compliance-range-v1"
 
 ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
 ERP_ORG  = os.environ.get("ERP_ORG",  "VMIPL")
@@ -2092,6 +2092,58 @@ def write_snapshot(url, data):
     with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
 
+
+def write_compliance_snapshots(dataset, from_date, to_date):
+    """Publish GST and AUDIT CA from the same full archived FY dataset.
+
+    The regular ERP sync may run in recent mode, but these pages are FY-to-date
+    views.  Building them from the full archive prevents a recent-window run from
+    silently replacing April-June rows with zeros.
+    """
+    query = f"from_date={from_date}&to_date={to_date}"
+    audit = build_compliance_audit_ca(dataset)
+    write_snapshot(f"/api/exports/compliance/dataset?{query}", dataset)
+    write_snapshot(
+        f"/api/exports/compliance/summary?{query}",
+        {
+            "engine": dataset["engine"],
+            "period": dataset["period"],
+            "company": dataset["company"],
+            "totals": dataset["totals"],
+            "daily": dataset["daily"],
+            "checks": dataset["checks"],
+            "audit": audit,
+        },
+    )
+    write_snapshot(f"/api/exports/audit-ca/summary?{query}", audit)
+    write_snapshot(
+        f"/api/exports/audit-ca/tally.xml?{query}",
+        {
+            "content_type": "application/xml",
+            "content": build_compliance_tally_xml(dataset),
+        },
+    )
+
+    cursor = from_date.replace(day=1)
+    while cursor <= to_date:
+        year, month = cursor.year, cursor.month
+        write_snapshot(
+            f"/api/exports/gst/gstr1?year={year}&month={month}",
+            build_compliance_gstr1(dataset, year, month),
+        )
+        write_snapshot(
+            f"/api/exports/gst/gstr3b?year={year}&month={month}",
+            build_compliance_gstr3b(dataset, year, month),
+        )
+        write_snapshot(
+            f"/api/exports/gst/gstr2b?year={year}&month={month}",
+            build_compliance_gstr2b(dataset, year, month),
+        )
+        if month == 12:
+            cursor = cursor.replace(year=year + 1, month=1)
+        else:
+            cursor = cursor.replace(month=month + 1)
+
 def read_snapshot_payload(url):
     path = SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json"
     try:
@@ -3212,84 +3264,6 @@ def write_snapshot_bundle(
     except Exception:
         opening_as_of = today - timedelta(days=1)
     movement_start = opening_as_of + timedelta(days=1)
-
-    # Compliance pages consume one canonical FY window, independent of the recent/full
-    # fetch mode.  Reload the archive after it has been written above: `all_sales`,
-    # `all_expenses`, `repayments`, and `vendor_payments` are intentionally limited to
-    # the current sync window during a 15-minute run.  Using them here was the cause of
-    # April-June GST/AUDIT rows becoming zero while the dashboard archive remained right.
-    compliance_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
-    compliance_rows = load_archive_window(compliance_start, today)
-    compliance_dataset = build_compliance_dataset(
-        compliance_rows.get("sales", []),
-        compliance_rows.get("expenses", []),
-        compliance_rows.get("receipts", []),
-        customers_full,
-        vendors_full,
-        compliance_rows.get("vendor_payments", []),
-        exports_config,
-        compliance_start,
-        today,
-    )
-    compliance_url = f"/api/exports/compliance/dataset?from_date={compliance_start}&to_date={today}"
-    write_snapshot(compliance_url, compliance_dataset)
-    write_snapshot(
-        f"/api/exports/compliance/summary?from_date={compliance_start}&to_date={today}",
-        {
-            "engine": compliance_dataset["engine"],
-            "period": compliance_dataset["period"],
-            "company": compliance_dataset["company"],
-            "totals": compliance_dataset["totals"],
-            "daily": compliance_dataset["daily"],
-            "checks": compliance_dataset["checks"],
-            "audit": build_audit_ca(compliance_dataset),
-        },
-    )
-    write_snapshot(
-        f"/api/exports/audit-ca/summary?from_date={compliance_start}&to_date={today}",
-        build_audit_ca(compliance_dataset),
-    )
-    write_snapshot(
-        f"/api/exports/audit-ca/tally.xml?from_date={compliance_start}&to_date={today}",
-        {
-            "content_type": "application/xml",
-            "content": build_tally_xml(compliance_dataset),
-        },
-    )
-    compliance_month = compliance_start.replace(day=1)
-    while compliance_month <= today:
-        year, month_number = compliance_month.year, compliance_month.month
-        write_snapshot(
-            f"/api/exports/gst/gstr1?year={year}&month={month_number}",
-            build_compliance_gstr1(compliance_dataset, year, month_number),
-        )
-        write_snapshot(
-            f"/api/exports/gst/gstr3b?year={year}&month={month_number}",
-            build_compliance_gstr3b(compliance_dataset, year, month_number),
-        )
-        write_snapshot(
-            f"/api/exports/gst/gstr2b?year={year}&month={month_number}",
-            build_gstr2b_reconciliation(compliance_dataset, year, month_number),
-        )
-        if compliance_month.month == 12:
-            compliance_month = compliance_month.replace(year=compliance_month.year + 1, month=1)
-        else:
-            compliance_month = compliance_month.replace(month=compliance_month.month + 1)
-
-    compliance_checks = compliance_dataset.get("checks") or {}
-    if not compliance_checks.get("daily_sales_reconcile") or not compliance_checks.get("daily_tax_reconcile"):
-        raise RuntimeError("shared compliance dataset failed its daily sales/tax reconciliation")
-    print(
-        "  Compliance engine: "
-        f"{compliance_dataset['period']['from']}..{compliance_dataset['period']['to']} | "
-        f"sales={len(compliance_dataset['sales'])} | expenses={len(compliance_dataset['expenses'])} | "
-        f"receipts={len(compliance_dataset['receipts'])} | vendor_payments={len(compliance_dataset['vendor_payments'])} | "
-        f"daily={len(compliance_dataset['daily'])} | "
-        f"gross_sales={compliance_dataset['totals']['gross_sales']:.2f} | "
-        f"output_tax={compliance_dataset['totals']['output_tax']:.2f}"
-    )
-    for warning in compliance_checks.get("warnings") or []:
-        print(f"  Compliance warning: {warning}")
 
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
@@ -4494,6 +4468,32 @@ def main():
         for row in archive_rows.get("balances", [])
         if row.get("date")
     }
+
+    # Compliance is always FY-to-date, even when the ERP refresh itself is a
+    # recent-window run.  Re-read the merged archive after it has been updated so
+    # April 1 through today is present in the canonical GST/AUDIT dataset.
+    compliance_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+    compliance_rows = load_archive_window(compliance_start, today)
+    compliance_config = dict((local_seed.get("endpoints") or {}).get("exports_config") or {})
+    compliance_dataset = build_compliance_dataset(
+        compliance_rows.get("sales", []),
+        compliance_rows.get("expenses", []),
+        compliance_rows.get("receipts", []),
+        customers_full,
+        vendors_full,
+        compliance_rows.get("vendor_payments", []),
+        compliance_config,
+        compliance_start,
+        today,
+    )
+    write_compliance_snapshots(compliance_dataset, compliance_start, today)
+    print(
+        "  Compliance FY snapshot: "
+        f"{len(compliance_dataset['sales'])} sales, "
+        f"{len(compliance_dataset['expenses'])} expenses, "
+        f"{len(compliance_dataset['receipts'])} receipts, "
+        f"{len(compliance_dataset['vendor_payments'])} vendor payments"
+    )
 
     print("  Writing static API snapshot files...")
     write_snapshot_bundle(
