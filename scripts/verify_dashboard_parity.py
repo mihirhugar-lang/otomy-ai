@@ -177,7 +177,11 @@ def verify_compliance_snapshot() -> None:
 
     customers = _read_payload(ROOT / "data" / "customers.json")
     vendors = _read_payload(ROOT / "data" / "vendors.json")
-    seed = _read_payload(ROOT / "data" / "local_seed.json")
+    # local_seed.json is a local optional configuration file and is not kept in
+    # R2.  Match gha_sync.load_local_seed(): cloud validation must use the same
+    # built-in defaults the engine used when the seed is absent.
+    seed_path = ROOT / "data" / "local_seed.json"
+    seed = _read_payload(seed_path) if seed_path.exists() else {}
     config = dict((seed.get("endpoints") or {}).get("exports_config") or {})
     expected = build_compliance_dataset(
         archive["sales"],
