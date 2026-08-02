@@ -39,6 +39,14 @@ jobs:
           AWS_DEFAULT_REGION: auto
         run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exact-timestamps --only-show-errors
 
+      - name: Save previous publish manifest
+        run: |
+          if [ -f data/publish_manifest.json ]; then
+            cp data/publish_manifest.json "$RUNNER_TEMP/otomy-previous-publish-manifest.json"
+          else
+            rm -f "$RUNNER_TEMP/otomy-previous-publish-manifest.json"
+          fi
+
       - name: Install dependencies
         run: python3 -m pip install --quiet requests
 
@@ -60,12 +68,48 @@ jobs:
       - name: Verify the generated common bundle
         run: python3 scripts/verify_dashboard_parity.py
 
+      - name: Build content delta publish plan
+        env:
+          OTOMY_REQUESTED_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
+        run: |
+          python3 scripts/delta_manifest.py \
+            --root data \
+            --previous "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --manifest data/publish_manifest.json \
+            --changed-root "$RUNNER_TEMP/otomy-publish-delta" \
+            --changed "$RUNNER_TEMP/otomy-changed-files.txt" \
+            --deleted "$RUNNER_TEMP/otomy-deleted-objects.json" \
+            --plan "$RUNNER_TEMP/otomy-publish-plan.json" \
+            --requested-mode "$OTOMY_REQUESTED_MODE" \
+            --run-id "$GITHUB_RUN_ID"
+
       - name: Publish the verified bundle to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync data "s3://otomy-data" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --only-show-errors
+        run: |
+          publish_mode="$(jq -r '.publish_mode' "$RUNNER_TEMP/otomy-publish-plan.json")"
+          if [ "$publish_mode" = "full" ]; then
+            # Keep the readiness marker until all content is uploaded. It is
+            # replaced below only after the full publish succeeds.
+            aws s3 sync data "s3://otomy-data" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+              --delete --exclude "publish_manifest.json" --only-show-errors
+          else
+            aws s3 sync "$RUNNER_TEMP/otomy-publish-delta" "s3://otomy-data" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            if [ -s "$RUNNER_TEMP/otomy-deleted-objects.json" ] && [ "$(jq '.Objects | length' "$RUNNER_TEMP/otomy-deleted-objects.json")" -gt 0 ]; then
+              aws s3api delete-objects \
+                --bucket otomy-data \
+                --delete "file://$RUNNER_TEMP/otomy-deleted-objects.json" \
+                --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+            fi
+          fi
+          # Publish the manifest last. It is the release/readiness marker for
+          # the complete key set represented by this verified engine run.
+          aws s3 cp data/publish_manifest.json "s3://otomy-data/publish_manifest.json" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
 
       - name: Read back and verify the exact R2 bundle
         env:
@@ -73,6 +117,29 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          readback_dir="$(mktemp -d)"
-          aws s3 sync "s3://otomy-data" "$readback_dir" --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exact-timestamps --only-show-errors
-          python3 scripts/verify_r2_readback.py data "$readback_dir"
+          publish_mode="$(jq -r '.publish_mode' "$RUNNER_TEMP/otomy-publish-plan.json")"
+          if [ "$publish_mode" = "full" ]; then
+            readback_dir="$(mktemp -d)"
+            aws s3 sync "s3://otomy-data" "$readback_dir" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exact-timestamps --only-show-errors
+            python3 scripts/verify_r2_readback.py data "$readback_dir"
+          else
+            readback_dir="$(mktemp -d)"
+            remote_manifest="$RUNNER_TEMP/otomy-remote-publish-manifest.json"
+            remote_keys="$RUNNER_TEMP/otomy-remote-keys.txt"
+            aws s3 cp "s3://otomy-data/publish_manifest.json" "$remote_manifest" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            aws s3 ls "s3://otomy-data" --recursive \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+              | awk '{print $4}' | sort > "$remote_keys"
+            include_args=(--include "publish_manifest.json")
+            while IFS= read -r key; do
+              [ -n "$key" ] && include_args+=(--include "$key")
+            done < "$RUNNER_TEMP/otomy-changed-files.txt"
+            aws s3 cp "s3://otomy-data" "$readback_dir" --recursive \
+              --exclude "*" "${include_args[@]}" \
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            python3 scripts/verify_r2_delta.py \
+              data "$readback_dir" "$remote_manifest" "$remote_keys" \
+              "$RUNNER_TEMP/otomy-changed-files.txt" "$RUNNER_TEMP/otomy-deleted-objects.json"
+          fi
