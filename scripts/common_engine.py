@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 ENGINE_NAME = "loctell-common-engine"
-ENGINE_VERSION = "2026-08-02.1-compliance-v1"
+ENGINE_VERSION = "2026-08-02.2-compliance-range-v1"
 _ENGINE_PATH = Path(__file__).with_name("gha_sync.py")
 
 
