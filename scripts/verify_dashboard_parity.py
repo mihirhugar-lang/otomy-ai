@@ -19,6 +19,7 @@ import argparse
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from shared_compliance import build_compliance_dataset
 
 
@@ -324,6 +325,14 @@ def verify_frontend_guard() -> None:
     static_html = (ROOT / "static" / "index.html").read_text()
     if root_html != static_html:
         fail("index.html and static/index.html differ; mirror Otomy frontend changes first")
+    for needle in ("id=\"section-gst\"", "id=\"section-auditca\"", "/api/exports/compliance/dataset", "/api/exports/gst/${kind}", "tally_vouchers", "GSTR-2B — Reconciliation"):
+        if needle not in root_html:
+            fail(f"compliance page guard missing {needle!r}")
+    if "xml=_tallyXMLFromCompliance" in root_html:
+        fail("Tally XML must use engine-built voucher fragments, not a browser-side calculation")
+    for needle in ("section-reports", "Reports & Exports", "nav-reports"):
+        if needle in root_html:
+            fail(f"legacy reports page must be removed; found {needle!r}")
 
     block = extract_snapshot_fetch(root_html, ROOT / "index.html")
     for needle in FORBIDDEN_SNAPSHOT_FETCH_ASSIGNMENTS:
@@ -355,6 +364,106 @@ def verify_frontend_guard() -> None:
     if "Verified balance adjustment (residual)" in root_html:
         fail("frontend must not render a generic residual balance adjustment")
     print("Frontend balance-chain guard passed: canonical cashbook/ledger paths are wired and residual rows are forbidden.")
+
+
+def verify_compliance_snapshot() -> None:
+    """Compare the published GST/AUDIT dataset with every archived FY row."""
+    configured_as_of = os.environ.get("OTOMY_VERIFY_AS_OF", "").strip()
+    as_of = dt.date.fromisoformat(configured_as_of) if configured_as_of else dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    fy_start = dt.date(as_of.year if as_of.month >= 4 else as_of.year - 1, 4, 1)
+    url, dataset = api_snapshot(f"/api/exports/compliance/dataset?from_date={fy_start}&to_date={as_of}")
+    if not isinstance(dataset, dict):
+        fail(f"{url} must be an object")
+
+    archive = {"sales": [], "expenses": [], "receipts": [], "vendor_payments": []}
+    month = fy_start.replace(day=1)
+    while month <= as_of:
+        path = ROOT / "data" / "archive" / f"{month:%Y-%m}.json"
+        if path.exists():
+            payload = read_json(path)
+            for section in archive:
+                archive[section].extend(
+                    row for row in (payload.get(section) or [])
+                    if str(fy_start) <= str(row.get("date", ""))[:10] <= str(as_of)
+                )
+        if month.month == 12:
+            month = month.replace(year=month.year + 1, month=1)
+        else:
+            month = month.replace(month=month.month + 1)
+
+    customers = read_json(ROOT / "data" / "customers.json")
+    vendors = read_json(ROOT / "data" / "vendors.json")
+    seed_path = ROOT / "data" / "local_seed.json"
+    if seed_path.exists():
+        seed = read_json(seed_path)
+        config = dict((seed.get("endpoints") or {}).get("exports_config") or {})
+    else:
+        # R2 installations created before the seed was made optional do not have
+        # local_seed.json.  The engine still publishes the exact config it used.
+        _, config_payload = api_snapshot("/api/exports/config")
+        config = dict(config_payload or {}) if isinstance(config_payload, dict) else {}
+    expected = build_compliance_dataset(
+        archive["sales"],
+        archive["expenses"],
+        archive["receipts"],
+        customers if isinstance(customers, list) else [],
+        vendors if isinstance(vendors, list) else [],
+        archive["vendor_payments"],
+        config,
+        fy_start,
+        as_of,
+    )
+
+    if dataset.get("period") != expected.get("period"):
+        fail(f"{url} period mismatch: published={dataset.get('period')} expected={expected.get('period')}")
+    for section in archive:
+        if dataset.get(section) != expected.get(section):
+            fail(
+                f"{url} {section} mismatch: "
+                f"published={len(dataset.get(section) or [])} expected={len(expected.get(section) or [])}"
+            )
+    if dataset.get("daily") != expected.get("daily"):
+        fail(f"{url} daily rows do not exactly match the full FY archive")
+    if dataset.get("totals") != expected.get("totals"):
+        fail(f"{url} totals do not exactly match the full FY archive")
+    for field in ("daily_sales_reconcile", "daily_tax_reconcile"):
+        if not (dataset.get("checks") or {}).get(field):
+            fail(f"{url} check {field} failed")
+
+    month = fy_start.replace(day=1)
+    checked = 0
+    while month <= as_of:
+        _, gstr1 = api_snapshot(f"/api/exports/gst/gstr1?year={month.year}&month={month.month}")
+        _, gstr3b = api_snapshot(f"/api/exports/gst/gstr3b?year={month.year}&month={month.month}")
+        _, gstr2b = api_snapshot(f"/api/exports/gst/gstr2b?year={month.year}&month={month.month}")
+        if not isinstance(gstr1, dict) or not isinstance(gstr3b, dict) or not isinstance(gstr2b, dict):
+            fail(f"GST snapshots missing for {month:%Y-%m}")
+        if gstr1.get("version") != "GST3.0.4" or "doc_issue" not in gstr1 or "hsn" not in gstr1:
+            fail(f"GSTR-1 snapshot is not in the GST3.0.4 offline shape for {month:%Y-%m}")
+        if gstr2b.get("uploadable") is not False:
+            fail(f"GSTR-2B snapshot must be explicitly marked non-uploadable for {month:%Y-%m}")
+        if "gstin" not in gstr1 or "fp" not in gstr1:
+            fail(f"GSTR-1 snapshot {month:%Y-%m} missing gstin/fp")
+        if "gstin" not in gstr3b or "ret_period" not in gstr3b:
+            fail(f"GSTR-3B snapshot {month:%Y-%m} missing gstin/ret_period")
+        if "gstin" not in gstr2b or "fp" not in gstr2b:
+            fail(f"GSTR-2B snapshot {month:%Y-%m} missing gstin/fp")
+        checked += 1
+        if month.month == 12:
+            month = month.replace(year=month.year + 1, month=1)
+        else:
+            month = month.replace(month=month.month + 1)
+    tally_url, tally = api_snapshot(f"/api/exports/audit-ca/tally.xml?from_date={fy_start}&to_date={as_of}")
+    if not isinstance(tally, dict) or not str(tally.get("content") or "").lstrip().startswith("<?xml"):
+        fail(f"{tally_url} must contain the shared Tally XML payload")
+    print(
+        "Compliance archive parity passed: "
+        f"{len(dataset.get('sales') or [])} sales, "
+        f"{len(dataset.get('expenses') or [])} expenses, "
+        f"{len(dataset.get('receipts') or [])} receipts, "
+        f"{len(dataset.get('vendor_payments') or [])} vendor payments, "
+        f"FY {fy_start} to {as_of}; {checked} tax months."
+    )
 
 
 def verify_daily_balance_chain() -> None:
@@ -649,12 +758,18 @@ def verify_compliance_code_guard() -> None:
         "build_compliance_gstr3b",
         "build_compliance_gstr2b",
         "build_compliance_tally_xml",
-        '"vendor_payments": []',
+        "compliance_rows = load_archive_window(compliance_start, today)",
+        'compliance_rows.get("sales", [])',
+        'compliance_rows.get("expenses", [])',
+        'compliance_rows.get("receipts", [])',
+        'compliance_rows.get("vendor_payments", [])',
+        '"vendor_payments": [],',
+        '("vendor_payments", vendor_payments)',
     )
     for needle in required:
         if needle not in source:
             fail(f"compliance code guard missing {needle!r}")
-    print("Compliance code guard passed: GST/AUDIT CA snapshots use the shared engine.")
+    print("Compliance code guard passed: GST/AUDIT CA uses the shared engine and full archived FY window.")
 
 
 def verify_customer_page_presets() -> None:

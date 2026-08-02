@@ -1,0 +1,65 @@
+name: Common engine control
+
+# Use the GitHub Actions UI to pause or resume the single Otomy data writer.
+# Pausing never deletes or rewrites financial data: it only writes a small
+# control marker, and the last verified R2 bundle remains live.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Choose whether the common engine may run"
+        type: choice
+        options:
+          - pause
+          - resume
+        default: pause
+        required: true
+      reason:
+        description: "Optional reason shown in the engine status marker"
+        required: false
+        type: string
+
+concurrency:
+  group: otomy-common-engine-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Write engine control marker to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          CONTROL_ACTION: ${{ inputs.action }}
+          CONTROL_REASON: ${{ inputs.reason }}
+          CONTROL_ACTOR: ${{ github.actor }}
+          CONTROL_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY' > "$RUNNER_TEMP/engine_state.json"
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          action = os.environ["CONTROL_ACTION"]
+          if action not in {"pause", "resume"}:
+              raise SystemExit(f"invalid engine control action: {action!r}")
+          print(json.dumps({
+              "version": 1,
+              "state": "paused" if action == "pause" else "running",
+              "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "updated_by": os.environ["CONTROL_ACTOR"],
+              "run_id": os.environ["CONTROL_RUN_ID"],
+              "reason": os.environ.get("CONTROL_REASON", "").strip(),
+              "source": "github-actions-engine-control",
+          }, indent=2, sort_keys=True))
+          PY
+          aws s3 cp "$RUNNER_TEMP/engine_state.json" \
+            "s3://otomy-data/control/engine_state.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+          echo "Engine control updated: $(jq -r '.state' "$RUNNER_TEMP/engine_state.json")"
+          cat "$RUNNER_TEMP/engine_state.json" >> "$GITHUB_STEP_SUMMARY"

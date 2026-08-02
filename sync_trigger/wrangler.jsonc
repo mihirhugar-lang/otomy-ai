@@ -1,0 +1,19 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "otomy-sync-trigger",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-02",
+  "account_id": "95339738c3c36e84444485e07178e635",
+  "r2_buckets": [
+    {
+      "binding": "OTOMY_DATA",
+      "bucket_name": "otomy-data"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/15 * * * *",
+      "30 19 * * *"
+    ]
+  }
+}
