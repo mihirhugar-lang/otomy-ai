@@ -7,6 +7,7 @@ import base64
 import filecmp
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -60,6 +61,72 @@ def july31_balance_parity(root: Path) -> tuple[bool, str]:
     )
 
 
+def current_mtd_opening_parity(root: Path, engine: dict) -> tuple[bool, str]:
+    """Require the current MTD book to open on the prior month's closing ledger row."""
+    try:
+        current = date.fromisoformat(str(engine.get("to", ""))[:10])
+    except ValueError:
+        return False, "common-engine stamp has no valid sync end date"
+    month_start = current.replace(day=1)
+    opening_day = month_start - timedelta(days=1)
+    previous_archive_path = root / "archive" / f"{opening_day:%Y-%m}.json"
+    current_archive_path = root / "archive" / f"{current:%Y-%m}.json"
+    if not previous_archive_path.exists():
+        return False, f"missing prior-month archive for MTD opening: {previous_archive_path.name}"
+    if not current_archive_path.exists():
+        return False, f"missing current-month archive for MTD closing: {current_archive_path.name}"
+    previous_archive = json.loads(previous_archive_path.read_text(encoding="utf-8"))
+    current_archive = json.loads(current_archive_path.read_text(encoding="utf-8"))
+    previous_rows = [
+        row for row in previous_archive.get("ledger", [])
+        if str(row.get("date", ""))[:10] == str(opening_day)
+    ]
+    current_rows = [
+        row for row in current_archive.get("ledger", [])
+        if str(row.get("date", ""))[:10] == str(current)
+    ]
+    if len(previous_rows) != 1:
+        return False, f"expected one prior-month closing ledger row for MTD opening, found {len(previous_rows)}"
+    if len(current_rows) != 1:
+        return False, f"expected one current-day ledger row for MTD closing, found {len(current_rows)}"
+    previous_row = previous_rows[0]
+    current_row = current_rows[0]
+    expected_opening = (
+        round(float(previous_row.get("cash_balance_office") or 0), 2),
+        round(float(previous_row.get("bank_balance") or 0), 2),
+    )
+    expected_closing = (
+        round(float(current_row.get("cash_balance_office") or 0), 2),
+        round(float(current_row.get("bank_balance") or 0), 2),
+    )
+    url = f"/api/sync/erp/cashbook?from_date={month_start}&to_date={current}"
+    path = snapshot_path(root, url)
+    if not path.exists():
+        return False, f"missing current MTD cashbook snapshot: {url}"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    opening = (
+        round(float((payload.get("cash") or {}).get("opening") or 0), 2),
+        round(float((payload.get("bank") or {}).get("opening") or 0), 2),
+    )
+    closing = (
+        round(float((payload.get("cash") or {}).get("closing") or 0), 2),
+        round(float((payload.get("bank") or {}).get("closing") or 0), 2),
+    )
+    if payload.get("opening_as_of") != str(opening_day):
+        return False, f"current MTD cashbook opens as of {payload.get('opening_as_of')!r}, expected {opening_day}"
+    if opening != expected_opening or closing != expected_closing:
+        return False, (
+            f"current MTD parity mismatch for {url}: "
+            f"expected opening cash/bank={expected_opening}, closing={expected_closing}; "
+            f"cashbook opening={opening}, closing={closing}"
+        )
+    return True, (
+        f"Current MTD parity: {month_start}..{current} opens on {opening_day} close "
+        f"cash ₹{opening[0]:,.2f}, bank ₹{opening[1]:,.2f} and closes "
+        f"cash ₹{closing[0]:,.2f}, bank ₹{closing[1]:,.2f}"
+    )
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: verify_r2_readback.py EXPECTED_DIR READBACK_DIR", file=sys.stderr)
@@ -94,6 +161,11 @@ def main() -> int:
         print(parity_message, file=sys.stderr)
         return 1
     print(parity_message)
+    mtd_ok, mtd_message = current_mtd_opening_parity(expected_root, engine)
+    if not mtd_ok:
+        print(mtd_message, file=sys.stderr)
+        return 1
+    print(mtd_message)
     print(
         "R2 read-back exact: "
         f"{len(expected)} files, engine {engine.get('version')} generated {engine.get('generated_at')}"
