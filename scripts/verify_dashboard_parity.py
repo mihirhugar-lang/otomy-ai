@@ -301,9 +301,12 @@ def verify_compliance_snapshot() -> None:
             fail(f"GSTR-1 snapshot is not in the GST3.0.4 offline shape for {month:%Y-%m}")
         if gstr2b.get("uploadable") is not False:
             fail(f"GSTR-2B snapshot must be explicitly marked non-uploadable for {month:%Y-%m}")
-        for field in ("gstin", "fp"):
-            if field not in gstr1 or field not in gstr3b or field not in gstr2b:
-                fail(f"GST snapshot {month:%Y-%m} missing {field}")
+        if "gstin" not in gstr1 or "fp" not in gstr1:
+            fail(f"GSTR-1 snapshot {month:%Y-%m} missing gstin/fp")
+        if "gstin" not in gstr3b or "ret_period" not in gstr3b:
+            fail(f"GSTR-3B snapshot {month:%Y-%m} missing gstin/ret_period")
+        if "gstin" not in gstr2b or "fp" not in gstr2b:
+            fail(f"GSTR-2B snapshot {month:%Y-%m} missing gstin/fp")
         checked += 1
         if month.month == 12:
             month = month.replace(year=month.year + 1, month=1)
