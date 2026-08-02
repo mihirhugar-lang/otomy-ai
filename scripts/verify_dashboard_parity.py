@@ -303,8 +303,15 @@ def verify_compliance_snapshot() -> None:
 
     customers = read_json(ROOT / "data" / "customers.json")
     vendors = read_json(ROOT / "data" / "vendors.json")
-    seed = read_json(ROOT / "data" / "local_seed.json")
-    config = dict((seed.get("endpoints") or {}).get("exports_config") or {})
+    seed_path = ROOT / "data" / "local_seed.json"
+    if seed_path.exists():
+        seed = read_json(seed_path)
+        config = dict((seed.get("endpoints") or {}).get("exports_config") or {})
+    else:
+        # R2 installations created before the seed was made optional do not have
+        # local_seed.json.  The engine still publishes the exact config it used.
+        _, config_payload = api_snapshot("/api/exports/config")
+        config = dict(config_payload or {}) if isinstance(config_payload, dict) else {}
     expected = build_compliance_dataset(
         archive["sales"],
         archive["expenses"],
