@@ -497,8 +497,9 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="nav-item" onclick="nav('pl')"><span class="icon">🧮</span><span>P&amp;L</span></div>
   <div class="nav-section">Operations</div>
   <div class="nav-item" onclick="nav('ops')"><span class="icon">▤</span><span>Operations</span></div>
-  <div class="nav-section">Reports</div>
-  <div class="nav-item" id="nav-reports" onclick="nav('reports')"><span class="icon">📄</span><span>Reports & Exports</span></div>
+  <div class="nav-section">Compliance</div>
+  <div class="nav-item" id="nav-gst" onclick="nav('gst')"><span class="icon">🧾</span><span>GST</span></div>
+  <div class="nav-item" id="nav-auditca" onclick="nav('auditca')"><span class="icon">📚</span><span>AUDIT CA</span></div>
 </nav>
 
 <!-- MAIN -->
@@ -820,56 +821,51 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   </div>
 </div>
 
-<!-- REPORTS -->
-<div class="section" id="section-reports">
-  <div class="page-header"><h2>Reports & Exports</h2></div>
-  <div class="card"><h3>🔍 Audit Report</h3>
-    <p style="font-size:13px;color:#555;margin-bottom:10px">Comprehensive internal audit with auto-detected flags — overdue EMI, unpaid labour, missing data, high-value cash expenses, outstanding debtors.</p>
-    <div class="preset-bar" style="margin-bottom:12px">
-      <span class="preset-label">Period:</span>
-      <button class="pbtn" onclick="setAuditDates(today(),today())">Today</button>
-      <button class="pbtn" onclick="setAuditDates(yesterday(),yesterday())">Yesterday</button>
-      <button class="pbtn" onclick="setAuditDates(weekStart(),today())">This Week</button>
-      <button class="pbtn" onclick="setAuditDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
-      <button class="pbtn" onclick="setAuditDates(mtdStart(),today())">Month Till Date</button>
-      <button class="pbtn" onclick="setAuditDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
-      <div class="preset-dates">
-        <label>From:</label><input type="date" id="audit-from">
-        <label>To:</label><input type="date" id="audit-to">
-      </div>
+<!-- GST -->
+<div class="section" id="section-gst">
+  <div class="page-header"><h2>GST</h2></div>
+  <div class="card">
+    <h3>GST Control Room — Director Summary</h3>
+    <p style="font-size:13px;color:#555;margin-bottom:10px">One canonical daily dataset from 1 April through today. GST portal files are generated per tax month; the FY view is for analysis and control.</p>
+    <div class="preset-bar no-print">
+      <span class="preset-label">FY window:</span>
+      <button class="pbtn act" onclick="setGSTRange(fyStart(),today())">1 Apr–Today</button>
+      <button class="pbtn" onclick="setGSTRange(mtdStart(),today())">Month Till Date</button>
+      <div class="preset-dates"><label>From:</label><input type="date" id="gst-from"><label>To:</label><input type="date" id="gst-to"><button class="pbtn" onclick="loadGST()">Go</button></div>
     </div>
-    <button class="btn btn-primary" onclick="downloadAudit()">Generate Audit Report PDF</button>
+    <div id="gst-kpis" class="kpi-row"></div>
+    <div id="gst-engine-status" style="font-size:12px;margin-top:8px"></div>
   </div>
-  <div class="card"><h3>🏢 Tally Export (One-Click XML)</h3>
-    <div class="preset-bar" style="margin-bottom:12px">
-      <span class="preset-label">Period:</span>
-      <button class="pbtn" onclick="setTallyDates(today(),today())">Today</button>
-      <button class="pbtn" onclick="setTallyDates(yesterday(),yesterday())">Yesterday</button>
-      <button class="pbtn" onclick="setTallyDates(weekStart(),today())">This Week</button>
-      <button class="pbtn" onclick="setTallyDates(lastWeekStart(),lastWeekEnd())">Last Week</button>
-      <button class="pbtn" onclick="setTallyDates(mtdStart(),today())">Month Till Date</button>
-      <button class="pbtn" onclick="setTallyDates(lastMonthStart(),lastMonthEnd())">Last Month</button>
-      <div class="preset-dates">
-        <label>From:</label><input type="date" id="tally-from">
-        <label>To:</label><input type="date" id="tally-to">
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-primary" onclick="downloadTallySales()">Sales Vouchers XML</button>
-      <button class="btn btn-outline" onclick="downloadTallyExp()">Expense Vouchers XML</button>
-    </div>
+  <div class="card">
+    <h3>GSTR-1 — Outward Supplies</h3>
+    <div class="preset-bar no-print"><span class="preset-label">Tax month:</span><button class="pbtn" onclick="setGSTMonth(monthNow())">This Month</button><button class="pbtn" onclick="setGSTMonth(lastMonthYM())">Last Month</button><div class="preset-dates"><input type="month" id="gst-return-month"></div></div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="downloadGSTReturn('gstr1')">Download GSTR-1 offline JSON</button><button class="btn btn-outline" onclick="downloadGSTReturn('gstr3b')">Download GSTR-3B preparation JSON</button></div>
+    <div id="gst-return-status" style="margin-top:10px;font-size:12px;color:#555">GSTR-1 follows the GSTN offline JSON shape. For GSTR-3B, validate the preparation file in the latest GSTN offline utility before upload.</div>
   </div>
-  <div class="card"><h3>🧾 GST GSTR-1 Export</h3>
-    <div class="preset-bar" style="margin-bottom:12px">
-      <span class="preset-label">Month:</span>
-      <button class="pbtn" onclick="document.getElementById('gst-month').value=monthNow()">This Month</button>
-      <button class="pbtn" onclick="document.getElementById('gst-month').value=lastMonthYM()">Last Month</button>
-      <div class="preset-dates"><input type="month" id="gst-month"></div>
-    </div>
-    <button class="btn btn-primary" onclick="downloadGSTR1()">Download GSTR-1 JSON</button>
-    <div id="gst-preview" style="margin-top:12px;font-size:12px;color:#555;background:#f5f5f5;padding:10px;border-radius:5px;display:none;white-space:pre-wrap;font-family:monospace;max-height:200px;overflow-y:auto"></div>
+  <div class="card">
+    <h3>GSTR-2B — Reconciliation</h3>
+    <p style="font-size:13px;color:#555">GSTR-2B is generated by GSTN from supplier filings. This download is a reconciliation working file, not a GST portal upload file.</p>
+    <div class="preset-bar no-print"><span class="preset-label">Tax month:</span><div class="preset-dates"><input type="month" id="gst-2b-month"></div><button class="btn btn-outline" onclick="downloadGSTReturn('gstr2b')">Download 2B Reconciliation</button></div>
+    <div id="gst-2b-status" style="font-size:12px;color:#a15b00"></div>
   </div>
+  <div class="card"><h3>Daily GST Register</h3><div class="tbl-wrap" id="gst-daily-tbl"></div></div>
+  <div class="card"><h3>Validation / Missing Master Data</h3><div id="gst-warnings" style="font-size:13px"></div></div>
+</div>
 
+<!-- AUDIT CA -->
+<div class="section" id="section-auditca">
+  <div class="page-header"><h2>AUDIT CA</h2></div>
+  <div class="card">
+    <h3>CA Control Room — Tally-ready source</h3>
+    <p style="font-size:13px;color:#555;margin-bottom:10px">Sales, expenses, receipts, vendor payments, GST tax ledgers and daily control totals are generated from the same canonical rows used by GST.</p>
+    <div class="preset-bar no-print"><span class="preset-label">Period:</span><button class="pbtn act" onclick="setCARange(fyStart(),today())">1 Apr–Today</button><button class="pbtn" onclick="setCARange(mtdStart(),today())">Month Till Date</button><div class="preset-dates"><label>From:</label><input type="date" id="ca-from"><label>To:</label><input type="date" id="ca-to"><button class="pbtn" onclick="loadAuditCA()">Go</button></div></div>
+    <div id="ca-kpis" class="kpi-row"></div>
+    <div id="ca-engine-status" style="font-size:12px;margin-top:8px"></div>
+  </div>
+  <div class="card"><h3>Fast downloads for CA</h3><div class="form-actions"><button class="btn btn-primary" onclick="downloadCATally()">Tally Import XML</button><button class="btn btn-outline" onclick="downloadCAJson()">CA Audit JSON</button><button class="btn btn-outline" onclick="downloadCADailyCSV()">Daily CSV</button><button class="btn btn-outline" onclick="downloadCACanonical()">Canonical Dataset JSON</button></div><div style="font-size:12px;color:#666;margin-top:10px">Review ledger names and the active Tally company before importing. No file is posted automatically.</div></div>
+  <div class="card"><h3>Ledger Summary</h3><div class="tbl-wrap" id="ca-ledger-tbl"></div></div>
+  <div class="card"><h3>Daily Audit Trail</h3><div class="tbl-wrap" id="ca-daily-tbl"></div></div>
+  <div class="card"><h3>Audit Flags</h3><div id="ca-warnings" style="font-size:13px"></div></div>
 </div>
 
 </div><!-- /content -->
@@ -1679,6 +1675,7 @@ const OTOMY_APP_VERSION='2026-08-02-stale-guard-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+  if(typeof _complianceCache!=='undefined')_complianceCache.clear();
   OtomyDataEngine?.clear?.();
   // These caches feed operating balances and entity-ledger links. Leaving any of them alive
   // after a cloud sync makes an already-open tab display yesterday's data beside fresh rows.
@@ -1720,6 +1717,8 @@ async function _reloadActiveSectionAfterSync(){
   if(section==='pl')return loadPL();
   if(section==='ops')return loadOpsDefaults();
   if(section==='ledger')return loadLedgerView();
+  if(section==='gst')return loadGST();
+  if(section==='auditca')return loadAuditCA();
 }
 function _fetchT(url,opts,ms){
   // fetch with an abort timeout so a stalled request can't hang the auto-refresh loop
@@ -1855,7 +1854,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Ledger View',reports:'Reports & Exports'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Ledger View',gst:'GST',auditca:'AUDIT CA'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -1896,7 +1895,8 @@ function nav(name){
   if(name==='pl'){resetRangeToToday('pl');loadPL();}
   if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
   if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
-  if(name==='reports'){}
+  if(name==='gst'){setGSTRange(document.getElementById('gst-from').value||fyStart(),document.getElementById('gst-to').value||today());loadGST();}
+  if(name==='auditca'){setCARange(document.getElementById('ca-from').value||fyStart(),document.getElementById('ca-to').value||today());loadAuditCA();}
 }
 function subTab(id,el){
   document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('active'));
@@ -1987,10 +1987,6 @@ function opsPreset(p,btn){
 }
 function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
 function opsReload(){loadBoulders();loadMachines();}
-
-// Report preset helpers
-function setAuditDates(f,t){document.getElementById('audit-from').value=f;document.getElementById('audit-to').value=t;}
-function setTallyDates(f,t){document.getElementById('tally-from').value=f;document.getElementById('tally-to').value=t;}
 
 // ── PDF download ───────────────────────────────────────────────────────────
 function isMobilePrint(){
@@ -2459,11 +2455,11 @@ window.onload=async function(){
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   // Set all date defaults
   ['s-date','e-date','b-date','m-date','l-date','p-date','ba-initdate','bt-date','cr-date','vp-date','emi-due','rpt-daily-date','mu-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','tally-from','tally-to','audit-from','dash-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   document.getElementById('dash-from').value=t;
   document.getElementById('dash-date').value=t;
-  ['audit-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['rpt-month','gst-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
+  ['gst-from','ca-from'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=fyStart();});
+  ['rpt-month','gst-month','gst-return-month','gst-2b-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   // Restore the page the user was on before a refresh (same tab/session only). A brand-new
   // session has nothing saved, so first-time open still lands on the Dashboard.
   let _bootSection='dashboard';
@@ -3456,53 +3452,30 @@ async function loadWorkers(){
 }
 async function removeWorker(id,name){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
-// ── Reports ────────────────────────────────────────────────────────────────
-function downloadAudit(){const f=document.getElementById('audit-from').value,t=document.getElementById('audit-to').value;if(!f||!t){flash('Select date range',false);return;}if(isStaticSnapshotHost()){printDashboard();return;}window.open(`/api/reports/audit?from_date=${f}&to_date=${t}`,'_blank');}
+// ── GST + AUDIT CA (one canonical compliance dataset) ─────────────────────
+const _complianceCache=new Map();
 function xmlEsc(v){return String(v??'').replace(/[<>&"']/g,m=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[m]));}
-function tallyDate(v){return String(v||'').replaceAll('-','');}
 function downloadBlob(name,content,type){const blob=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-function tallyEnvelope(vouchers){return `<?xml version="1.0" encoding="UTF-8"?>\n<ENVELOPE>\n  <BODY>\n    <IMPORTDATA>\n      <REQUESTDESC>\n        <REPORTNAME>Vouchers</REPORTNAME>\n      </REQUESTDESC>\n      <REQUESTDATA>\n${vouchers.join('\n')}\n      </REQUESTDATA>\n    </IMPORTDATA>\n  </BODY>\n</ENVELOPE>`;}
-function buildTallySalesXml(rows){
-  const vouchers=(rows||[]).map(s=>{
-    const gst=Number(s.gst_rate||5),cgst=gst/2,sgst=gst/2,amount=Number(s.amount||0),taxable=Math.round((amount/(1+gst/100))*100)/100,cgstAmt=Math.round(taxable*cgst)/100,sgstAmt=Math.round(taxable*sgst)/100;
-    const party=xmlEsc(s.customer_name||'Cash'),material=xmlEsc(s.material||'Aggregate'),narr=xmlEsc(`Sale of ${s.material||'Aggregate'} - Veh: ${s.vehicle_no||'N/A'} - Ticket: ${s.ticket_no||'N/A'}`);
-    return `    <VOUCHER VCHTYPE="Sales" ACTION="Create">\n      <DATE>${tallyDate(s.date)}</DATE>\n      <NARRATION>${narr}</NARRATION>\n      <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${party}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>${(-amount).toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Sales - ${material}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${taxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Output CGST @${cgst.toFixed(1)}%</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${cgstAmt.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>Output SGST @${sgst.toFixed(1)}%</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${sgstAmt.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n    </VOUCHER>`;
-  });
-  return tallyEnvelope(vouchers);
-}
-function buildTallyExpensesXml(rows){
-  const vouchers=(rows||[]).map(e=>{
-    const amount=Number(e.amount||0),ledger=(String(e.payment_mode||'Cash').toUpperCase().includes('CASH')?'Cash':'Bank'),narr=xmlEsc((e.description||e.category||'Expense').slice(0,200));
-    return `    <VOUCHER VCHTYPE="Payment" ACTION="Create">\n      <DATE>${tallyDate(e.date)}</DATE>\n      <NARRATION>${narr}</NARRATION>\n      <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${xmlEsc(e.category||'General Expenses')}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>${(-amount).toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n      <ALLLEDGERENTRIES.LIST><LEDGERNAME>${ledger}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${amount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>\n    </VOUCHER>`;
-  });
-  return tallyEnvelope(vouchers);
-}
-async function downloadTallySales(){
-  const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;
-  if(!f||!t){flash('Select date range',false);return;}
-  if(!isStaticSnapshotHost()){window.open(`/api/exports/tally/sales?from_date=${f}&to_date=${t}`,'_blank');return;}
-  const rows=await api(`/api/sales/?from_date=${f}&to_date=${t}`);
-  downloadBlob(`tally_sales_${f}_${t}.xml`,buildTallySalesXml(rows),'application/xml');
-}
-async function downloadTallyExp(){
-  const f=document.getElementById('tally-from').value,t=document.getElementById('tally-to').value;
-  if(!f||!t){flash('Select date range',false);return;}
-  if(!isStaticSnapshotHost()){window.open(`/api/exports/tally/expenses?from_date=${f}&to_date=${t}`,'_blank');return;}
-  const rows=await api(`/api/expenses/?from_date=${f}&to_date=${t}`);
-  downloadBlob(`tally_expenses_${f}_${t}.xml`,buildTallyExpensesXml(rows),'application/xml');
-}
-async function downloadGSTR1(){
-  const[yr,mo]=document.getElementById('gst-month').value.split('-');
-  const url=`/api/exports/gstr1?year=${yr}&month=${parseInt(mo)}`;
-  try{
-    const data=await api(url);
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`GSTR1_${yr}_${mo}.json`;a.click();
-    document.getElementById('gst-preview').style.display='block';
-    document.getElementById('gst-preview').textContent=`GSTIN: ${data.gstin}\nPeriod: ${data.fp}\nB2B Entries: ${(data.b2b||[]).length}\nB2C Summary: ${(data.b2cs||[]).length} entries\nHSN Entries: ${(data.hsn?.data||[]).length}`;
-    flash('GSTR-1 JSON downloaded!');
-  }catch(e){flash(e.message,false);}
-}
+function _jsonDownload(name,data){downloadBlob(name,JSON.stringify(data,null,2),'application/json');}
+function setGSTRange(f,t){const a=document.getElementById('gst-from'),b=document.getElementById('gst-to');if(a)a.value=f;if(b)b.value=t;loadGST();}
+function setCARange(f,t){const a=document.getElementById('ca-from'),b=document.getElementById('ca-to');if(a)a.value=f;if(b)b.value=t;loadAuditCA();}
+function setGSTMonth(v){document.getElementById('gst-return-month').value=v;document.getElementById('gst-2b-month').value=v;}
+async function _complianceDataset(f,t){const key=`${f}|${t}`;if(!_complianceCache.has(key))_complianceCache.set(key,api(`/api/exports/compliance/dataset?from_date=${f}&to_date=${t}`));return _complianceCache.get(key);}
+function _gstKpis(t){return `<div class="kpi navy"><div class="kpi-label">Gross Sales</div><div class="kpi-value">${fmtINR2(t.gross_sales)}</div></div><div class="kpi navy"><div class="kpi-label">Taxable Sales</div><div class="kpi-value">${fmtINR2(t.taxable_sales)}</div></div><div class="kpi orange"><div class="kpi-label">Output GST</div><div class="kpi-value">${fmtINR2(t.output_tax)}</div></div><div class="kpi green"><div class="kpi-label">Sales Tonnes</div><div class="kpi-value">${fmtNum(t.qty_mt,2)}</div></div>`;}
+function _dailyGSTHTML(rows){let h='<table><thead><tr><th>Date</th><th>Invoices</th><th style="text-align:right">Gross Sales</th><th style="text-align:right">Taxable</th><th style="text-align:right">Output GST</th><th style="text-align:right">Qty MT</th></tr></thead><tbody>';rows.forEach(r=>{h+=`<tr><td>${esc(r.date)}</td><td>${r.sales_count||0}</td><td style="text-align:right">${fmtINR2(r.gross_sales)}</td><td style="text-align:right">${fmtINR2(r.taxable_sales)}</td><td style="text-align:right">${fmtINR2(r.output_tax)}</td><td style="text-align:right">${fmtNum(r.qty_mt,2)}</td></tr>`;});return h+'</tbody></table>';}
+function _warningHTML(checks){const ws=checks?.warnings||[];if(!ws.length)return '<span class="badge b-paid">No engine warnings</span>';return '<ul style="margin:0;padding-left:20px">'+ws.map(w=>`<li style="margin:4px 0;color:#9a4f00">${esc(w)}</li>`).join('')+'</ul>';}
+async function loadGST(){const f=document.getElementById('gst-from').value||fyStart(),t=document.getElementById('gst-to').value||today();if(!f||!t)return;try{const d=await _complianceDataset(f,t);document.getElementById('gst-kpis').innerHTML=_gstKpis(d.totals||{});document.getElementById('gst-engine-status').innerHTML=`Engine: <b>${esc(d.engine?.name||'')}</b> ${esc(d.engine?.version||'')} · ${esc(d.period?.from||f)} to ${esc(d.period?.to||t)} · ${d.checks?.daily_sales_reconcile?'daily totals reconcile':'CHECK FAILED'}`;document.getElementById('gst-daily-tbl').innerHTML=_dailyGSTHTML(d.daily||[]);document.getElementById('gst-warnings').innerHTML=_warningHTML(d.checks);document.getElementById('gst-2b-status').textContent='2B status: portal JSON must be downloaded from GST Portal and reconciled here; this app does not fabricate an upload file.';}catch(e){flash(e.message,false);}}
+async function downloadGSTReturn(kind){const id=kind==='gstr2b'?'gst-2b-month':'gst-return-month',value=document.getElementById(id)?.value;if(!value){flash('Select a tax month',false);return;}const [yr,mo]=value.split('-');try{const data=await api(`/api/exports/gst/${kind}?year=${yr}&month=${parseInt(mo,10)}`);const name=kind==='gstr2b'?`GSTR2B_reconciliation_${yr}_${mo}.json`:`${kind.toUpperCase()}_${yr}_${mo}.json`;_jsonDownload(name,data);if(kind==='gstr2b')document.getElementById('gst-2b-status').textContent=`Downloaded reconciliation file for ${value}. It is not uploadable to GST Portal.`;else document.getElementById('gst-return-status').textContent=`${kind.toUpperCase()} ${value}: ${data.b2b?.length||0} B2B groups, ${data.b2cs?.length||0} B2C summaries, ${data.hsn?.data?.length||0} HSN rows.`;flash(`${kind.toUpperCase()} file downloaded`);}catch(e){flash(e.message,false);}}
+function _caKpis(t){return `<div class="kpi navy"><div class="kpi-label">Gross Sales</div><div class="kpi-value">${fmtINR2(t.gross_sales)}</div></div><div class="kpi orange"><div class="kpi-label">Expenses</div><div class="kpi-value">${fmtINR2(t.expenses)}</div></div><div class="kpi green"><div class="kpi-label">Receipts</div><div class="kpi-value">${fmtINR2(t.receipts)}</div></div><div class="kpi navy"><div class="kpi-label">Total Vouchers</div><div class="kpi-value">${Number(t.voucher_count??Number(t.sales_count||0)+Number(t.expenses_count||0))}</div></div>`;}
+function _caLedgerHTML(rows){let h='<table><thead><tr><th>Ledger</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>';rows.forEach(r=>h+=`<tr><td>${esc(r.ledger)}</td><td style="text-align:right">${fmtINR2(r.debit)}</td><td style="text-align:right">${fmtINR2(r.credit)}</td></tr>`);return h+'</tbody></table>';}
+function _caDailyHTML(rows){let h='<table><thead><tr><th>Date</th><th>Sales</th><th>Expenses</th><th>Receipts</th><th>Vendor Payments</th><th>GST</th></tr></thead><tbody>';rows.forEach(r=>h+=`<tr><td>${esc(r.date)}</td><td style="text-align:right">${fmtINR2(r.gross_sales)}</td><td style="text-align:right">${fmtINR2(r.expenses)}</td><td style="text-align:right">${fmtINR2(r.receipts)}</td><td style="text-align:right">${fmtINR2(r.vendor_payments)}</td><td style="text-align:right">${fmtINR2(r.output_tax)}</td></tr>`);return h+'</tbody></table>';}
+async function loadAuditCA(){const f=document.getElementById('ca-from').value||fyStart(),t=document.getElementById('ca-to').value||today();if(!f||!t)return;try{const a=await api(`/api/exports/audit-ca/summary?from_date=${f}&to_date=${t}`),s={...(a.director_summary||{}),sales_count:a.voucher_counts?.sales||0,expenses_count:a.voucher_counts?.expenses||0,voucher_count:Object.values(a.voucher_counts||{}).reduce((sum,value)=>sum+Number(value||0),0)};document.getElementById('ca-kpis').innerHTML=_caKpis(s);document.getElementById('ca-engine-status').innerHTML=`Engine: <b>${esc(a.engine?.name||'')}</b> ${esc(a.engine?.version||'')} · ${esc(a.period?.from||f)} to ${esc(a.period?.to||t)} · ${a.checks?.daily_sales_reconcile?'daily totals reconcile':'CHECK FAILED'}`;document.getElementById('ca-ledger-tbl').innerHTML=_caLedgerHTML(a.ledger_summary||[]);document.getElementById('ca-daily-tbl').innerHTML=_caDailyHTML(a.daily||[]);document.getElementById('ca-warnings').innerHTML=_warningHTML(a.checks);}catch(e){flash(e.message,false);}}
+async function _caData(){const f=document.getElementById('ca-from').value||fyStart(),t=document.getElementById('ca-to').value||today();return _complianceDataset(f,t);}
+async function downloadCACanonical(){try{const d=await _caData();_jsonDownload(`canonical_compliance_${d.period.from}_${d.period.to}.json`,d);flash('Canonical dataset downloaded');}catch(e){flash(e.message,false);}}
+async function downloadCAJson(){try{const d=await _caData(),audit=await api(`/api/exports/audit-ca/summary?from_date=${d.period.from}&to_date=${d.period.to}`);_jsonDownload(`audit_ca_${audit.period.from}_${audit.period.to}.json`,audit);flash('CA audit JSON downloaded');}catch(e){flash(e.message,false);}}
+function _csvCell(v){const s=String(v??'');return /[",\n]/.test(s)?`"${s.replaceAll('"','""')}"`:s;}
+async function downloadCADailyCSV(){try{const d=await _caData(),cols=['date','sales_count','gross_sales','taxable_sales','output_tax','qty_mt','expenses','receipts','vendor_payments'];const csv=[cols.join(','),...(d.daily||[]).map(r=>cols.map(c=>_csvCell(r[c])).join(','))].join('\n');downloadBlob(`audit_ca_daily_${d.period.from}_${d.period.to}.csv`,csv,'text/csv');flash('Daily CA CSV downloaded');}catch(e){flash(e.message,false);}}
+async function downloadCATally(){try{const d=await _caData(),result=await api(`/api/exports/audit-ca/tally.xml?from_date=${d.period.from}&to_date=${d.period.to}`),xml=result&&typeof result.text==='function'?await result.text():result?.content;if(!xml)throw new Error('Tally snapshot is not available for this period yet');downloadBlob(`Tally_Audit_CA_${d.period.from}_${d.period.to}.xml`,xml,'application/xml');flash('Tally XML downloaded — review ledger/company before import');}catch(e){flash(e.message,false);}}
 
 // ── ERP Bank Transactions ─────────────────────────────────────────────────────
 // ── Cash Book / Bank Book ─────────────────────────────────────────────────────

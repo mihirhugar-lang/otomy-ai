@@ -14,6 +14,7 @@ import datetime as dt
 import importlib.util
 import json
 import os
+import re
 import sys
 import argparse
 from pathlib import Path
@@ -232,6 +233,14 @@ def verify_frontend_guard() -> None:
     static_html = (ROOT / "static" / "index.html").read_text()
     if root_html != static_html:
         fail("index.html and static/index.html differ; mirror Otomy frontend changes first")
+    for needle in ("id=\"section-gst\"", "id=\"section-auditca\"", "/api/exports/compliance/dataset", "/api/exports/gst/${kind}", "/api/exports/audit-ca/tally.xml", "GSTR-2B — Reconciliation"):
+        if needle not in root_html:
+            fail(f"compliance page guard missing {needle!r}")
+    if "function _tallyXML" in root_html:
+        fail("Tally XML must come from the shared audit-ca export, not a second browser-side builder")
+    for needle in ("section-reports", "Reports & Exports", "nav-reports"):
+        if needle in root_html:
+            fail(f"legacy reports page must be removed; found {needle!r}")
 
     block = extract_snapshot_fetch(root_html, ROOT / "index.html")
     for needle in FORBIDDEN_SNAPSHOT_FETCH_ASSIGNMENTS:
@@ -263,6 +272,47 @@ def verify_frontend_guard() -> None:
     if "Verified balance adjustment (residual)" in root_html:
         fail("frontend must not render a generic residual balance adjustment")
     print("Frontend balance-chain guard passed: canonical cashbook/ledger paths are wired and residual rows are forbidden.")
+
+
+def verify_compliance_snapshot() -> None:
+    configured_as_of = os.environ.get("OTOMY_VERIFY_AS_OF", "").strip()
+    as_of = dt.date.fromisoformat(configured_as_of) if configured_as_of else dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    fy_start = dt.date(as_of.year if as_of.month >= 4 else as_of.year - 1, 4, 1)
+    url, dataset = api_snapshot(f"/api/exports/compliance/dataset?from_date={fy_start}&to_date={as_of}")
+    if not isinstance(dataset, dict):
+        fail(f"{url} must be an object")
+    if (dataset.get("period") or {}).get("from") != str(fy_start) or (dataset.get("period") or {}).get("to") != str(as_of):
+        fail(f"{url} has the wrong FY window")
+    if not (dataset.get("checks") or {}).get("daily_sales_reconcile") or not (dataset.get("checks") or {}).get("daily_tax_reconcile"):
+        fail(f"{url} daily compliance totals do not reconcile")
+    if len(dataset.get("daily") or []) != (as_of - fy_start).days + 1:
+        fail(f"{url} must contain one daily row for every date in the FY window")
+    if not re.fullmatch(r"[0-9]{2}[A-Z0-9]{13}", str((dataset.get("company") or {}).get("gstin") or "")):
+        fail(f"{url} company GSTIN is not valid")
+    month = fy_start.replace(day=1)
+    checked = 0
+    while month <= as_of:
+        _, gstr1 = api_snapshot(f"/api/exports/gst/gstr1?year={month.year}&month={month.month}")
+        _, gstr3b = api_snapshot(f"/api/exports/gst/gstr3b?year={month.year}&month={month.month}")
+        _, gstr2b = api_snapshot(f"/api/exports/gst/gstr2b?year={month.year}&month={month.month}")
+        if not isinstance(gstr1, dict) or not isinstance(gstr3b, dict) or not isinstance(gstr2b, dict):
+            fail(f"GST snapshots missing for {month:%Y-%m}")
+        if gstr1.get("version") != "GST3.0.4" or "doc_issue" not in gstr1 or "hsn" not in gstr1:
+            fail(f"GSTR-1 snapshot is not in the GST3.0.4 offline shape for {month:%Y-%m}")
+        if gstr2b.get("uploadable") is not False:
+            fail(f"GSTR-2B snapshot must be explicitly marked non-uploadable for {month:%Y-%m}")
+        for field in ("gstin", "fp"):
+            if field not in gstr1 or field not in gstr3b or field not in gstr2b:
+                fail(f"GST snapshot {month:%Y-%m} missing {field}")
+        checked += 1
+        if month.month == 12:
+            month = month.replace(year=month.year + 1, month=1)
+        else:
+            month = month.replace(month=month.month + 1)
+    tally_url, tally = api_snapshot(f"/api/exports/audit-ca/tally.xml?from_date={fy_start}&to_date={as_of}")
+    if not isinstance(tally, dict) or not str(tally.get("content") or "").lstrip().startswith("<?xml"):
+        fail(f"{tally_url} must contain the shared Tally XML payload")
+    print(f"Compliance snapshot guard passed for FY {fy_start} to {as_of} and {checked} tax months.")
 
 
 def verify_daily_balance_chain() -> None:
@@ -678,6 +728,7 @@ def main() -> None:
     verify_all_dashboard_presets()
     verify_bank_page_presets()
     verify_customer_page_presets()
+    verify_compliance_snapshot()
     verify_cloud_independence_guard()
 
 

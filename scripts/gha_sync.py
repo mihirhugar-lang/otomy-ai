@@ -4,13 +4,32 @@ GitHub Actions sync script — fetches live data from loctell.com ERP
 and generates JSON files for otomy.ai. Runs on GitHub servers.
 No Mac or local database required.
 """
-import base64, json, re, html as htmllib, os, time
+import base64, json, re, html as htmllib, os, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
+try:
+    from shared_compliance import (
+        build_audit_ca,
+        build_compliance_dataset,
+        build_gstr1 as build_compliance_gstr1,
+        build_gstr2b_reconciliation,
+        build_gstr3b as build_compliance_gstr3b,
+        build_tally_xml,
+    )
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from shared_compliance import (
+        build_audit_ca,
+        build_compliance_dataset,
+        build_gstr1 as build_compliance_gstr1,
+        build_gstr2b_reconciliation,
+        build_gstr3b as build_compliance_gstr3b,
+        build_tally_xml,
+    )
 
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
@@ -21,7 +40,7 @@ BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.jso
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
 COMMON_ENGINE_NAME = "loctell-common-engine"
-COMMON_ENGINE_VERSION = "2026-08-02.1"
+COMMON_ENGINE_VERSION = "2026-08-02.1-compliance-v1"
 
 ERP_BASE = os.environ.get("ERP_BASE", "https://erp.loctell.com")
 ERP_ORG  = os.environ.get("ERP_ORG",  "VMIPL")
@@ -3176,6 +3195,81 @@ def write_snapshot_bundle(
     except Exception:
         opening_as_of = today - timedelta(days=1)
     movement_start = opening_as_of + timedelta(days=1)
+
+    # Compliance pages consume one canonical FY window, independent of the recent/full
+    # fetch mode.  The rows are already archive-merged above, so a 15-minute refresh can
+    # update today's records without creating a second GST or CA calculation path.
+    compliance_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+    compliance_dataset = build_compliance_dataset(
+        all_sales,
+        all_expenses,
+        repayments,
+        customers_full,
+        vendors_full,
+        vendor_payments,
+        exports_config,
+        compliance_start,
+        today,
+    )
+    compliance_url = f"/api/exports/compliance/dataset?from_date={compliance_start}&to_date={today}"
+    write_snapshot(compliance_url, compliance_dataset)
+    write_snapshot(
+        f"/api/exports/compliance/summary?from_date={compliance_start}&to_date={today}",
+        {
+            "engine": compliance_dataset["engine"],
+            "period": compliance_dataset["period"],
+            "company": compliance_dataset["company"],
+            "totals": compliance_dataset["totals"],
+            "daily": compliance_dataset["daily"],
+            "checks": compliance_dataset["checks"],
+            "audit": build_audit_ca(compliance_dataset),
+        },
+    )
+    write_snapshot(
+        f"/api/exports/audit-ca/summary?from_date={compliance_start}&to_date={today}",
+        build_audit_ca(compliance_dataset),
+    )
+    write_snapshot(
+        f"/api/exports/audit-ca/tally.xml?from_date={compliance_start}&to_date={today}",
+        {
+            "content_type": "application/xml",
+            "content": build_tally_xml(compliance_dataset),
+        },
+    )
+    compliance_month = compliance_start.replace(day=1)
+    while compliance_month <= today:
+        year, month_number = compliance_month.year, compliance_month.month
+        write_snapshot(
+            f"/api/exports/gst/gstr1?year={year}&month={month_number}",
+            build_compliance_gstr1(compliance_dataset, year, month_number),
+        )
+        write_snapshot(
+            f"/api/exports/gst/gstr3b?year={year}&month={month_number}",
+            build_compliance_gstr3b(compliance_dataset, year, month_number),
+        )
+        write_snapshot(
+            f"/api/exports/gst/gstr2b?year={year}&month={month_number}",
+            build_gstr2b_reconciliation(compliance_dataset, year, month_number),
+        )
+        if compliance_month.month == 12:
+            compliance_month = compliance_month.replace(year=compliance_month.year + 1, month=1)
+        else:
+            compliance_month = compliance_month.replace(month=compliance_month.month + 1)
+
+    compliance_checks = compliance_dataset.get("checks") or {}
+    if not compliance_checks.get("daily_sales_reconcile") or not compliance_checks.get("daily_tax_reconcile"):
+        raise RuntimeError("shared compliance dataset failed its daily sales/tax reconciliation")
+    print(
+        "  Compliance engine: "
+        f"{compliance_dataset['period']['from']}..{compliance_dataset['period']['to']} | "
+        f"sales={len(compliance_dataset['sales'])} | expenses={len(compliance_dataset['expenses'])} | "
+        f"receipts={len(compliance_dataset['receipts'])} | vendor_payments={len(compliance_dataset['vendor_payments'])} | "
+        f"daily={len(compliance_dataset['daily'])} | "
+        f"gross_sales={compliance_dataset['totals']['gross_sales']:.2f} | "
+        f"output_tax={compliance_dataset['totals']['output_tax']:.2f}"
+    )
+    for warning in compliance_checks.get("warnings") or []:
+        print(f"  Compliance warning: {warning}")
 
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
