@@ -51,10 +51,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 /* ── Main ── */
 .main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:12px 26px;border-bottom:1px solid rgba(228,231,236,.75);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 10px 30px rgba(17,24,39,.05)}
+.topbar-title-stack{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
 .topbar-title{font-size:17px;font-weight:900;color:#1f2937}
 .topbar-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
 .topbar-date{font-size:12px;color:#777}
-.engine-status{display:inline-flex;align-items:center;gap:5px;border:1px solid #cfd8dc;border-radius:999px;padding:5px 9px;background:#f8fafc;color:#475569;font-size:11px;font-weight:800;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.engine-status{display:flex;align-items:center;gap:5px;border:1px solid #cfd8dc;border-radius:999px;padding:5px 9px;background:#f8fafc;color:#475569;font-size:11px;font-weight:800;line-height:1.25;white-space:normal;width:fit-content;max-width:100%;overflow:visible;text-overflow:clip}
 .engine-status::before{content:'';width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:0 0 auto}
 .engine-status.running{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.engine-status.running::before{background:#16a34a}
 .engine-status.paused{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.engine-status.paused::before{background:#ea580c}
@@ -245,10 +246,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .nav-item .icon{font-size:17px;width:22px}
   .main{margin-left:0;width:100%;min-width:0}
   .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
-  .topbar-title{font-size:16px;line-height:1.2;flex:1;min-width:0}
+  .topbar-title-stack{flex:1;min-width:0}
+  .topbar-title{font-size:16px;line-height:1.2}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
-  .engine-status{font-size:10px;padding:4px 7px;max-width:128px}
+  .engine-status{font-size:10px;padding:4px 7px;max-width:100%}
   .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
@@ -457,6 +459,8 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .control-panel{background:linear-gradient(135deg,#1f4e79,#14314c) !important;border-radius:6px !important}
 .control-eyebrow,.control-title,.control-metric span,.control-metric strong{font-family:var(--tally-mono)}
 .cash-card{background:#fdfbf0 !important}
+/* Dashboard tiles use the same visible Tally paper surface as Cash Position. Keep Director Control Room tiles separate. */
+#section-dashboard .kpi,#section-dashboard .cash-card,#section-dashboard .cash-card .kpi{background:linear-gradient(180deg,#fdfbf0 0%,#f2e7c9 100%) !important;box-shadow:0 2px 5px rgba(90,70,30,.12) !important}
 .card{border:3px double #8ba0c0 !important}
 .card.cash-card,.control-panel{border:3px double #6f86ad !important}
 .tbl-wrap,.report-table-wrap{scrollbar-color:#8ba0c0 #2b4568;scrollbar-width:thin}
@@ -487,7 +491,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="sidebar-logo">⛏ <span>CrusherOps</span></div>
   <div class="nav-section">Main</div>
   <div class="nav-item active" onclick="nav('dashboard')"><span class="icon">⊡</span><span>Dashboard</span></div>
-  <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Ledger View</span></div>
+  <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Daily Book</span></div>
   <div class="nav-section">Financials</div>
   <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
   <div class="nav-item" onclick="nav('exptonne')"><span class="icon">⚖️</span><span>Expenses / Tonne</span></div>
@@ -506,10 +510,12 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 <div class="main">
 <div class="topbar">
   <button class="mobile-menu-btn no-print" type="button" onclick="toggleMobileNav(true)" aria-label="Open menu">☰</button>
-  <div class="topbar-title" id="page-title">Dashboard</div>
+  <div class="topbar-title-stack">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div id="engine-status" class="engine-status" role="status" title="Common engine status">Engine: checking</div>
+  </div>
   <div class="topbar-actions no-print">
     <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
-    <div id="engine-status" class="engine-status" role="status" title="Common engine status">Engine: checking</div>
     <div class="topbar-date" id="topbar-date"></div>
   </div>
 </div>
@@ -805,16 +811,16 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 </div>
 
-<!-- LEDGER VIEW -->
+<!-- DAILY BOOK -->
 <div class="section" id="section-ledger">
-  <div class="page-header"><h2>Ledger View</h2></div>
+  <div class="page-header"><h2>Daily Book</h2></div>
   <div class="card">
     <div class="preset-bar no-print">
       <span class="preset-label">Month:</span>
       <button class="pbtn" onclick="loadLedgerView(monthNow())">This Month</button>
       <button class="pbtn" onclick="loadLedgerView(lastMonthYM())">Last Month</button>
       <div class="preset-dates"><select id="ledger-month" onchange="loadLedgerView()"></select></div>
-      <button class="print-btn" onclick="printSection('Ledger View','ledger-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printSection('Daily Book','ledger-tbl')">Print / PDF</button>
     </div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
@@ -1860,7 +1866,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Ledger View',gst:'GST',auditca:'AUDIT CA'};
+const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Daily Book',gst:'GST',auditca:'AUDIT CA'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -3188,7 +3194,7 @@ function renderStatement(){
 }
 async function delBankTxn(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
-// ── Ledger View ───────────────────────────────────────────────────────────
+// ── Daily Book ────────────────────────────────────────────────────────────
 function _populateLedgerMonths(){
   const sel=document.getElementById('ledger-month');
   if(!sel||sel.tagName!=='SELECT'||sel.options.length)return;
@@ -3212,7 +3218,7 @@ async function loadLedgerView(targetYm){
     const data=await api(`/api/dashboard/ledger-view?year=${yr}&month=${parseInt(mo)}`);
     renderLedgerView(data);
   }catch(e){
-    document.getElementById('ledger-tbl').innerHTML=`<div class="empty">Ledger error: ${esc(e.message)}</div>`;
+    document.getElementById('ledger-tbl').innerHTML=`<div class="empty">Daily Book error: ${esc(e.message)}</div>`;
   }
 }
 function renderLedgerView(data){
@@ -3251,7 +3257,7 @@ function renderLedgerView(data){
       <td>${per(profit,_num(r.boulder_input_mt))}</td>
     </tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="15" class="empty">No ledger data for this month</td></tr>';
+  if(!rows.length)html+='<tr><td colspan="15" class="empty">No Daily Book data for this month</td></tr>';
   const tProfit=_num(t.sale_amount)-_num(t.expenses);
   const _n=rows.length||1, _avg=k=>rows.reduce((s,r)=>s+_num(r[k]),0)/_n, _sum=k=>rows.reduce((s,r)=>s+_num(r[k]),0);
   const _aProfit=_sum('sale_amount')-_sum('expenses');
