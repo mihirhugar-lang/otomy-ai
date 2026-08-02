@@ -3339,6 +3339,8 @@ def main():
     yesterday   = today - timedelta(days=1)
     month_start = today.replace(day=1)
     week_start  = today - timedelta(days=today.weekday())
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start - timedelta(days=1)
     last_month_end = month_start - timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
     sync_mode = os.environ.get("OTOMY_SYNC_MODE", "recent").strip().lower()
@@ -4415,7 +4417,16 @@ def main():
             ledger_payload,
         )
 
-    cashbook_ranges = [(today, today), (yesterday, yesterday)]
+    # These are the ranges exposed by the Cash/Bank page presets. Publish each one from the
+    # canonical builder so the browser never falls back to its independent balance calculator.
+    cashbook_ranges = [
+        (today, today),
+        (yesterday, yesterday),
+        (week_start, today),
+        (last_week_start, last_week_end),
+        (month_start, today),
+        (last_month_start, last_month_end),
+    ]
     if sync_mode == "full":
         historical_end = min(yesterday, last_month_end)
         cashbook_ranges.extend([
