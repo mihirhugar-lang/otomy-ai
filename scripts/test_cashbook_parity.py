@@ -104,5 +104,19 @@ class CashbookParityTests(unittest.TestCase):
         self.assertEqual(self._cloud_book(fixture), fixture["expected"])
 
 
+class SourceWindowCoverageTests(unittest.TestCase):
+    def test_accepts_every_fresh_source_row_in_the_merged_result(self):
+        engine = load_engine()
+        rows = [{"id": "a"}, {"id": "b"}]
+        engine.assert_fresh_source_rows_preserved("fixture", rows, rows, lambda row: row["id"])
+
+    def test_rejects_a_fresh_source_row_that_was_dropped(self):
+        engine = load_engine()
+        with self.assertRaisesRegex(RuntimeError, "source-window coverage failed"):
+            engine.assert_fresh_source_rows_preserved(
+                "fixture", [{"id": "a"}, {"id": "b"}], [{"id": "a"}], lambda row: row["id"]
+            )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -486,6 +486,20 @@ def load_archive_window(from_d, to_d):
 def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
     return _merge_archive_rows(archive_rows or [], fresh_rows or [], section)
 
+
+def assert_fresh_source_rows_preserved(label, fresh_rows, merged_rows, key_fn):
+    """Fail closed if a freshly fetched Loctell row disappears before publication."""
+    expected = {key_fn(row) for row in fresh_rows or [] if isinstance(row, dict)}
+    actual = {key_fn(row) for row in merged_rows or [] if isinstance(row, dict)}
+    missing = expected - actual
+    if missing:
+        sample = "; ".join(str(item) for item in sorted(missing, key=str)[:3])
+        raise RuntimeError(
+            f"{label} source-window coverage failed: {len(missing)} freshly fetched "
+            f"Loctell rows disappeared before publish (examples: {sample})"
+        )
+    print(f"  {label} source-window coverage: {len(expected)} fresh rows preserved")
+
 def archive_receipts_to_repayments(receipts):
     rows = []
     for receipt in receipts or []:
@@ -3726,6 +3740,8 @@ def main():
     _fresh_window = {(sync_start + timedelta(days=i)).isoformat() for i in range((today - sync_start).days + 1)}
     _archive_exp = [e for e in (archive_rows.get("expenses") or []) if str(e.get("date"))[:10] not in _fresh_window]
     all_expenses = merge_rows_by_archive_key(_archive_exp, fresh_expenses, "expenses")
+    if expenses_fresh:
+        assert_fresh_source_rows_preserved("Expenses", fresh_expenses, all_expenses, _expense_content_key)
     print(f"  {len(all_expenses)} expenses")
     boulder_rows = merge_rows_by_archive_key(
         archive_rows.get("boulders"),
@@ -3984,6 +4000,10 @@ def main():
         key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
         reverse=True,
     )
+    if window_repayments is not None:
+        assert_fresh_source_rows_preserved(
+            "Customer repayments", window_repayments, all_repayments, _repayment_key
+        )
     # Match localhost Bank & Cash page: ERP rows plus derived bank/UPI sales,
     # expenses, and customer credit repayments. Bank statement rows are used
     # for balance anchoring only, not for the transaction table.
@@ -4492,6 +4512,15 @@ def main():
     # April 1 through today is present in the canonical GST/AUDIT dataset.
     compliance_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
     compliance_rows = load_archive_window(compliance_start, today)
+    if expenses_fresh:
+        assert_fresh_source_rows_preserved(
+            "Archived expenses", fresh_expenses, compliance_rows.get("expenses"), _expense_content_key
+        )
+    if window_repayments is not None:
+        archived_repayments = archive_receipts_to_repayments(compliance_rows.get("receipts"))
+        assert_fresh_source_rows_preserved(
+            "Archived customer repayments", window_repayments, archived_repayments, _repayment_key
+        )
     compliance_config = dict((local_seed.get("endpoints") or {}).get("exports_config") or {})
     compliance_dataset = build_compliance_dataset(
         compliance_rows.get("sales", []),
