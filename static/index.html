@@ -327,6 +327,17 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area .tbl-wrap,#print-area .report-table-wrap{overflow:visible!important;max-height:none!important}
   #print-area tr{break-inside:auto!important;page-break-inside:auto!important}
   #print-area .report-table{font-size:9.5px}
+  /* Daily Book has 15 numeric columns. Print it landscape and never replace a value with an ellipsis. */
+  #print-area.daily-book-print{width:100%!important;max-width:none!important}
+  #print-area.daily-book-print .ledger-view-table{table-layout:auto!important;width:100%!important;min-width:0!important;font-family:Consolas,Menlo,'Courier New',monospace!important;font-size:6.3px!important;line-height:1.12!important;font-variant-numeric:tabular-nums}
+  #print-area.daily-book-print .ledger-view-table th,#print-area.daily-book-print .ledger-view-table td{width:auto!important;min-width:0!important;overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;padding:2px!important;letter-spacing:-.28px!important}
+  #print-area.daily-book-print .ledger-view-table th{font-size:6px!important;line-height:1.05!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important}
+  #print-area.daily-book-print .ledger-view-table th:first-child,#print-area.daily-book-print .ledger-view-table td:first-child{width:16mm!important;min-width:16mm!important}
+  #print-area.daily-book-print .ledger-view-table th:not(:first-child),#print-area.daily-book-print .ledger-view-table td:not(:first-child){text-align:right!important}
+  /* Keep the Average / Day and Total rows compact, with visible separation between adjacent values. */
+  #print-area.daily-book-print .ledger-view-table tfoot td{font-size:5.35px!important;line-height:1.12!important;padding:2px 3px!important;letter-spacing:-.35px!important}
+  #print-area.daily-book-print .ledger-view-table tfoot td strong{font-size:inherit!important}
+  #print-area.daily-book-print .ledger-view-table tfoot td:first-child{font-size:5.65px!important;letter-spacing:-.15px!important}
   #print-area .print-section{break-inside:auto!important;page-break-inside:auto!important;margin:0 0 5px 0!important;padding:7px 8px!important}
   #print-area .print-break-before{break-before:page;page-break-before:always}
   #print-area .card{break-inside:auto!important;page-break-inside:auto!important;margin-bottom:5px!important}
@@ -822,7 +833,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <button class="pbtn" onclick="loadLedgerView(monthNow())">This Month</button>
       <button class="pbtn" onclick="loadLedgerView(lastMonthYM())">Last Month</button>
       <div class="preset-dates"><select id="ledger-month" onchange="loadLedgerView()"></select></div>
-      <button class="print-btn" onclick="printSection('Daily Book','ledger-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printDailyBook()">Print / PDF</button>
     </div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
@@ -2429,6 +2440,15 @@ function printSection(title,tableContainerId){
     else if(s&&s.value)dateRange=`Date: ${s.value}`;
   }
   openTablePdf(title,el,dateRange);
+}
+function printDailyBook(){
+  const ledger=document.getElementById('ledger-tbl');
+  if(!ledger||!ledger.querySelector('table')){flash('Daily Book is not ready to print',false);return;}
+  const monthSelect=document.getElementById('ledger-month');
+  const month=monthSelect?.selectedOptions?.[0]?.textContent||monthSelect?.value||'';
+  const landscape='<style media="print">@page{size:A4 landscape;margin:4mm}</style>';
+  const content=`${landscape}<div class="print-ph"><h1>CrusherOps — Daily Book</h1><p>Month: ${esc(month)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${ledger.outerHTML}`;
+  runPrint('Daily Book',content,'daily-book-print');
 }
 function _dashboardBookCopy(id){
   const source=document.getElementById(id);
