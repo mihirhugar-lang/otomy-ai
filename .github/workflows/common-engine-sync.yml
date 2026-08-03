@@ -80,7 +80,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exact-timestamps --only-show-errors
+        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exclude "recovery/*" --exact-timestamps --only-show-errors
 
       - name: Save previous publish manifest
         if: steps.initial_control.outputs.enabled == 'true'
@@ -172,6 +172,77 @@ jobs:
             echo "Engine remains running; verified output may be published."
           fi
 
+      - name: Save the previous verified bundle for rollback
+        id: recovery
+        if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          recovery_id="$GITHUB_RUN_ID"
+          recovery_meta="$RUNNER_TEMP/otomy-recovery-manifest.json"
+          recovery_backup_list="$RUNNER_TEMP/otomy-recovery-backup-keys.txt"
+          recovery_remove_list="$RUNNER_TEMP/otomy-recovery-remove-on-restore.txt"
+          python3 scripts/recovery_plan.py create \
+            --previous "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --current data/publish_manifest.json \
+            --publish-plan "$RUNNER_TEMP/otomy-publish-plan.json" \
+            --recovery-id "$recovery_id" \
+            --metadata "$recovery_meta" \
+            --backup-list "$recovery_backup_list" \
+            --remove-list "$recovery_remove_list"
+          if [ "$(jq -r '.available' "$recovery_meta")" != "true" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No prior verified bundle exists yet; bootstrap publish has no rollback target."
+            exit 0
+          fi
+
+          recovery_prefix="recovery/$recovery_id/objects"
+          publish_mode="$(jq -r '.mode' "$recovery_meta")"
+          if [ "$publish_mode" = "full" ]; then
+            # A full rebuild can delete any live data key, so retain the full
+            # previous bundle.  This is intentionally rare; regular syncs use
+            # the small changed/deleted-object path below.
+            aws s3 cp "s3://otomy-data" "s3://otomy-data/$recovery_prefix" \
+              --recursive --exclude "control/*" --exclude "recovery/*" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          else
+            include_args=(--exclude "*")
+            while IFS= read -r key; do
+              [ -n "$key" ] && include_args+=(--include "$key")
+            done < "$recovery_backup_list"
+            aws s3 cp "s3://otomy-data" "s3://otomy-data/$recovery_prefix" \
+              --recursive "${include_args[@]}" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          fi
+          # R2 is strongly consistent.  Writing this metadata object last
+          # makes a recovery visible only after all old objects were copied.
+          python3 scripts/recovery_plan.py validate --metadata "$recovery_meta"
+          aws s3 cp "$recovery_meta" "s3://otomy-data/recovery/$recovery_id/recovery_manifest.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+
+          current_catalog="$RUNNER_TEMP/otomy-recovery-catalog-current.json"
+          if [ -f data/control/recovery_catalog.json ]; then
+            cp data/control/recovery_catalog.json "$current_catalog"
+          else
+            printf '%s\n' '{"catalog_version":1,"recoveries":[]}' > "$current_catalog"
+          fi
+          unpruned_catalog="$RUNNER_TEMP/otomy-recovery-catalog-unpruned.json"
+          empty_cleanup="$RUNNER_TEMP/otomy-recovery-empty-cleanup.txt"
+          python3 scripts/recovery_catalog.py \
+            --catalog "$current_catalog" --recovery "$recovery_meta" \
+            --out "$unpruned_catalog" --cleanup "$empty_cleanup"
+          # Publish the catalog before the live overwrite.  If the following
+          # publish fails halfway through, the rollback button can still find
+          # this exact prior bundle.
+          aws s3 cp "$unpruned_catalog" "s3://otomy-data/control/recovery_catalog.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "id=$recovery_id" >> "$GITHUB_OUTPUT"
+          echo "Recovery $recovery_id is ready before live publish."
+
       - name: Publish the verified bundle to R2
         if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled == 'true'
         env:
@@ -185,7 +256,7 @@ jobs:
             # replaced below only after the full publish succeeds.
             aws s3 sync data "s3://otomy-data" \
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
-              --delete --exclude "publish_manifest.json" --exclude "control/*" --only-show-errors
+              --delete --exclude "publish_manifest.json" --exclude "control/*" --exclude "recovery/*" --only-show-errors
           else
             aws s3 sync "$RUNNER_TEMP/otomy-publish-delta" "s3://otomy-data" \
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
@@ -212,7 +283,7 @@ jobs:
           if [ "$publish_mode" = "full" ]; then
             readback_dir="$(mktemp -d)"
             aws s3 sync "s3://otomy-data" "$readback_dir" \
-              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exclude "control/*" --exact-timestamps --only-show-errors
+              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --delete --exclude "control/*" --exclude "recovery/*" --exact-timestamps --only-show-errors
             python3 scripts/verify_r2_readback.py data "$readback_dir"
           else
             readback_dir="$(mktemp -d)"
@@ -222,7 +293,7 @@ jobs:
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
             aws s3 ls "s3://otomy-data" --recursive \
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
-              | awk '$4 !~ /^control\// {print $4}' | sort > "$remote_keys"
+              | awk '$4 !~ /^(control|recovery)\// {print $4}' | sort > "$remote_keys"
             include_args=(--include "publish_manifest.json")
             while IFS= read -r key; do
               [ -n "$key" ] && include_args+=(--include "$key")
@@ -234,6 +305,36 @@ jobs:
               data "$readback_dir" "$remote_manifest" "$remote_keys" \
               "$RUNNER_TEMP/otomy-changed-files.txt" "$RUNNER_TEMP/otomy-deleted-objects.json"
           fi
+
+      - name: Retain the two newest rollback recoveries
+        if: steps.recovery.outputs.available == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          retained_catalog="$RUNNER_TEMP/otomy-recovery-catalog-retained.json"
+          cleanup_list="$RUNNER_TEMP/otomy-recovery-cleanup.txt"
+          python3 scripts/recovery_catalog.py \
+            --catalog "$RUNNER_TEMP/otomy-recovery-catalog-unpruned.json" \
+            --recovery "$RUNNER_TEMP/otomy-recovery-manifest.json" \
+            --out "$retained_catalog" --cleanup "$cleanup_list" --prune
+          while IFS= read -r recovery_id; do
+            case "$recovery_id" in
+              ''|*[!0-9A-Za-z._-]*) echo "Unsafe recovery id in cleanup list" >&2; exit 1 ;;
+            esac
+            aws s3 rm "s3://otomy-data/recovery/$recovery_id" --recursive \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          done < "$cleanup_list"
+          aws s3 cp "$retained_catalog" "s3://otomy-data/control/recovery_catalog.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+          {
+            echo '## Recovery retained'
+            echo
+            echo "Previous verified bundle available as recovery \`${{ steps.recovery.outputs.id }}\`."
+            echo 'The catalog keeps the two newest recovery packs, each for at most 14 days.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report paused engine
         if: steps.initial_control.outputs.enabled != 'true'

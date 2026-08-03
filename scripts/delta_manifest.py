@@ -19,7 +19,10 @@ from typing import Any
 
 
 MANIFEST_NAME = "publish_manifest.json"
-CONTROL_PREFIX = "control/"
+# These prefixes belong to the platform, not to the dashboard dataset.  The
+# sync job pulls them so it can read control state, but they must never become
+# part of a financial-data manifest or be copied by a normal publish.
+INTERNAL_PREFIXES = ("control/", "recovery/")
 MANIFEST_VERSION = 1
 
 
@@ -37,7 +40,7 @@ def _file_map(root: Path) -> dict[str, dict[str, Any]]:
         if not path.is_file():
             continue
         relative = path.relative_to(root).as_posix()
-        if relative == MANIFEST_NAME or relative.startswith(CONTROL_PREFIX):
+        if relative == MANIFEST_NAME or relative.startswith(INTERNAL_PREFIXES):
             continue
         files[relative] = {
             "sha256": _sha256(path),

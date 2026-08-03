@@ -18,6 +18,11 @@ export async function onRequestGet(context) {
   const segments = params.path; // catch-all: array of path segments after /data/
   const key = Array.isArray(segments) ? segments.join("/") : String(segments || "");
   if (!key) return new Response("Not found", { status: 404 });
+  // Engine controls and rollback packs are operational records, never
+  // dashboard data.  Keep them unreachable even to an authenticated browser.
+  if (key.startsWith("control/") || key.startsWith("recovery/")) {
+    return new Response("Not found", { status: 404 });
+  }
 
   const object = await env.OTOMY_DATA.get(key);
   if (object === null) {

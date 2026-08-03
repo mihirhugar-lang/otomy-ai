@@ -12,10 +12,11 @@ from pathlib import Path
 
 
 def files(root: Path) -> dict[str, Path]:
+    internal_prefixes = ("control/", "recovery/")
     return {
         str(path.relative_to(root)): path
         for path in root.rglob("*")
-        if path.is_file() and not str(path.relative_to(root)).startswith("control/")
+        if path.is_file() and not str(path.relative_to(root)).startswith(internal_prefixes)
     }
 
 
