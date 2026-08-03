@@ -2424,8 +2424,6 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
 def build_ledger_view(
     sales,
     expenses,
-    labour_rows,
-    parts_rows,
     vendor_payments,
     boulder_rows,
     repayments,
@@ -2452,11 +2450,17 @@ def build_ledger_view(
 
     sales_by_date = by_date(sales)
     expenses_by_date = by_date(expenses)
-    labour_by_date = by_date(labour_rows)
-    parts_by_date = by_date(parts_rows)
     vendor_payments_by_date = by_date(vendor_payments)
     boulders_by_date = by_date(boulder_rows)
     repayments_by_date = by_date(repayments)
+
+    def repayment_channels(row):
+        payment = _num(row.get("payment_received", row.get("amount")))
+        cash = _num(row.get("cash_received"))
+        bank = _num(row.get("bank_received"))
+        if cash > 0 or bank > 0:
+            return cash, bank
+        return (payment, 0.0) if _payment_channel(row.get("mode") or "") == "cash" else (0.0, payment)
 
     bank_balance = _num(opening_bank)
     cash_balance = _num(opening_cash)
@@ -2509,8 +2513,6 @@ def build_ledger_view(
         if current >= month_start:
             day_sales = sales_by_date.get(key, [])
             day_expenses = expenses_by_date.get(key, [])
-            day_labour = labour_by_date.get(key, [])
-            day_parts = parts_by_date.get(key, [])
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
             sale_amount = sum(_sale_total(row) for row in day_sales)
@@ -2523,11 +2525,21 @@ def build_ledger_view(
             spot_sale_bank = sum(s_upi for _s_cash, _s_credit, s_upi in sale_splits)
             credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
             qty_mt = sum(_num(row.get("qty_mt")) for row in day_sales)
-            expense_total = (
-                sum(_num(row.get("amount")) for row in day_expenses)
-                + sum(_num(row.get("amount")) for row in day_labour)
-                + sum(_num(row.get("total_amount")) for row in day_parts)
-            )
+            credit_repayment_cash = sum(repayment_channels(row)[0] for row in day_repayments)
+            credit_repayment_bank = sum(repayment_channels(row)[1] for row in day_repayments)
+            expense_cash = 0.0
+            expense_bank = 0.0
+            corrections = _balance_overlay().get("corrections", [])
+            for expense in day_expenses:
+                channel = _overlay_mode(corrections, expense) or _payment_channel(expense.get("payment_mode") or "Cash")
+                if channel == "cash":
+                    expense_cash += _num(expense.get("amount"))
+                else:
+                    expense_bank += _num(expense.get("amount"))
+            # Daily Book expenses come only from the ERP Expense source, where every row has a
+            # Cash or Bank payment mode. Legacy Labour and Parts records are intentionally excluded.
+            expense_total = expense_cash + expense_bank
+            boulder_input_mt = sum(_num(row.get("total_tonnes")) for row in day_boulders)
             # Balance overlay must see the FULL repayment history from the anchor (mirrors the
             # tile), not just month-to-date — else pre-month receipts (e.g. 29-30 Jun) are missed
             # and the ledger cash/bank read low. `repayments` here is only mtd; use all-history.
@@ -2543,12 +2555,17 @@ def build_ledger_view(
                 "spot_sale_bank": round(spot_sale_bank, 2),
                 "credit_sale_amount": round(credit_sale_amount, 2),
                 "qty_mt": round(qty_mt, 2),
-                "credit_repayment": round(sum(_num(row.get("payment_received", row.get("amount"))) for row in day_repayments), 2),
+                "credit_repayment": round(credit_repayment_cash + credit_repayment_bank, 2),
+                "credit_repayment_cash": round(credit_repayment_cash, 2),
+                "credit_repayment_bank": round(credit_repayment_bank, 2),
                 "expenses": round(expense_total, 2),
+                "expense_cash": round(expense_cash, 2),
+                "expense_bank": round(expense_bank, 2),
                 "cash_balance_office": row_cash,
                 "bank_balance": row_bank,
-                "boulder_input_mt": round(sum(_num(row.get("total_tonnes")) for row in day_boulders), 2),
+                "boulder_input_mt": round(boulder_input_mt, 2),
                 "boulder_trips": round(sum(_num(row.get("trips")) for row in day_boulders), 2),
+                "stock_in_plant_mt": round(boulder_input_mt - qty_mt, 2),
             })
         current += timedelta(days=1)
 
@@ -2561,9 +2578,14 @@ def build_ledger_view(
         "qty_mt": round(sum(row.get("qty_mt", 0) for row in rows), 2),
         "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
         "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
+        "credit_repayment_cash": round(sum(row.get("credit_repayment_cash", 0) for row in rows), 2),
+        "credit_repayment_bank": round(sum(row.get("credit_repayment_bank", 0) for row in rows), 2),
         "expenses": round(sum(row["expenses"] for row in rows), 2),
+        "expense_cash": round(sum(row.get("expense_cash", 0) for row in rows), 2),
+        "expense_bank": round(sum(row.get("expense_bank", 0) for row in rows), 2),
         "boulder_input_mt": round(sum(row["boulder_input_mt"] for row in rows), 2),
         "boulder_trips": round(sum(row["boulder_trips"] for row in rows), 2),
+        "stock_in_plant_mt": round(sum(row.get("stock_in_plant_mt", 0) for row in rows), 2),
         "cash_balance_office": rows[-1]["cash_balance_office"] if rows else 0.0,
         "bank_balance": rows[-1]["bank_balance"] if rows else 0.0,
     }
@@ -3364,8 +3386,6 @@ def write_snapshot_bundle(
     ledger_current = build_ledger_view(
         all_sales,
         all_expenses,
-        labour_rows,
-        parts_rows,
         vendor_payments,
         boulder_rows,
         (controls.get("mtd") or {}).get("customer_repayments", []),
@@ -4429,8 +4449,6 @@ def main():
         ledger_payload = build_ledger_view(
             all_sales,
             all_expenses,
-            labour_rows,
-            parts_rows,
             vendor_payments,
             boulder_rows,
             all_repayments,
