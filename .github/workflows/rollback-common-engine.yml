@@ -1,0 +1,154 @@
+name: Roll back common engine data
+
+# Restores the newest pre-publish recovery pack (or an explicitly selected one)
+# and deliberately leaves the engine paused.  It shares the writer concurrency
+# group, so an in-flight sync finishes before rollback begins and cannot race
+# the restore.
+on:
+  workflow_dispatch:
+    inputs:
+      recovery_id:
+        description: "Optional recovery ID; leave blank for the newest verified recovery"
+        type: string
+        required: false
+      confirm:
+        description: "I understand this restores the previous verified data and pauses the engine"
+        type: boolean
+        default: false
+        required: true
+
+concurrency:
+  group: otomy-common-engine-sync
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require rollback confirmation
+        env:
+          CONFIRM_ROLLBACK: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM_ROLLBACK" != "true" ]; then
+            echo "Rollback was not confirmed. No R2 data was changed." >&2
+            exit 1
+          fi
+
+      - name: Resolve the verified recovery pack
+        id: recovery
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          REQUESTED_RECOVERY_ID: ${{ inputs.recovery_id }}
+        run: |
+          catalog="$RUNNER_TEMP/otomy-recovery-catalog.json"
+          recovery_meta="$RUNNER_TEMP/otomy-recovery-manifest.json"
+          aws s3 cp "s3://otomy-data/control/recovery_catalog.json" "$catalog" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          recovery_id="$REQUESTED_RECOVERY_ID"
+          if [ -z "$recovery_id" ]; then
+            recovery_id="$(jq -r '.recoveries[0].recovery_id // empty' "$catalog")"
+          fi
+          case "$recovery_id" in
+            ''|*[!0-9A-Za-z._-]*) echo "No valid recovery ID is available." >&2; exit 1 ;;
+          esac
+          if ! jq -e --arg id "$recovery_id" '.recoveries[] | select(.recovery_id == $id)' "$catalog" >/dev/null; then
+            echo "Recovery $recovery_id is not in the retained recovery catalog." >&2
+            exit 1
+          fi
+          aws s3 cp "s3://otomy-data/recovery/$recovery_id/recovery_manifest.json" "$recovery_meta" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          python3 scripts/recovery_plan.py validate --metadata "$recovery_meta"
+          if [ "$(jq -r '.available' "$recovery_meta")" != "true" ] || [ "$(jq -r '.recovery_id' "$recovery_meta")" != "$recovery_id" ]; then
+            echo "Recovery metadata is not a valid match for $recovery_id." >&2
+            exit 1
+          fi
+          aws s3 cp "s3://otomy-data/recovery/$recovery_id/objects/publish_manifest.json" \
+            "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          echo "id=$recovery_id" >> "$GITHUB_OUTPUT"
+          echo "mode=$(jq -r '.mode' "$recovery_meta")" >> "$GITHUB_OUTPUT"
+
+      - name: Pause the engine before restore
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RECOVERY_ID: ${{ steps.recovery.outputs.id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          jq -n \
+            --arg now "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg actor "$ACTOR" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg recovery_id "$RECOVERY_ID" \
+            '{version:1,state:"paused",updated_at:$now,updated_by:$actor,run_id:$run_id,reason:("rollback to recovery " + $recovery_id),source:"github-actions-rollback"}' \
+            > "$RUNNER_TEMP/engine_state.json"
+          aws s3 cp "$RUNNER_TEMP/engine_state.json" "s3://otomy-data/control/engine_state.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+
+      - name: Restore the previous verified bundle
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RECOVERY_ID: ${{ steps.recovery.outputs.id }}
+          RECOVERY_MODE: ${{ steps.recovery.outputs.mode }}
+        run: |
+          recovery_meta="$RUNNER_TEMP/otomy-recovery-manifest.json"
+          source_prefix="s3://otomy-data/recovery/$RECOVERY_ID/objects"
+          if [ "$RECOVERY_MODE" = "full" ]; then
+            aws s3 sync "$source_prefix" "s3://otomy-data" --delete \
+              --exclude "control/*" --exclude "recovery/*" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          elif [ "$RECOVERY_MODE" = "delta" ]; then
+            aws s3 sync "$source_prefix" "s3://otomy-data" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            remove_json="$RUNNER_TEMP/otomy-rollback-remove-new-objects.json"
+            jq '{Objects: [.remove_on_restore[] | {Key: .}], Quiet: true}' "$recovery_meta" > "$remove_json"
+            if [ "$(jq '.Objects | length' "$remove_json")" -gt 0 ]; then
+              aws s3api delete-objects --bucket otomy-data --delete "file://$remove_json" \
+                --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            fi
+          else
+            echo "Unsupported recovery mode: $RECOVERY_MODE" >&2
+            exit 1
+          fi
+
+      - name: Read back and verify the rollback
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RECOVERY_ID: ${{ steps.recovery.outputs.id }}
+        run: |
+          readback_dir="$(mktemp -d)"
+          aws s3 sync "s3://otomy-data" "$readback_dir" \
+            --exclude "control/*" --exclude "recovery/*" \
+            --endpoint-url "$R2_ENDPOINT" --exact-timestamps --only-show-errors
+          python3 scripts/verify_recovery_restore.py \
+            "$RUNNER_TEMP/otomy-previous-publish-manifest.json" "$readback_dir"
+          jq -n \
+            --arg now "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg recovery_id "$RECOVERY_ID" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '{version:1,status:"restored",restored_at:$now,recovery_id:$recovery_id,rollback_run_id:$run_id,engine_state:"paused"}' \
+            > "$RUNNER_TEMP/rollback_status.json"
+          aws s3 cp "$RUNNER_TEMP/rollback_status.json" "s3://otomy-data/control/rollback_status.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+          {
+            echo '## Rollback verified'
+            echo
+            echo "Recovery restored: \`${RECOVERY_ID}\`."
+            echo 'The common engine remains paused. Resume it only after reviewing Otomy.'
+          } >> "$GITHUB_STEP_SUMMARY"
