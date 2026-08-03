@@ -541,6 +541,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
     <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
+    <button class="print-btn" onclick="printDashboardConsolidated()">Monthly Consolidated Print / PDF</button>
   </div>
   <div id="dash-profit-bar"></div>
   <div class="kpi-row">
@@ -2428,6 +2429,64 @@ function printSection(title,tableContainerId){
     else if(s&&s.value)dateRange=`Date: ${s.value}`;
   }
   openTablePdf(title,el,dateRange);
+}
+function _dashboardBookCopy(id){
+  const source=document.getElementById(id);
+  if(!source)return '<div class="card print-section"><h3>Cash / Bank Book</h3><div class="empty">Book data is not ready yet</div></div>';
+  const copy=source.cloneNode(true);
+  copy.querySelectorAll('.no-print').forEach(el=>el.remove());
+  return copy.outerHTML;
+}
+async function printDashboardConsolidated(){
+  const d=document.getElementById('dash-date').value;
+  const f=document.getElementById('dash-from').value||d;
+  const t=document.getElementById('dash-to').value||d;
+  try{
+    const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
+    if(!data||!data.summary)throw new Error('Dashboard data is not ready');
+    const num=v=>Number(v)||0;
+    const escName=v=>String(v||'—').trim()||'—';
+    const rc=_reclassifySales(data);
+    const repaymentGroups=new Map();
+    (data.customer_repayments||[]).filter(r=>!rc.isSpotOnly(r.customer_name)).forEach(r=>{
+      const customer=escName(r.customer_name),date=String(r.date||''),key=customer.toUpperCase();
+      const g=repaymentGroups.get(key)||{customer,bank:0,cash:0,payment:0,saleAdjusted:0,balance:null,balanceDate:''};
+      g.bank+=num(r.bank_received);g.cash+=num(r.cash_received);g.payment+=num(r.payment_received??r.amount);g.saleAdjusted+=num(r.sale_adjusted);
+      if(r.balance!=null&&date>=g.balanceDate){g.balance=num(r.balance);g.balanceDate=date;}
+      repaymentGroups.set(key,g);
+    });
+    const repayments=[...repaymentGroups.values()].sort((a,b)=>b.payment-a.payment||a.customer.localeCompare(b.customer));
+    const repaymentRows=repayments.map(r=>`<tr><td>${esc(r.customer)}</td><td>${fmtINR(r.bank)}</td><td>${fmtINR(r.cash)}</td><td>${fmtINR(r.payment)}</td><td>${fmtINR(r.saleAdjusted)}</td><td>${r.balance==null?'—':fmtINR(r.balance)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No credit repayments in this period</td></tr>';
+    const repaymentBank=repayments.reduce((s,r)=>s+r.bank,0),repaymentCash=repayments.reduce((s,r)=>s+r.cash,0),repaymentPayment=repayments.reduce((s,r)=>s+r.payment,0),repaymentAdjusted=repayments.reduce((s,r)=>s+r.saleAdjusted,0),repaymentBalance=repayments.reduce((s,r)=>s+(r.balance||0),0);
+
+    const salesGroups=new Map();
+    (data.customer_sales||[]).forEach(r=>{
+      const customer=escName(r.customer_name),material=escName(r.material),key=`${customer.toUpperCase()}\u0000${material.toUpperCase()}`;
+      const g=salesGroups.get(key)||{customer,material,tickets:0,qty:0,amount:0,bank:0,cash:0,credit:0};
+      g.tickets+=num(r.ticket_count)||((r.ticket_nos||[]).length||1);g.qty+=num(r.qty_mt);g.amount+=num(r.amount);g.bank+=num(r.bank_received);g.cash+=num(r.cash_received);g.credit+=num(r.credit_sale_amount);
+      salesGroups.set(key,g);
+    });
+    const sales=[...salesGroups.values()].sort((a,b)=>b.amount-a.amount||a.customer.localeCompare(b.customer));
+    const salesRows=sales.map(r=>`<tr><td>${esc(r.customer)}</td><td>${esc(r.material)}</td><td>${fmtNum(r.tickets,0)}</td><td>${fmtNum(r.qty,2)}</td><td>${fmtINR2(r.amount)}</td><td>${fmtINR(r.bank)}</td><td>${fmtINR(r.cash)}</td><td>${fmtINR(r.credit)}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">No sales in this period</td></tr>';
+    const salesTickets=sales.reduce((s,r)=>s+r.tickets,0),salesQty=sales.reduce((s,r)=>s+r.qty,0),salesAmount=sales.reduce((s,r)=>s+r.amount,0),salesBank=sales.reduce((s,r)=>s+r.bank,0),salesCash=sales.reduce((s,r)=>s+r.cash,0),salesCredit=sales.reduce((s,r)=>s+r.credit,0);
+
+    const expenseGroups=new Map();
+    (data.expense_rows||[]).filter(r=>!_isDirectorPayment(r.category,r.description,r.party,r.payment_mode)).forEach(r=>{
+      const category=escName(r.category||r.description||'Expense'),key=category.toUpperCase(),g=expenseGroups.get(key)||{category,entries:0,cash:0,bank:0};
+      const amount=num(r.amount);g.entries++;if(_payChannel(r.payment_mode)==='cash')g.cash+=amount;else g.bank+=amount;expenseGroups.set(key,g);
+    });
+    const expenses=[...expenseGroups.values()].sort((a,b)=>(b.cash+b.bank)-(a.cash+a.bank)||a.category.localeCompare(b.category));
+    const expenseRows=expenses.map(r=>`<tr><td>${esc(r.category)}</td><td>${fmtNum(r.entries,0)}</td><td>${fmtINR(r.cash)}</td><td>${fmtINR(r.bank)}</td><td>${fmtINR(r.cash+r.bank)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No expenses in this period</td></tr>';
+    const expenseCash=expenses.reduce((s,r)=>s+r.cash,0),expenseBank=expenses.reduce((s,r)=>s+r.bank,0);
+
+    const profit=document.getElementById('dash-profit-bar'),kpis=document.querySelector('#section-dashboard .kpi-row');
+    const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Consolidated Report</h1><p>Period: ${esc(f)} to ${esc(t)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit?profit.outerHTML:''}${kpis?kpis.outerHTML:''}
+      <div class="card print-section"><h3>Credit Repayment — Consolidated by Customer</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Bank / UPI</th><th>Cash</th><th>Credit Repayment</th><th>Sale Adjusted</th><th>Latest Balance To Pay</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td><strong>Total (${repayments.length})</strong></td><td><strong>${fmtINR(repaymentBank)}</strong></td><td><strong>${fmtINR(repaymentCash)}</strong></td><td><strong>${fmtINR(repaymentPayment)}</strong></td><td><strong>${fmtINR(repaymentAdjusted)}</strong></td><td><strong>${fmtINR(repaymentBalance)}</strong></td></tr></tfoot></table></div></div>
+      <div class="card print-section"><h3>Customer Wise Sales — Consolidated</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Material</th><th>Total Tickets</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="2"><strong>Total (${sales.length})</strong></td><td><strong>${fmtNum(salesTickets,0)}</strong></td><td><strong>${fmtNum(salesQty,2)}</strong></td><td><strong>${fmtINR2(salesAmount)}</strong></td><td><strong>${fmtINR(salesBank)}</strong></td><td><strong>${fmtINR(salesCash)}</strong></td><td><strong>${fmtINR(salesCredit)}</strong></td></tr></tfoot></table></div></div>
+      <div class="card print-section"><h3>Expenses — Consolidated by Category</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Expense Category</th><th>Entries</th><th>Cash</th><th>Bank / UPI</th><th>Total</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td><strong>Total (${expenses.length})</strong></td><td><strong>${fmtNum(expenses.reduce((s,r)=>s+r.entries,0),0)}</strong></td><td><strong>${fmtINR(expenseCash)}</strong></td><td><strong>${fmtINR(expenseBank)}</strong></td><td><strong>${fmtINR(expenseCash+expenseBank)}</strong></td></tr></tfoot></table></div></div>
+      ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}`;
+    runPrint('Dashboard Consolidated Report',content,'dashboard-print');
+  }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
 function printDashboard(doPrint=true){
   const d=document.getElementById('dash-date').value;
