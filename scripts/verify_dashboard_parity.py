@@ -76,6 +76,21 @@ VISIBLE_DASHBOARD_TILES = (
     ("Payables", "payables"),
 )
 
+OWNER_CONTROL_TILE_ORDER = (
+    "Gross Sale",
+    "Sales MT",
+    "Avg Rate / Tonne",
+    "Bank Balance",
+    "Operating Expenses",
+    "Boulder Input",
+    "Expenses / Tonne",
+    "Cash Balance In Office",
+    "Selected Period Profit",
+    "Expenses / Boulder Input",
+    "Profit / Tonne",
+    "Credit Repayment",
+)
+
 REQUIRED_CUSTOMER_RANGE_FIELDS = (
     "name",
     "material_sold",
@@ -320,11 +335,33 @@ def extract_snapshot_fetch(html: str, path: Path) -> str:
     return html[start:end]
 
 
+def owner_control_tile_order(html: str) -> tuple[str, ...]:
+    start = html.find("async function renderControlRoom(data)")
+    end = html.find('<div class="card cash-card">', start)
+    if start == -1 or end == -1 or end <= start:
+        fail("could not locate Owner Control Room tile block")
+    block = html[start:end]
+    labels = []
+    for metric in block.split('<div class="control-metric')[1:]:
+        label_start = metric.find("<span>")
+        label_end = metric.find("</span>", label_start)
+        if label_start == -1 or label_end == -1:
+            fail("Owner Control Room metric is missing its label")
+        labels.append(metric[label_start + len("<span>"):label_end].strip())
+    return tuple(labels)
+
+
 def verify_frontend_guard() -> None:
     root_html = (ROOT / "index.html").read_text()
     static_html = (ROOT / "static" / "index.html").read_text()
     if root_html != static_html:
         fail("index.html and static/index.html differ; mirror Otomy frontend changes first")
+    actual_owner_control_order = owner_control_tile_order(root_html)
+    if actual_owner_control_order != OWNER_CONTROL_TILE_ORDER:
+        fail(
+            "Owner Control Room tile order changed: "
+            f"expected={OWNER_CONTROL_TILE_ORDER}; actual={actual_owner_control_order}"
+        )
     for needle in ("id=\"section-gst\"", "id=\"section-auditca\"", "/api/exports/compliance/dataset", "/api/exports/gst/${kind}", "tally_vouchers", "GSTR-2B — Reconciliation"):
         if needle not in root_html:
             fail(f"compliance page guard missing {needle!r}")
