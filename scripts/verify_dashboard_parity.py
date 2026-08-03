@@ -358,11 +358,6 @@ def verify_frontend_guard() -> None:
         "async function _buildCashBook(from,to)",
         "const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`)",
         "Canonical cash/bank data is temporarily unavailable",
-        "id=\"dash-anchor-health\"",
-        "async function renderAnchorFreshness()",
-        "Physical cash count",
-        "ICICI statement",
-        "Balances are unchanged; update the next cash count or statement when available.",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")

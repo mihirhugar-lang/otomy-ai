@@ -599,7 +599,6 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
   </div>
   <div id="dash-print-area">
-    <div id="dash-anchor-health"></div>
     <div id="control-room"></div>
   </div>
 </div>
@@ -2601,46 +2600,10 @@ async function loadDash(){
     if(!controlData||!controlData.summary){_dashUnavailable();return;}
     _dashRetried=false;
     renderDashSummary(controlData,d);
-    await renderAnchorFreshness();
     await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
 }
 
-function _verificationAge(asOf){
-  const iso=String(asOf||'').slice(0,10);
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso))return null;
-  const age=Math.floor((new Date(`${today()}T00:00:00`)-new Date(`${iso}T00:00:00`))/86400000);
-  return Math.max(0,age);
-}
-async function renderAnchorFreshness(){
-  const target=document.getElementById('dash-anchor-health');
-  if(!target)return;
-  try{
-    const cfg=await _balanceConfig();
-    const anchors=((cfg&&cfg.anchors)||[])
-      .filter(a=>String(a&&a.date||'').slice(0,10)<=today())
-      .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-    const cashDate=anchors.length?String(anchors[anchors.length-1].date).slice(0,10):'';
-    let bankDate=cashDate;
-    const statement=await _bankStatement(cfg&&cfg.bank_statement_file);
-    const statementDates=(statement&&Array.isArray(statement.rows)?statement.rows:[])
-      .map(row=>String(row&&row.date||'').slice(0,10))
-      .filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date)&&date<=today())
-      .sort();
-    if(statementDates.length)bankDate=statementDates[statementDates.length-1];
-    const cashAge=_verificationAge(cashDate),bankAge=_verificationAge(bankDate);
-    const highest=Math.max(cashAge??46,bankAge??46);
-    if(highest<35){target.innerHTML='';return;}
-    const urgent=highest>=45;
-    const label=(name,date,age)=>date
-      ? `${name}: ${age} days old (${date})`
-      : `${name}: verification date unavailable`;
-    target.innerHTML=`<div class="alert-banner ${urgent?'alert-red':'alert-orange'}" style="margin:0 0 12px 0"><strong>${urgent?'Balance verification overdue':'Balance verification reminder'}</strong><span>${esc(label('Physical cash count',cashDate,cashAge))} · ${esc(label(statementDates.length?'ICICI statement':'Bank verification anchor',bankDate,bankAge))}. Balances are unchanged; update the next cash count or statement when available.</span></div>`;
-  }catch(e){
-    // This is a visibility aid only; dashboard financial data must remain usable if metadata is absent.
-    target.innerHTML='';
-  }
-}
 
 async function loadControlRoom(){
   const f=document.getElementById('dash-from').value||mtdStart();
