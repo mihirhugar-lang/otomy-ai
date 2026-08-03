@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "range": {
+    "from": "2026-07-01",
+    "to": "2026-07-02"
+  },
+  "opening": {
+    "as_of": "2026-06-30",
+    "cash_balance_office": 1000.0,
+    "bank_balance": 2000.0
+  },
+  "customers": [
+    {"id": 1, "name": "Alpha"},
+    {"id": 2, "name": "Bravo"},
+    {"id": 3, "name": "Charlie"},
+    {"id": 4, "name": "Delta"},
+    {"id": 5, "name": "Echo"}
+  ],
+  "sales": [
+    {"date": "2026-07-01", "customer_id": 1, "customer_name": "Alpha", "amount": 300.0, "transport_charge": 0.0, "payment_mode": "Cash", "cash_amount": 100.0, "credit_amount": 0.0, "upi_amount": 200.0},
+    {"date": "2026-07-02", "customer_id": 2, "customer_name": "Bravo", "amount": 80.0, "transport_charge": 0.0, "payment_mode": "Cash", "cash_amount": 0.0, "credit_amount": 0.0, "upi_amount": 0.0},
+    {"date": "2026-07-02", "customer_id": 3, "customer_name": "Charlie", "amount": 90.0, "transport_charge": 0.0, "payment_mode": "UPI", "cash_amount": 0.0, "credit_amount": 0.0, "upi_amount": 0.0}
+  ],
+  "repayments": [
+    {"date": "2026-07-01", "customer_id": 1, "customer_name": "Alpha", "payment_received": 125.0, "mode": "Cash"},
+    {"date": "2026-07-01", "customer_id": 1, "customer_name": "Alpha", "payment_received": 250.0, "mode": "UPI"},
+    {"date": "2026-07-02", "customer_id": 4, "customer_name": "Delta", "payment_received": 60.0, "mode": "Cash"},
+    {"date": "2026-07-02", "customer_id": 5, "customer_name": "Echo", "payment_received": 70.0, "mode": "Bank"}
+  ],
+  "expenses": [
+    {"date": "2026-07-01", "category": "Fuel", "description": "Diesel", "notes": "", "amount": 30.0, "payment_mode": "Cash"},
+    {"date": "2026-07-01", "category": "Repair", "description": "Workshop", "notes": "", "amount": 45.0, "payment_mode": "UPI"},
+    {"date": "2026-07-02", "category": "Wages", "description": "Loading", "notes": "", "amount": 20.0, "payment_mode": "Cash"},
+    {"date": "2026-07-02", "category": "Other", "description": "Toll", "notes": "", "amount": 10.0, "payment_mode": "Bank"}
+  ],
+  "expected": {
+    "from": "2026-07-01",
+    "to": "2026-07-02",
+    "opening_as_of": "2026-06-30",
+    "cash": {
+      "opening": 1000.0,
+      "total_in": 265.0,
+      "total_out": 50.0,
+      "closing": 1215.0,
+      "rows": [
+        {"date": "2026-07-01", "particulars": "Spot sale (cash)", "party": "Alpha", "kind": "sale", "in": 100.0, "out": 0.0, "balance": 1100.0},
+        {"date": "2026-07-01", "particulars": "Customer payment (cash)", "party": "Alpha", "kind": "receipt", "in": 25.0, "out": 0.0, "balance": 1125.0},
+        {"date": "2026-07-01", "particulars": "Expense: Fuel", "party": "Diesel", "kind": "expense", "in": 0.0, "out": 30.0, "balance": 1095.0},
+        {"date": "2026-07-02", "particulars": "Spot sale (cash)", "party": "Bravo", "kind": "sale", "in": 80.0, "out": 0.0, "balance": 1175.0},
+        {"date": "2026-07-02", "particulars": "Customer payment (cash)", "party": "Delta", "kind": "receipt", "in": 60.0, "out": 0.0, "balance": 1235.0},
+        {"date": "2026-07-02", "particulars": "Expense: Wages", "party": "Loading", "kind": "expense", "in": 0.0, "out": 20.0, "balance": 1215.0}
+      ]
+    },
+    "bank": {
+      "opening": 2000.0,
+      "total_in": 410.0,
+      "total_out": 55.0,
+      "closing": 2355.0,
+      "rows": [
+        {"date": "2026-07-01", "particulars": "Spot sale (UPI/Bank)", "party": "Alpha", "kind": "sale", "in": 200.0, "out": 0.0, "balance": 2200.0},
+        {"date": "2026-07-01", "particulars": "Customer payment (UPI/Bank)", "party": "Alpha", "kind": "receipt", "in": 50.0, "out": 0.0, "balance": 2250.0},
+        {"date": "2026-07-01", "particulars": "Expense: Repair", "party": "Workshop", "kind": "expense", "in": 0.0, "out": 45.0, "balance": 2205.0},
+        {"date": "2026-07-02", "particulars": "Spot sale (UPI/Bank)", "party": "Charlie", "kind": "sale", "in": 90.0, "out": 0.0, "balance": 2295.0},
+        {"date": "2026-07-02", "particulars": "Customer payment (UPI/Bank)", "party": "Echo", "kind": "receipt", "in": 70.0, "out": 0.0, "balance": 2365.0},
+        {"date": "2026-07-02", "particulars": "Expense: Other", "party": "Toll", "kind": "expense", "in": 0.0, "out": 10.0, "balance": 2355.0}
+      ]
+    }
+  },
+  "verified_reanchor": {
+    "range": {"from": "2026-07-01", "to": "2026-07-02"},
+    "opening": {"as_of": "2026-06-30", "cash_balance_office": 1000.0, "bank_balance": 2000.0},
+    "customers": [],
+    "sales": [],
+    "repayments": [],
+    "expenses": [],
+    "anchors": [{"date": "2026-07-01", "cash": 1100.0}],
+    "bank_statement": {"date": "2026-07-01", "balance": 2100.0},
+    "expected": {
+      "from": "2026-07-01",
+      "to": "2026-07-02",
+      "opening_as_of": "2026-06-30",
+      "cash": {
+        "opening": 1000.0,
+        "total_in": 100.0,
+        "total_out": 0.0,
+        "closing": 1100.0,
+        "rows": [{"date": "2026-07-01", "particulars": "Verified balance adjustment (physical cash count)", "party": "", "kind": "adjustment", "in": 100.0, "out": 0.0, "balance": 1100.0}]
+      },
+      "bank": {
+        "opening": 2000.0,
+        "total_in": 100.0,
+        "total_out": 0.0,
+        "closing": 2100.0,
+        "rows": [{"date": "2026-07-02", "particulars": "Verified balance adjustment (bank statement)", "party": "", "kind": "adjustment", "in": 100.0, "out": 0.0, "balance": 2100.0}]
+      }
+    }
+  }
+}

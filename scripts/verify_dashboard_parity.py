@@ -355,12 +355,14 @@ def verify_frontend_guard() -> None:
         "String(requestedTo)>=today()",
         "String(requestedTo)===yesterday()",
         "'/api/sync/erp/cashbook'",
-        "async function _buildCashBookFallback(",
+        "async function _buildCashBook(from,to)",
         "const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`)",
-        "const storedRows=months.flatMap(",
+        "Canonical cash/bank data is temporarily unavailable",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")
+    if "_buildCashBookFallback" in root_html:
+        fail("frontend must not calculate a browser cashbook fallback")
     if "Verified balance adjustment (residual)" in root_html:
         fail("frontend must not render a generic residual balance adjustment")
     print("Frontend balance-chain guard passed: canonical cashbook/ledger paths are wired and residual rows are forbidden.")
