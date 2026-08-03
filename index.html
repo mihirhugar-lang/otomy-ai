@@ -1434,9 +1434,9 @@ async function _archiveControl(from,to){
   if(parts.length)byExpense.Parts=(byExpense.Parts||0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
   const customerSales=_archiveCustomerSales(sales);
   const expenseRows=[
-    ...expenses.map(e=>({date:e.date,type:'Expense',category:e.category||'Other',description:e.description||e.category||'Expense',party:'',payment_mode:e.payment_mode||'',amount:_num(e.amount)})),
-    ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount)})),
-    ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount)})),
+    ...expenses.map(e=>({date:e.date,type:'Expense',category:e.category||'Other',description:e.description||e.category||'Expense',party:'',payment_mode:e.payment_mode||'',amount:_num(e.amount),is_operating_expense:!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes,{when:e.date})})),
+    ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount),is_operating_expense:!_isDirectorPayment(l.worker_name,l.worker_type,l.notes,{when:l.date})})),
+    ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount),is_operating_expense:!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes,{when:p.date})})),
   ].sort((a,b)=>`${b.date}|${b.amount}`.localeCompare(`${a.date}|${a.amount}`));
   const operating=await _archiveOperatingBalances(to);
   const days=Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
@@ -2631,9 +2631,44 @@ function _reclassifySales(data){
   const spotSaleByCust={}, payByCust={};
   (data.customer_sales||[]).forEach(r=>{const k=norm(r.customer_name);spotSaleByCust[k]=(spotSaleByCust[k]||0)+(num(r.amount)-num(r.credit_sale_amount));});
   (data.customer_repayments||[]).forEach(r=>{const k=norm(r.customer_name);payByCust[k]=(payByCust[k]||0)+num(r.payment_received);});
-  const spotOnly={}; let received=0;
-  Object.keys(payByCust).forEach(k=>{const overlap=Math.min(Math.max(spotSaleByCust[k]||0,0),payByCust[k]||0);const kept=(payByCust[k]||0)-overlap;if(kept<=0.5)spotOnly[k]=true;received+=kept;});
-  return {spot:num(s.cash_collected),credit:num(s.credit_sales),paymentReceived:Math.round(received*100)/100,isSpotOnly:name=>!!spotOnly[norm(name)]};
+  const repaymentOverlapByCustomer={}; let received=0;
+  Object.keys(payByCust).forEach(k=>{const overlap=Math.min(Math.max(spotSaleByCust[k]||0,0),payByCust[k]||0);repaymentOverlapByCustomer[k]=overlap;received+=(payByCust[k]||0)-overlap;});
+  return {spot:num(s.cash_collected),credit:num(s.credit_sales),paymentReceived:Math.round(received*100)/100,repaymentOverlapByCustomer};
+}
+
+// The Credit Repayment tile removes same-period Spot Sale settlements by
+// customer.  Allocate that *same* overlap to the receipt rows, so the table
+// footer always equals the tile instead of showing a second calculation.
+function _repaymentRowsForDisplay(data,reclassified){
+  const num=x=>{const v=Number(x);return isFinite(v)?v:0;};
+  const norm=x=>String(x==null?'-':x).trim().toUpperCase();
+  const round=x=>Math.round(x*100)/100;
+  const rows=(data.customer_repayments||[]).map((source,index)=>({
+    ...source,_displayIndex:index,_displayPayment:num(source.payment_received!=null?source.payment_received:source.amount),
+  }));
+  const grouped={};
+  rows.forEach(row=>{const key=norm(row.customer_name);(grouped[key]||(grouped[key]=[])).push(row);});
+  Object.keys(grouped).sort().forEach(key=>{
+    let remaining=num((reclassified.repaymentOverlapByCustomer||{})[key]);
+    // Stable ordering gives localhost and Otomy identical visible rows even
+    // when the ERP returned the same customer's receipts in a different order.
+    grouped[key].sort((a,b)=>[
+      a.date,a.reference,a.mode,a._displayPayment,a.amount,a.bank_received,a.cash_received,a.id,a._displayIndex,
+    ].map(v=>String(v==null?'':v)).join('\u0001').localeCompare([
+      b.date,b.reference,b.mode,b._displayPayment,b.amount,b.bank_received,b.cash_received,b.id,b._displayIndex,
+    ].map(v=>String(v==null?'':v)).join('\u0001'))).forEach(row=>{
+      const adjusted=Math.min(Math.max(remaining,0),row._displayPayment);
+      remaining=round(remaining-adjusted);
+      const kept=round(row._displayPayment-adjusted);
+      let bank=num(row.bank_received),cash=num(row.cash_received),channelTotal=bank+cash;
+      if(channelTotal<=0){if(_payChannel(row.mode)==='cash')cash=row._displayPayment;else bank=row._displayPayment;channelTotal=row._displayPayment;}
+      const shownBank=kept&&channelTotal?round(kept*bank/channelTotal):0;
+      row.display_payment_received=kept;
+      row.display_bank_received=shownBank;
+      row.display_cash_received=round(kept-shownBank);
+    });
+  });
+  return rows.filter(row=>row.display_payment_received>0.005);
 }
 
 function renderDashSummary(data,d){
@@ -2663,14 +2698,13 @@ async function renderControlRoom(data){
   const s=data.summary||{};
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const _rc=_reclassifySales(data);
-  // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). A same-day
-  // settlement is counted under Spot Sale by the reclassification above, so its net "amount" is 0 —
-  // hide those rows here so the table matches the tile and nothing double-counts against Spot Sale.
-  const _repayShown=(data.customer_repayments||[]).filter(r=>!_rc.isSpotOnly(r.customer_name));
+  // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). Apply the
+  // exact same customer-level Spot Sale adjustment used by the dashboard tile to each visible row.
+  const _repayShown=_repaymentRowsForDisplay(data,_rc);
   const repaymentTotal=_rc.paymentReceived;
-  const repaymentPaymentTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.payment_received)||0),0);
-  const repaymentBankTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.bank_received)||0),0);
-  const repaymentCashTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.cash_received)||0),0);
+  const repaymentPaymentTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.display_payment_received)||0),0);
+  const repaymentBankTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.display_bank_received)||0),0);
+  const repaymentCashTotal=_repayShown.reduce((sum,r)=>sum+(Number(r.display_cash_received)||0),0);
   const paymentReceivedTile=_rc.paymentReceived;
   // Balance To Pay total: count each customer's outstanding ONCE — a split payment
   // (same customer, cash + UPI/bank) makes two rows carrying the same balance, and a
@@ -2683,11 +2717,11 @@ async function renderControlRoom(data){
       <td>${esc(r.date)}</td>
       <td>${esc(r.customer_name||'—')}</td>
       <td>${esc(r.mode||'—')}</td>
-      <td>${fmtINR(r.bank_received||0)}</td>
-      <td>${fmtINR(r.cash_received||0)}</td>
-      <td>${fmtINR(r.payment_received||r.amount||0)}</td>
+      <td>${fmtINR(r.display_bank_received||0)}</td>
+      <td>${fmtINR(r.display_cash_received||0)}</td>
+      <td>${fmtINR(r.display_payment_received||0)}</td>
       <td>${fmtINR(r.sale_adjusted||0)}</td>
-      <td>${fmtINR(r.payment_received||r.amount||0)}</td>
+      <td>${fmtINR(r.display_payment_received||0)}</td>
       <td>${r.balance==null?'—':fmtINR(r.balance)}</td>
     </tr>
   `).join('')||'<tr><td colspan="9" class="empty">No credit sale repayments received in this period</td></tr>';
@@ -2715,7 +2749,7 @@ async function renderControlRoom(data){
       <td>${fmtNum(r.fuel_liters,2)}</td>
     </tr>`).join('')||'<tr><td colspan="4" class="empty">No machine readings in this period</td></tr>';
   let expCashTotal=0,expBankTotal=0;
-  const expenseList=(data.expense_rows||[]).filter(r=>!_isDirectorPayment(r.category,r.description,r.party,r.payment_mode)).map(r=>{
+  const expenseList=(data.expense_rows||[]).filter(r=>r.is_operating_expense!==false).map(r=>{
     const amt=Number(r.amount)||0;
     const isCash=_payChannel(r.payment_mode)==='cash';
     if(isCash)expCashTotal+=amt;else expBankTotal+=amt;

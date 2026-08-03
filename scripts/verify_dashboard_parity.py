@@ -327,6 +327,73 @@ def verify_credit_payment_uses_payment_total(snapshot: dict, label: str) -> None
         )
 
 
+def _customer_key(value: object) -> str:
+    return str(value or "-").strip().upper()
+
+
+def verify_owner_control_detail_parity(snapshot: dict, label: str) -> None:
+    """Validate the data contract consumed by the Owner Control Room tables.
+
+    The browser applies the same-period Spot Sale overlap to both the Credit
+    Repayment tile and each receipt row.  Expenses are tagged by the backend
+    before notes are omitted from a detail row.  Keeping these contracts here
+    prevents a future tile/table disagreement from being published.
+    """
+    summary = snapshot.get("summary") or {}
+    repayments = snapshot.get("customer_repayments") or []
+    sales = snapshot.get("customer_sales") or []
+    expense_rows = snapshot.get("expense_rows") or []
+    if not all(isinstance(rows, list) for rows in (repayments, sales, expense_rows)):
+        fail(f"{label} Owner Control Room detail lists must be arrays")
+
+    spot_by_customer: dict[str, float] = {}
+    repayments_by_customer: dict[str, float] = {}
+    for row in sales:
+        if not isinstance(row, dict):
+            fail(f"{label} customer_sales contains a non-object row")
+        customer = _customer_key(row.get("customer_name"))
+        spot_by_customer[customer] = spot_by_customer.get(customer, 0.0) + (
+            number_value(row.get("amount"), f"{label} sale.amount")
+            - number_value(row.get("credit_sale_amount"), f"{label} sale.credit_sale_amount")
+        )
+    for row in repayments:
+        if not isinstance(row, dict):
+            fail(f"{label} customer_repayments contains a non-object row")
+        customer = _customer_key(row.get("customer_name"))
+        repayments_by_customer[customer] = repayments_by_customer.get(customer, 0.0) + number_value(
+            row.get("payment_received", row.get("amount")),
+            f"{label} repayment.payment_received",
+        )
+    visible_repayment = round(sum(
+        payment - min(max(spot_by_customer.get(customer, 0.0), 0.0), payment)
+        for customer, payment in repayments_by_customer.items()
+    ), 2)
+    if visible_repayment < 0:
+        fail(f"{label} visible Credit Repayment is negative: {visible_repayment}")
+
+    operating_expenses = 0.0
+    for row in expense_rows:
+        if not isinstance(row, dict):
+            fail(f"{label} expense_rows contains a non-object row")
+        if not isinstance(row.get("is_operating_expense"), bool):
+            fail(f"{label} expense row is missing canonical is_operating_expense")
+        if row["is_operating_expense"]:
+            operating_expenses += number_value(row.get("amount"), f"{label} expense_rows.amount")
+    expected_expenses = round(number_value(summary.get("expenses"), f"{label} summary.expenses"), 2)
+    if round(operating_expenses, 2) != expected_expenses:
+        fail(
+            f"{label} Operating Expenses tile/detail mismatch: "
+            f"tile={expected_expenses} detail={round(operating_expenses, 2)}"
+        )
+    # A literal frontend guard below confirms the row renderer consumes this
+    # same overlap map, rather than reintroducing a raw-repayment footer.
+    if visible_repayment > round(sum(
+        number_value(row.get("payment_received", row.get("amount")), f"{label} repayment.payment_received")
+        for row in repayments
+    ), 2):
+        fail(f"{label} visible Credit Repayment exceeds raw receipts")
+
+
 def extract_snapshot_fetch(html: str, path: Path) -> str:
     start = html.find("async function snapshotFetch(url)")
     end = html.find("const _archiveCache", start)
@@ -395,6 +462,9 @@ def verify_frontend_guard() -> None:
         "async function _buildCashBook(from,to)",
         "const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`)",
         "Canonical cash/bank data is temporarily unavailable",
+        "function _repaymentRowsForDisplay(data,reclassified)",
+        "repaymentOverlapByCustomer",
+        "r.is_operating_expense!==false",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")
@@ -841,6 +911,7 @@ def verify_all_dashboard_presets() -> None:
                 fail(f"{preset} {url} missing summary.{field}")
             number_value(summary[field], f"{preset} {url} summary.{field}")
         verify_credit_payment_uses_payment_total(snapshot, f"{preset} {url}")
+        verify_owner_control_detail_parity(snapshot, f"{preset} {url}")
         tiles = visible_tile_values(summary)
         for tile_label, tile_key in VISIBLE_DASHBOARD_TILES:
             if tile_key not in tiles:
