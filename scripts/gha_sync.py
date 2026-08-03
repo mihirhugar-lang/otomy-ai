@@ -312,13 +312,6 @@ def _is_director_payment(*values, when=None):
     # dashboard.py:_is_director_payment and index.html:_isDirectorPayment.
     if values and "DIRECTOR" in str(values[0] or "").upper():
         return False
-    localhost_operating_expense_labels = (
-        "CASH GIVEN TO KUMAR SIR",
-        "PRASHANTH SIR (NJP) LODGE EXP",
-        "KUMAR SIR CAR PENALTY",
-    )
-    if any(label in text for label in localhost_operating_expense_labels):
-        return False
     if not ("PRASHANT" in text or "KUMAR" in text):
         return False
     # Apr-May 2026 (and earlier): only actual drawings ("... SIR SHARE") count as a
@@ -1447,6 +1440,12 @@ def build_control(sales, expenses, from_d, to_d,
             "party":        "",
             "payment_mode": e["payment_mode"] or "",
             "amount":       round(_num(e["amount"]), 2),
+            # Preserve the exact decision behind summary.expenses.  The browser
+            # receives no notes field, so it must not try to classify a row again.
+            "is_operating_expense": not _is_director_payment(
+                e.get("category"), e.get("description"), e.get("payment_mode"),
+                e.get("notes"), when=e.get("date"),
+            ),
         })
     for row in labour:
         expense_rows.append({
@@ -1457,6 +1456,10 @@ def build_control(sales, expenses, from_d, to_d,
             "party": row.get("worker_name") or "",
             "payment_mode": "Paid" if row.get("paid") else "Unpaid",
             "amount": round(_num(row.get("amount")), 2),
+            "is_operating_expense": not _is_director_payment(
+                row.get("worker_name"), row.get("worker_type"), row.get("notes"),
+                when=row.get("date"),
+            ),
         })
     for row in parts:
         expense_rows.append({
@@ -1467,6 +1470,10 @@ def build_control(sales, expenses, from_d, to_d,
             "party": row.get("supplier") or "",
             "payment_mode": "",
             "amount": round(_num(row.get("total_amount")), 2),
+            "is_operating_expense": not _is_director_payment(
+                row.get("machine_name"), row.get("part_name"), row.get("supplier"),
+                row.get("notes"), when=row.get("date"),
+            ),
         })
     expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
 
