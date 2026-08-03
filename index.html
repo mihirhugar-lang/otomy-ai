@@ -3631,77 +3631,27 @@ function engineTallyEnvelope(vouchers){const messages=(vouchers||[]).map(v=>Stri
 
 // ── ERP Bank Transactions ─────────────────────────────────────────────────────
 // ── Cash Book / Bank Book ─────────────────────────────────────────────────────
-// Built entirely client-side from the SAME archive movement streams + verified anchors the
-// dashboard uses (spot sales, customer payments, ALL expenses incl. cash payments not booked in
-// loctell's cash ledger), so every payment shows and the running balance ties out to the dashboard
-// tiles. Opening balance is carried forward to the chosen from-date. Mirrors localhost's backend.
+// Financial balances are supplied only by the canonical cloud cashbook.  The browser must never
+// reconstruct a fallback book: an unavailable snapshot is safer than a guessed financial figure.
 const _cashbook={cash:null,bank:null};
-async function _buildCashBookFallback(from,to){
-  const prev=localISO(new Date(new Date(`${from}T00:00:00`).getTime()-86400000));
-  // Use the same archive/anchor engine for both opening and closing. Snapshot control ranges can be
-  // older than the refreshed movement archive, which was the original FY mismatch.
-  const [openBal,closeBal,cfg]=await Promise.all([_archiveOperatingBalances(prev),_archiveOperatingBalances(to),_balanceConfig()]);
-  const corrs=(cfg&&cfg.mode_corrections)||null;
-  const months=await OtomyDataEngine.range(from,to);
-  const saleRows=_rowsInRange(months,'sales',from,to),receipts=_rowsInRange(months,'receipts',from,to),expenses=_rowsInRange(months,'expenses',from,to);
-  const spotCash={},spotBank={},rkey=row=>`${_partyKey(row)}|${row.date}`;
-  saleRows.forEach(s=>{const ch=_saleChannels(s),k=rkey(s);if(ch.cash)spotCash[k]=(spotCash[k]||0)+ch.cash;if(ch.upi)spotBank[k]=(spotBank[k]||0)+ch.upi;});
-  const cashRows=[],bankRows=[],mk=(d,part,party,inn,out,kind)=>({date:String(d).slice(0,10),particulars:part,party:party||'',kind:kind||'',in:Math.round((inn||0)*100)/100,out:Math.round((out||0)*100)/100});
-  saleRows.forEach(s=>{const ch=_saleChannels(s),nm=s.customer_name||'Customer';if(ch.cash)cashRows.push(mk(s.date,'Spot sale (cash)',nm,ch.cash,0,'sale'));if(ch.upi)bankRows.push(mk(s.date,'Spot sale (UPI/Bank)',nm,ch.upi,0,'sale'));});
-  receipts.forEach(r=>{const amt=_receiptPaymentAmount(r);if(amt<=0)return;const k=rkey(r),nm=r.customer_name||'Customer';
-    if(_payChannel(r.mode)==='cash'){const ov=Math.min(amt,spotCash[k]||0);spotCash[k]=(spotCash[k]||0)-ov;const net=amt-ov;if(net>0.5)cashRows.push(mk(r.date,'Customer payment (cash)',nm,net,0,'receipt'));}
-    else{const ov=Math.min(amt,spotBank[k]||0);spotBank[k]=(spotBank[k]||0)-ov;const net=amt-ov;if(net>0.5)bankRows.push(mk(r.date,'Customer payment (UPI/Bank)',nm,net,0,'receipt'));}});
-  expenses.forEach(e=>{const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);const label=(e.category||e.description||'Expense').trim(),party=(e.description||e.notes||'').trim(),amt=_num(e.amount);if(amt<=0)return;if(ch==='cash'&&_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01')return;(ch==='cash'?cashRows:bankRows).push(mk(e.date,'Expense: '+label,party,0,amt,'expense'));});
-  const bySort=(a,b)=>`${a.date}`.localeCompare(`${b.date}`)||((a.adjustment?0:1)-(b.adjustment?0:1))||(b.in-a.in);
-  cashRows.sort(bySort);bankRows.sort(bySort);
-  const cashCheckpoints=(((cfg&&cfg.anchors)||[])
-    .filter(a=>a.cash!=null&&String(a.date)>=from&&String(a.date)<=to)
-    .map(a=>({date:String(a.date),target:_num(a.cash),source:'physical cash count'})));
-  const bankCheckpoints=[];
-  const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
-  if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
-    const le=stmt.rows.filter(r=>String(r.date)<=to);
-    if(le.length){const last=le[le.length-1],date=String(last.date||stmt.to).slice(0,10);if(date>=from&&date<=to)bankCheckpoints.push({date,target:_num(last.balance),source:'bank statement'});}
-  }
-  const fin=(rows,opening,closing,checkpoints)=>{
-    const byDate={};rows.forEach(r=>(byDate[r.date]||(byDate[r.date]=[])).push(r));
-    const cpByDate={};checkpoints.forEach(c=>(cpByDate[c.date]||(cpByDate[c.date]=[])).push(c));
-    const dates=[...new Set([...Object.keys(byDate),...Object.keys(cpByDate)])].sort();
-    const shown=[];let running=Math.round(_num(opening)*100)/100;
-    dates.forEach(d=>{
-      (byDate[d]||[]).sort(bySort).forEach(r=>{running=Math.round((running+r.in-r.out)*100)/100;r.balance=running;shown.push(r);});
-      (cpByDate[d]||[]).forEach(c=>{
-        const gap=Math.round((c.target-running)*100)/100;
-        if(Math.abs(gap)>0.5){
-          const adj={date:d,particulars:'Verified balance adjustment ('+c.source+')',party:'',kind:'adjustment',in:gap>0?gap:0,out:gap<0?-gap:0,adjustment:true};
-          running=Math.round((running+adj.in-adj.out)*100)/100;adj.balance=running;shown.push(adj);
-        }
-      });
-    });
-    return {opening:Math.round(_num(opening)*100)/100,rows:shown,total_in:Math.round(shown.reduce((s,r)=>s+r.in,0)*100)/100,total_out:Math.round(shown.reduce((s,r)=>s+r.out,0)*100)/100,closing:Math.round(running*100)/100};
-  };
-  return {from,to,opening_as_of:prev,
-    cash:fin(cashRows,openBal.cash_balance_office,closeBal.cash_balance_office,cashCheckpoints),
-    bank:fin(bankRows,openBal.bank_balance,closeBal.bank_balance,bankCheckpoints)};
-}
 async function _buildCashBook(from,to){
-  // Prefer the server-generated book. It is built once from the same canonical data used by the
-  // dashboard and Ledger View, so a stale browser archive cannot invent a residual balance row.
+  // The server-generated book is built once from the canonical data used by Dashboard and Daily Book.
+  // Do not fall back to browser arithmetic: a missing canonical snapshot must stay visible as an error.
   try{
     const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
     if(canonical&&canonical.cash&&canonical.bank)return canonical;
-  }catch(e){/* older snapshots fall through to the compatibility builder */}
-  return _buildCashBookFallback(from,to);
+  }catch(e){}
+  throw new Error('Canonical cash/bank data is temporarily unavailable. No fallback calculation was used; please retry after the next engine sync.');
 }
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
-  try{_cashbook.bank=await _buildCashBook(from,to);renderCashBook('bank','erp-bank-tbl','erp-bank-pager');loadBankSummary();}catch(e){flash(e.message,false);}
+  try{_cashbook.bank=await _buildCashBook(from,to);renderCashBook('bank','erp-bank-tbl','erp-bank-pager');loadBankSummary();}catch(e){_cashbook.bank=null;document.getElementById('erp-bank-tbl').innerHTML='<div class="empty">Canonical bank book unavailable — retry after the next engine sync.</div>';flash(e.message,false);}
 }
 async function loadErpCash(){
   const from=document.getElementById('ec-from').value,to=document.getElementById('ec-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
-  try{_cashbook.cash=await _buildCashBook(from,to);renderCashBook('cash','erp-cash-tbl','erp-cash-pager');loadBankSummary();}catch(e){flash(e.message,false);}
+  try{_cashbook.cash=await _buildCashBook(from,to);renderCashBook('cash','erp-cash-tbl','erp-cash-pager');loadBankSummary();}catch(e){_cashbook.cash=null;document.getElementById('erp-cash-tbl').innerHTML='<div class="empty">Canonical cash book unavailable — retry after the next engine sync.</div>';flash(e.message,false);}
 }
 // Spot-sale portion of a movement row (its channel amount) — cash portion in the cash book,
 // UPI/bank portion in the bank book. Cash-book total + Bank-book total = the Spot Sale tile.
@@ -3745,7 +3695,7 @@ async function renderDashboardCashBooks(from,to){
     const _bt=document.getElementById('d-bank-bal'),_ct=document.getElementById('d-cash-office');
     if(_bt&&book.bank)_bt.textContent=fmtINR(book.bank.closing);
     if(_ct&&book.cash)_ct.textContent=fmtINR(book.cash.closing);
-  }catch(e){if(bb)bb.innerHTML='<div class="empty">Cash/Bank book unavailable</div>';}
+  }catch(e){_cashbook.bank=null;_cashbook.cash=null;if(bb)bb.innerHTML='<div class="empty">Canonical bank book unavailable — retry after the next engine sync.</div>';if(cb)cb.innerHTML='<div class="empty">Canonical cash book unavailable — retry after the next engine sync.</div>';}
 }
 
 

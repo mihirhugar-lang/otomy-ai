@@ -95,6 +95,10 @@ jobs:
         if: steps.initial_control.outputs.enabled == 'true'
         run: python3 -m pip install --quiet requests
 
+      - name: Run canonical cashbook fixture guard
+        if: steps.initial_control.outputs.enabled == 'true'
+        run: python3 scripts/test_cashbook_parity.py
+
       - name: Run the single Loctell common engine
         if: steps.initial_control.outputs.enabled == 'true'
         env:
