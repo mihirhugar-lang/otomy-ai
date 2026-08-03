@@ -2731,20 +2731,20 @@ async function renderControlRoom(data){
         <div class="control-title">Profit, production, cash and risk in one screen.</div>
         <div class="control-grid">
           <!-- Row 1: Profit -->
-          <div class="control-metric"><span>Period Profit</span><strong>${fmtINR(s.profit)}</strong></div>
+          <div class="control-metric"><span>Gross Sale</span><strong>${fmtINR2(s.sales)}</strong></div>
           <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,2)}</strong></div>
-          <div class="control-metric glass-green"><span>Profit / Tonne</span><strong>${fmtINR2(s.selected_period_profit_per_tonne||0)}</strong></div>
-          <div class="control-metric glass-green"><span>Selected Period Profit</span><strong>${fmtINR(s.selected_period_profit_director_adjusted ?? s.profit)}</strong></div>
+          <div class="control-metric"><span>Avg Rate / Tonne</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
+          <div class="control-metric"><span>Bank Balance</span><strong id="d-bank-bal">${fmtINR(s.bank_balance||0)}</strong></div>
           <!-- Row 2: Cost & Production -->
           <div class="control-metric"><span>Operating Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
-          <div class="control-metric"><span>Expenses / Tonne</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
-          <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,2)} MT</strong></div>
-          <!-- Row 3: Balances -->
-          <div class="control-metric"><span>Bank Balance</span><strong id="d-bank-bal">${fmtINR(s.bank_balance||0)}</strong></div>
+          <div class="control-metric"><span>Expenses / Tonne</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
           <div class="control-metric"><span>Cash Balance In Office</span><strong id="d-cash-office">${fmtINR(s.cash_balance_office||0)}</strong></div>
+          <!-- Row 3: Balances -->
+          <div class="control-metric glass-green"><span>Selected Period Profit</span><strong>${fmtINR(s.selected_period_profit_director_adjusted ?? s.profit)}</strong></div>
+          <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
+          <div class="control-metric glass-green"><span>Profit / Tonne</span><strong>${fmtINR2(s.selected_period_profit_per_tonne||0)}</strong></div>
           <div class="control-metric"><span>Credit Repayment</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
-          <div class="control-metric"><span>Avg Rate / Tonne</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
         </div>
       </div>
       <div class="card cash-card"><h3>Cash Position</h3>
