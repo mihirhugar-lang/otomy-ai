@@ -635,6 +635,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')"> <label>Day:</label><input type="date" id="c-day" onchange="setDay('customers',this.value)">
     </div>
     <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
+    <button class="print-btn" onclick="printThreeMonthActiveCustomers()">Active Customers (3 Months) Print / PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
@@ -2952,6 +2953,26 @@ async function loadCustomers(){
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
+  }catch(e){flash(e.message,false);}
+}
+function threeMonthCustomerStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-2);return localISO(d);}
+function _customerOutstandingAmount(row){return Number(row.total_outstanding??row.outstanding??row.balance??0)||0;}
+function _customerHasThreeMonthActivity(row){return (Number(row.range_total_sales??0)||0)>0||(Number(row.range_payment_received??0)||0)>0;}
+async function printThreeMonthActiveCustomers(){
+  const from=threeMonthCustomerStart(),to=today();
+  try{
+    const rows=await api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`);
+    const active=rows.filter(r=>r.active&&_customerHasThreeMonthActivity(r)&&_customerOutstandingAmount(r)>0)
+      .sort((a,b)=>_customerOutstandingAmount(b)-_customerOutstandingAmount(a)||String(a.name||'').localeCompare(String(b.name||'')));
+    const totalOutstanding=active.reduce((s,r)=>s+_customerOutstandingAmount(r),0);
+    const block=document.createElement('div');
+    block.className='tbl-wrap';
+    let html='<table><thead><tr><th>Customer</th><th>Material Sold</th><th>Sales</th><th>Credit Sale</th><th>Payment Received</th><th>Last Sale</th><th>Total Outstanding</th></tr></thead><tbody>';
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(active.reduce((s,r)=>s+(Number(r.range_total_sales??0)||0),0))}</td><td>${fmtINR(active.reduce((s,r)=>s+(Number(r.range_credit_sales??0)||0),0))}</td><td style="color:#2e7d32">${fmtINR(active.reduce((s,r)=>s+(Number(r.range_payment_received??0)||0),0))}</td><td>—</td><td style="color:#c62828">${fmtINR(totalOutstanding)}</td></tr>`;
+    active.forEach(r=>{html+=`<tr><td>${esc(r.name||'Customer')}</td><td>${esc(r.material_sold||'No sale')}</td><td>${fmtINR(r.range_total_sales??0)}</td><td>${fmtINR(r.range_credit_sales??0)}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(r.range_payment_received??0)}</td><td>${esc(r.range_latest_sale_date||'—')}</td><td style="color:#c62828;font-weight:700">${fmtINR(_customerOutstandingAmount(r))}</td></tr>`;});
+    if(!active.length)html+='<tr><td colspan="7" class="empty">No active customers with a positive outstanding balance</td></tr>';
+    block.innerHTML=html+'</tbody></table>';
+    openTablePdf('Active Customers — Last 3 Months',block,`Period: ${from} to ${to} | Positive outstanding balances only`);
   }catch(e){flash(e.message,false);}
 }
 async function showCustLedger(id,name){
