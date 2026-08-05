@@ -1003,6 +1003,8 @@ async function snapshotFetch(url){
     '/api/sync/erp/bank',
     '/api/sync/erp/cash',
     '/api/sync/erp/cashbook',
+    '/api/customers/',
+    '/api/customers/outstanding',
   ]).has(u.pathname);
   // Completed historical ranges must come from the same archive engine as
   // Books and Ledger. Only a request ending today is allowed to use the live
@@ -1011,8 +1013,12 @@ async function snapshotFetch(url){
   // Yesterday's dashboard is a published close, not an unfinished live day. Prefer the
   // generated snapshot for it so every tile uses the same full-window ERP result; the old
   // archive-first branch could repaint yesterday from stale monthly rows.
+  // Customer snapshots include the canonical, full-FY 15+ credit-aging result.
+  // Prefer one whenever it exists; archive calculation remains only for a
+  // historical custom range that has no generated snapshot at all.
+  const customerSnapshotPath=(u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding');
   const preferSnapshotFirst=snapshotPreferredPath&&(
-    !requestedTo || String(requestedTo)>=today() || String(requestedTo)===yesterday()
+    customerSnapshotPath || !requestedTo || String(requestedTo)>=today() || String(requestedTo)===yesterday()
   );
   if(!preferSnapshotFirst){
     const archived=await archiveFetch(url);
