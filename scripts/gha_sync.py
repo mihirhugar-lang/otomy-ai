@@ -316,12 +316,15 @@ def _channels_for_payment_mode(total, payment_mode):
     return 0.0, 0.0, total
 
 
-def _split_reconciles_sale(sale, split, tolerance=1.0):
-    """Return true only when a ListSale channel split ties to its ticket.
+def _split_reconciles_sale(sale, split, tolerance=5.0):
+    """Return true only when a ListSale channel split credibly ties to its ticket.
 
     ListSale can return stale or incomplete Final Cash/Credit/UPI values for an
     older ticket. CustomerWiseReport still has the correct payment mode and
     gross total in that case, so never let a partial split alter the archive.
+    Loctell also records small ticket round-offs in Final Cash/Credit/UPI (for
+    example gross ₹3,173 and final cash ₹3,170); accept only that bounded
+    ₹5 settlement difference.  Large partial/stale splits remain rejected.
     """
     if not isinstance(split, dict):
         return False
