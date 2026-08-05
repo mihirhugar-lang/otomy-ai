@@ -3069,7 +3069,17 @@ def _credit_due_15_plus_by_name(customers, all_sales, all_repayments, as_of):
     return result
 
 
-def build_customer_range_rows(customers_full, all_sales, range_sales, range_repayments, archive_balance=None, as_of=None, all_repayments=None):
+def build_customer_range_rows(
+    customers_full,
+    all_sales,
+    range_sales,
+    range_repayments,
+    archive_balance=None,
+    as_of=None,
+    all_repayments=None,
+    aging_sales=None,
+    aging_repayments=None,
+):
     metrics = {}
     for sale in all_sales or []:
         name = str(sale.get("customer_name") or "").strip()
@@ -3133,7 +3143,11 @@ def build_customer_range_rows(customers_full, all_sales, range_sales, range_repa
                 outstanding_by_name[name] = _num(row.get("balance"))
 
     due_15_plus = _credit_due_15_plus_by_name(
-        customers_full, all_sales, all_repayments if all_repayments is not None else range_repayments, as_of
+        customers_full,
+        aging_sales if aging_sales is not None else all_sales,
+        aging_repayments if aging_repayments is not None
+        else (all_repayments if all_repayments is not None else range_repayments),
+        as_of,
     ) if as_of else {}
     rows = []
     for customer in customers_full or []:
@@ -3263,6 +3277,8 @@ def write_snapshot_bundle(
     archive_balances,
     customer_ledgers_full=None,
     historical_start=None,
+    aging_sales=None,
+    aging_repayments=None,
 ):
     week_start = today - timedelta(days=today.weekday())
     last_week_start = week_start - timedelta(days=7)
@@ -3452,6 +3468,8 @@ def write_snapshot_bundle(
                 archive_balance,
                 as_of=end,
                 all_repayments=repayments,
+                aging_sales=aging_sales,
+                aging_repayments=aging_repayments,
             ),
         )
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
@@ -4070,6 +4088,42 @@ def main():
         assert_fresh_source_rows_preserved(
             "Customer repayments", window_repayments, all_repayments, _repayment_key
         )
+
+    # Customer credit aging is a FY calculation, even on a recent seven-day
+    # sync.  The live window above is intentionally small for speed, but using
+    # it as the aging source makes every older invoice/receipt invisible and
+    # then incorrectly classifies the customer's entire ERP balance as 15+
+    # days due.  Build a separate complete-FY source from the monthly archive,
+    # overlaying the freshly fetched sales and repayments for the current
+    # window.  This source is used only for credit aging; period metrics keep
+    # using their normal selected-range rows.
+    aging_fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+    aging_archive_rows = load_archive_window(aging_fy_start, today)
+    missing_aging_months = []
+    _aging_month = aging_fy_start.replace(day=1)
+    while _aging_month < month_start:
+        if not (ARCHIVE_DIR / f"{_aging_month:%Y-%m}.json").exists():
+            missing_aging_months.append(f"{_aging_month:%Y-%m}")
+        if _aging_month.month == 12:
+            _aging_month = _aging_month.replace(year=_aging_month.year + 1, month=1)
+        else:
+            _aging_month = _aging_month.replace(month=_aging_month.month + 1)
+    if missing_aging_months:
+        raise RuntimeError(
+            "FY customer-aging archive is incomplete; refusing to publish 15+ values "
+            f"without {', '.join(missing_aging_months)}"
+        )
+    aging_sales = merge_rows_by_archive_key(
+        aging_archive_rows.get("sales"), fresh_sales, "sales"
+    )
+    aging_repayments = merge_repayment_rows(
+        archive_receipts_to_repayments(aging_archive_rows.get("receipts")),
+        all_repayments,
+    )
+    print(
+        f"  Customer aging source: FY {aging_fy_start}..{today}; "
+        f"{len(aging_sales)} sales, {len(aging_repayments)} repayments"
+    )
     # Match localhost Bank & Cash page: ERP rows plus derived bank/UPI sales,
     # expenses, and customer credit repayments. Bank statement rows are used
     # for balance anchoring only, not for the transaction table.
@@ -4439,7 +4493,9 @@ def main():
         }
 
     customers_full = sorted(customers_by_name.values(), key=lambda row: row.get("name", ""))
-    due_15_plus = _credit_due_15_plus_by_name(customers_full, all_sales, all_repayments, today)
+    due_15_plus = _credit_due_15_plus_by_name(
+        customers_full, aging_sales, aging_repayments, today
+    )
     for row in customers_full:
         row["credit_due_15_plus"] = due_15_plus.get(row.get("name", ""), 0.0)
     customers_outstanding = [
@@ -4642,6 +4698,8 @@ def main():
         archive_balances,
         customer_ledgers_full,
         sync_start if sync_mode == "full" else None,
+        aging_sales,
+        aging_repayments,
     )
     for month, ledger_payload in ledger_by_month.items():
         year, month_number = (int(part) for part in month.split("-"))
