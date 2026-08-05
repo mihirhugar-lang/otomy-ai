@@ -507,8 +507,11 @@ def load_archive_window(from_d, to_d):
             ])
     return out
 
-def merge_rows_by_archive_key(archive_rows, fresh_rows, section):
-    return _merge_archive_rows(archive_rows or [], fresh_rows or [], section)
+def merge_rows_by_archive_key(archive_rows, fresh_rows, section, *, drop_current_window=True):
+    return _merge_archive_rows(
+        archive_rows or [], fresh_rows or [], section,
+        drop_current_window=drop_current_window,
+    )
 
 
 def assert_fresh_source_rows_preserved(label, fresh_rows, merged_rows, key_fn):
@@ -1893,11 +1896,11 @@ def _expense_content_key(row):
         row.get("notes", ""),
     ))
 
-def _merge_archive_rows(existing, incoming, section):
+def _merge_archive_rows(existing, incoming, section, *, drop_current_window=True):
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-    if section in {"sales", "expenses", "cash", "bank", "receipts", "vendor_payments"}:
+    if drop_current_window and section in {"sales", "expenses", "cash", "bank", "receipts", "vendor_payments"}:
         # Fresh fetch is authoritative for its window. Every section we re-pull in full over
         # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
         # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
@@ -4209,8 +4212,13 @@ def main():
         archive_receipts_to_repayments(aging_archive_rows.get("receipts")),
         all_repayments,
     )
+    # `all_sales` already holds the complete archive + freshly fetched source
+    # window.  Do not apply the recent-window replacement rule a second time
+    # here: doing so removed the freshly fetched 30/31-Jul rows before the
+    # monthly archive was written, even though the engine had fetched them.
+    # That made completed ranges (which correctly read the archive) lose sales.
     archive_sales_for_write = merge_rows_by_archive_key(
-        all_sales, historical_aging_sales, "sales"
+        all_sales, historical_aging_sales, "sales", drop_current_window=False
     )
     print(
         f"  Customer aging source: history {aging_history_start}..{today}; "

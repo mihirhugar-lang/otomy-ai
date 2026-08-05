@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import unittest
 
-from gha_sync import _channels_for_payment_mode, _split_reconciles_sale
+import gha_sync
+from gha_sync import _channels_for_payment_mode, _split_reconciles_sale, merge_rows_by_archive_key
 
 
 class SaleSplitGuardTests(unittest.TestCase):
@@ -23,6 +24,24 @@ class SaleSplitGuardTests(unittest.TestCase):
         self.assertEqual(_channels_for_payment_mode(26631, "Credit"), (0.0, 26631.0, 0.0))
         self.assertEqual(_channels_for_payment_mode(12565, "Cash"), (12565.0, 0.0, 0.0))
         self.assertEqual(_channels_for_payment_mode(12006, "UPI"), (0.0, 0.0, 12006.0))
+
+    def test_archive_write_keeps_the_fresh_window_after_source_merge(self):
+        previous = gha_sync.MERGE_PROTECT_BEFORE_DATE
+        gha_sync.MERGE_PROTECT_BEFORE_DATE = "2026-07-30"
+        try:
+            rows = merge_rows_by_archive_key(
+                [
+                    {"date": "2026-07-29", "ticket_no": "10100", "amount": 100},
+                    {"date": "2026-07-30", "ticket_no": "10101", "amount": 200},
+                    {"date": "2026-07-31", "ticket_no": "10102", "amount": 300},
+                ],
+                [],
+                "sales",
+                drop_current_window=False,
+            )
+        finally:
+            gha_sync.MERGE_PROTECT_BEFORE_DATE = previous
+        self.assertEqual([row["ticket_no"] for row in rows], ["10100", "10101", "10102"])
 
 
 if __name__ == "__main__":

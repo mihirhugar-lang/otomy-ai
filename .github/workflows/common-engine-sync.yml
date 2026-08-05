@@ -117,7 +117,12 @@ jobs:
 
       - name: Verify the generated common bundle
         if: steps.initial_control.outputs.enabled == 'true'
-        run: python3 scripts/verify_dashboard_parity.py
+        run: |
+          python3 scripts/verify_dashboard_parity.py
+          # Validate the generated historical ledger/cashbook before any R2
+          # object is touched.  Read-back remains an integrity check; this
+          # pre-publish guard makes a bad recent build unable to go live.
+          python3 scripts/verify_r2_readback.py data data
 
       - name: Build content delta publish plan
         if: steps.initial_control.outputs.enabled == 'true'
