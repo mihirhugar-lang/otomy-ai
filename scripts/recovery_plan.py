@@ -3,9 +3,10 @@
 
 The common engine still publishes live objects at their existing keys.  Before
 that happens, this module describes the *old* objects that must be copied to a
-private ``recovery/<run-id>/objects`` prefix.  A normal delta backs up only the
-objects it can overwrite or delete; a full rebuild backs up the complete prior
-bundle.  The resulting plan is safe to keep in R2 and contains no ERP secrets.
+private ``recovery/<run-id>/objects`` prefix. Content-delta publishing backs
+up only the objects it can overwrite or delete, irrespective of whether the
+ERP fetch was recent or a full-history rebuild. The resulting plan is safe to
+keep in R2 and contains no ERP secrets.
 """
 
 from __future__ import annotations

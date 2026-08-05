@@ -66,6 +66,20 @@ class DeltaManifestTests(unittest.TestCase):
             self.assertFalse((changed_root / "b.json").exists())
             self.assertEqual(json.loads(deleted.read_text(encoding="utf-8"))["Objects"], [{"Key": "b.json"}])
 
+    def test_full_source_rebuild_still_uses_content_delta_after_bootstrap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "data"
+            root.mkdir()
+            (root / "a.json").write_text("old", encoding="utf-8")
+            _, manifest, *_ = self._plan(root, Path(directory) / "missing.json")
+            previous = Path(directory) / "previous.json"
+            previous.write_text(manifest.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / "a.json").write_text("corrected", encoding="utf-8")
+            plan, _, changed_root, changed, _ = self._plan(root, previous, requested_mode="full")
+            self.assertEqual(plan["publish_mode"], "delta")
+            self.assertEqual(changed.read_text(encoding="utf-8").splitlines(), ["a.json"])
+            self.assertEqual((changed_root / "a.json").read_text(encoding="utf-8"), "corrected")
+
     def test_invalid_previous_manifest_stops_before_publish_plan(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "data"
