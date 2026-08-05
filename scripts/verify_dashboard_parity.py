@@ -484,6 +484,17 @@ def verify_frontend_guard() -> None:
                 f"after loading the snapshot; found {needle!r}"
             )
     for needle in (
+        "'/api/customers/'",
+        "'/api/customers/outstanding'",
+        "const customerSnapshotPath=(u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding');",
+        "customerSnapshotPath || !requestedTo",
+    ):
+        if needle not in block:
+            fail(
+                "customer pages must prefer their canonical snapshot so browser archive "
+                f"calculation cannot replace the engine aging result; missing {needle!r}"
+            )
+    for needle in (
         "async function _dailyOperatingBalance(toDate)",
         "balance_daily.json",
         "await renderControlRoom(controlData)",
