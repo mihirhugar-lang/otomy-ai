@@ -299,6 +299,30 @@ def _sale_channels(s):
     return 0.0, 0.0, total
 
 
+def _sale_settlement_roundoff(s):
+    """Return the non-cash settlement difference allocated to cash/bank.
+
+    Loctell can finalise a cash or bank spot ticket a few rupees below/above
+    its invoice total.  The actual Final Cash/UPI is the physical movement and
+    must remain the only amount that changes the book balance.  This helper
+    exposes the invoice-vs-settlement difference on that ticket as an
+    informational reconciliation value; it never becomes a cash/bank entry.
+
+    A mixed tender has no safe channel allocation unless Loctell tells us one,
+    so it is deliberately left at zero rather than guessed.
+    """
+    gross = _sale_total(s)
+    cash, credit, upi = _sale_channels(s)
+    difference = round(gross - cash - credit - upi, 2)
+    if abs(difference) < 0.005:
+        return 0.0, 0.0
+    if cash > 0 and upi <= 0:
+        return difference, 0.0
+    if upi > 0 and cash <= 0:
+        return 0.0, difference
+    return 0.0, 0.0
+
+
 def _channels_for_payment_mode(total, payment_mode):
     """Canonical unsplit sale channels from CustomerWiseReport.
 
@@ -2709,7 +2733,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
             value = row.get("customer_name") or row.get("customer") or row.get("name") or ""
         return str(value).strip().upper()
 
-    def _row(day, particulars, party, kind, incoming, outgoing):
+    def _row(day, particulars, party, kind, incoming, outgoing, ticket_no=None, settlement_roundoff=0.0):
         return {
             "date": str(day)[:10],
             "particulars": particulars,
@@ -2717,6 +2741,10 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
             "kind": kind,
             "in": round(_num(incoming), 2),
             "out": round(_num(outgoing), 2),
+            "ticket_no": str(ticket_no or ""),
+            # Informational only: the running book balance uses in/out above.
+            # Negative means Loctell settled less than the gross invoice.
+            "settlement_roundoff": round(_num(settlement_roundoff), 2),
         }
 
     sales_in_range = [
@@ -2744,10 +2772,18 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     for sale in sales_in_range:
         s_cash, _s_credit, s_upi = _sale_channels(sale)
         party = sale.get("customer_name") or "Customer"
+        ticket_no = sale.get("ticket_no") or sale.get("ticket") or sale.get("bill_no")
+        cash_roundoff, bank_roundoff = _sale_settlement_roundoff(sale)
         if s_cash:
-            cash_rows.append(_row(sale.get("date"), "Spot sale (cash)", party, "sale", s_cash, 0))
+            cash_rows.append(_row(
+                sale.get("date"), "Spot sale (cash)", party, "sale", s_cash, 0,
+                ticket_no=ticket_no, settlement_roundoff=-cash_roundoff,
+            ))
         if s_upi:
-            bank_rows.append(_row(sale.get("date"), "Spot sale (UPI/Bank)", party, "sale", s_upi, 0))
+            bank_rows.append(_row(
+                sale.get("date"), "Spot sale (UPI/Bank)", party, "sale", s_upi, 0,
+                ticket_no=ticket_no, settlement_roundoff=-bank_roundoff,
+            ))
 
     for repayment in repayments_in_range:
         amount = _num(repayment.get("payment_received", repayment.get("amount")))
@@ -2841,6 +2877,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
             "rows": shown,
             "total_in": round(sum(_num(row.get("in")) for row in shown), 2),
             "total_out": round(sum(_num(row.get("out")) for row in shown), 2),
+            "settlement_roundoff": round(sum(_num(row.get("settlement_roundoff")) for row in shown), 2),
             "closing": round(running, 2),
         }
 

@@ -311,6 +311,16 @@ def verify_credit_aging_guard() -> None:
     ):
         if needle not in source:
             fail(f"gha_sync.py lost complete-FY credit-aging wiring: missing {needle!r}")
+
+    frontend = (ROOT / "index.html").read_text()
+    for needle in (
+        "async function _canonicalCustomerAgingAt(asOf)",
+        "The engine's customer snapshot includes complete pre-FY FIFO history.",
+        "const canonicalAging=await _canonicalCustomerAgingAt(asOf);",
+        "return aging?{...row,...aging}:row;",
+    ):
+        if needle not in frontend:
+            fail(f"frontend lost canonical customer-aging snapshot wiring: missing {needle!r}")
     print("Credit-aging guard passed: pre-FY FIFO history cannot be misclassified as 15+ debt.")
 
 
