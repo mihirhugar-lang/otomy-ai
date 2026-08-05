@@ -647,6 +647,16 @@ def _sales_fetch_windows(from_d, to_d, days=1):
         cursor = end + timedelta(days=1)
 
 
+def _ledger_archive_start(sync_mode, sync_start, month_start):
+    """Choose which monthly ledger archives a run is allowed to regenerate.
+
+    A recent sync refreshes source rows but must not recalculate a closed month
+    against a shorter operational window.  Historical month ledgers and their
+    canonical cashbooks are rebuilt together only by a full run.
+    """
+    return sync_start.replace(day=1) if sync_mode == "full" else month_start
+
+
 def fetch_sales(sess, from_d, to_d):
     """Fetch complete sales safely, including full-FY rebuilds.
 
@@ -4693,7 +4703,9 @@ def main():
 
     print("  Building canonical daily ledger archive...")
     ledger_by_month = {}
-    ledger_month = sync_start.replace(day=1)
+    # Preserve closed-month ledger/cashbook parity during normal 7-day syncs.
+    # A full rebuild explicitly regenerates every month from April onward.
+    ledger_month = _ledger_archive_start(sync_mode, sync_start, month_start)
     while ledger_month <= today:
         ledger_payload = build_ledger_view(
             all_sales,
