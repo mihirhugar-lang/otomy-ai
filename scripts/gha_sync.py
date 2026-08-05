@@ -299,6 +299,20 @@ def _sale_channels(s):
     return 0.0, 0.0, total
 
 
+def _split_reconciles_sale(sale, split, tolerance=1.0):
+    """Return true only when a ListSale channel split ties to its ticket.
+
+    ListSale can return stale or incomplete Final Cash/Credit/UPI values for an
+    older ticket. CustomerWiseReport still has the correct payment mode and
+    gross total in that case, so never let a partial split alter the archive.
+    """
+    if not isinstance(split, dict):
+        return False
+    gross_total = _sale_total(sale)
+    split_total = _num(split.get("cash")) + _num(split.get("credit")) + _num(split.get("upi"))
+    return gross_total > 0 and abs(split_total - gross_total) <= tolerance
+
+
 # Before this date, exclude ONLY genuine director drawings (category "... SIR SHARE"),
 # NOT company expenses a director merely fronted (notes like "KUMAR SIR PAID ..."). From
 # June 2026 onward the prior name-anywhere rule is kept unchanged (already reconciled).
@@ -545,7 +559,8 @@ def _clone_sess(sess):
 
 # ─── fetchers ────────────────────────────────────────────────────────────────
 
-def fetch_sales(sess, from_d, to_d):
+def _fetch_sales_window(sess, from_d, to_d):
+    """Fetch one bounded CustomerWiseReport window from Loctell."""
     tickets = []
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
     try:
@@ -593,6 +608,30 @@ def fetch_sales(sess, from_d, to_d):
     except Exception as e:
         print(f"  sales fetch error: {e}")
         raise ErpFetchError(f"sales fetch failed; skipped Otomy write: {e}") from e
+    return tickets
+
+
+def _sales_fetch_windows(from_d, to_d, days=31):
+    """Yield bounded inclusive windows so Loctell cannot truncate a FY report."""
+    cursor = from_d
+    while cursor <= to_d:
+        end = min(cursor + timedelta(days=days - 1), to_d)
+        yield cursor, end
+        cursor = end + timedelta(days=1)
+
+
+def fetch_sales(sess, from_d, to_d):
+    """Fetch complete sales safely, including full-FY rebuilds.
+
+    The ERP can return an incomplete CustomerWiseReport for a very large date
+    range without an HTTP error.  Smaller bounded windows are independently
+    complete; any failed window raises and prevents publication.
+    """
+    tickets = []
+    for window_start, window_end in _sales_fetch_windows(from_d, to_d):
+        window_tickets = _fetch_sales_window(_clone_sess(sess), window_start, window_end)
+        tickets.extend(window_tickets)
+        print(f"  sales {window_start}..{window_end}: {len(window_tickets)} tickets")
     return tickets
 
 
@@ -3817,14 +3856,17 @@ def main():
     try:
         _splits = fetch_sale_splits(sess, sync_start, today)
         _n = 0
+        _rejected = 0
         for _s in fresh_sales:
             _sp = _splits.get(str(_s.get("ticket_no") or ""))
             if _sp is not None and "mdp" in _sp:
                 _s["mdp_ton"] = _sp["mdp"]  # real MDP Ton (differs from sale/net tonnage)
-            if _sp and (_sp["cash"] + _sp["credit"] + _sp["upi"]) > 0:
+            if _sp and _split_reconciles_sale(_s, _sp):
                 _s["cash_amount"] = _sp["cash"]; _s["credit_amount"] = _sp["credit"]; _s["upi_amount"] = _sp["upi"]
                 _n += 1
-        print(f"  sale splits captured for {_n}/{len(fresh_sales)} fresh tickets")
+            elif _sp and (_num(_sp.get("cash")) + _num(_sp.get("credit")) + _num(_sp.get("upi"))) > 0:
+                _rejected += 1
+        print(f"  sale splits captured for {_n}/{len(fresh_sales)} fresh tickets; rejected {_rejected} non-reconciling splits")
     except Exception as _e:
         print(f"  sale splits unavailable: {_e}")
 
