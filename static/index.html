@@ -1327,8 +1327,41 @@ function _formatArchiveMaterials(materials){
   if(rows.length>4)parts.push(`+${rows.length-4} more`);
   return parts.join(', ');
 }
-function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={}){
+function _archiveCreditDue15Plus(balance,sales=[],receipts=[],asOf=today()){
+  const asOfDate=new Date(`${asOf}T00:00:00`),cutoffDate=new Date(asOfDate);
+  cutoffDate.setDate(cutoffDate.getDate()-15);
+  const cutoff=localISO(cutoffDate),keyOf=v=>String(v||'').trim().toUpperCase();
+  const invoicesByName={},receiptsByName={};
+  (sales||[]).forEach((sale,index)=>{
+    const name=keyOf(sale.customer_name),d=String(sale.date||'').slice(0,10),amount=Math.round(Math.max(_saleCreditAmount(sale),0)*100)/100;
+    if(name&&d&&d<=asOf&&amount>0)(invoicesByName[name]||(invoicesByName[name]=[])).push({date:d,unpaid:amount,index});
+  });
+  (receipts||[]).forEach((receipt,index)=>{
+    const name=keyOf(receipt.customer_name),d=String(receipt.date||'').slice(0,10),amount=Math.round(Math.max(_receiptPaymentAmount(receipt),0)*100)/100;
+    if(name&&d&&d<=asOf&&amount>0)(receiptsByName[name]||(receiptsByName[name]=[])).push({date:d,amount,index});
+  });
+  const targetByName={};
+  (balance?.receivables_rows||balance?.top_receivables||[]).forEach(row=>{targetByName[keyOf(row.name)]=Math.round(Math.max(_num(row.balance),0)*100)/100;});
+  const result={};
+  Object.keys(targetByName).forEach(name=>{
+    const invoices=(invoicesByName[name]||[]).sort((a,b)=>`${a.date}|${a.index}`.localeCompare(`${b.date}|${b.index}`));
+    const customerReceipts=(receiptsByName[name]||[]).sort((a,b)=>`${a.date}|${a.index}`.localeCompare(`${b.date}|${b.index}`));
+    customerReceipts.forEach(receipt=>{
+      let remaining=receipt.amount;
+      invoices.forEach(invoice=>{if(remaining<=0)return;const applied=Math.min(remaining,invoice.unpaid);invoice.unpaid=Math.round((invoice.unpaid-applied)*100)/100;remaining=Math.round((remaining-applied)*100)/100;});
+    });
+    const invoiceUnpaid=Math.round(invoices.reduce((sum,invoice)=>sum+invoice.unpaid,0)*100)/100,target=targetByName[name];
+    let olderUnmatched=0;
+    if(target<invoiceUnpaid){let reduction=Math.round((invoiceUnpaid-target)*100)/100;invoices.forEach(invoice=>{if(reduction<=0)return;const amount=Math.min(reduction,invoice.unpaid);invoice.unpaid=Math.round((invoice.unpaid-amount)*100)/100;reduction=Math.round((reduction-amount)*100)/100;});}
+    else olderUnmatched=Math.round((target-invoiceUnpaid)*100)/100;
+    const overdue=Math.round((invoices.filter(invoice=>invoice.date<=cutoff).reduce((sum,invoice)=>sum+invoice.unpaid,0)+olderUnmatched)*100)/100;
+    result[name]=Math.min(Math.max(overdue,0),target);
+  });
+  return result;
+}
+function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSales=sales,agingReceipts=receipts,asOf=today()){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
+  const due15=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf);
   const byName=new Map();
   function ensure(name){
     const key=(name||'Customer').trim()||'Customer';
@@ -1371,6 +1404,7 @@ function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={}){
     range_total_sales:Math.round(row.range_total_sales*100)/100,
     range_credit_sales:Math.round(row.range_credit_sales*100)/100,
     range_payment_received:Math.round(row.range_payment_received*100)/100,
+    credit_due_15_plus:Math.round(_num(due15[String(row.name||'').trim().toUpperCase()])*100)/100,
     range_latest_sale_date:row.range_latest_sale_date||null,
     latest_sale_date:row.latest_sale_date||null,
   })).sort((a,b)=>String(b.range_latest_sale_date||b.latest_sale_date||'').localeCompare(String(a.range_latest_sale_date||a.latest_sale_date||'')) || _num(b.total_outstanding)-_num(a.total_outstanding));
@@ -1511,7 +1545,10 @@ async function archiveFetch(url){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance){
       const months=from&&to?await OtomyDataEngine.range(from,to):[];
-      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName());
+      const asOfYear=Number(String(asOf).slice(0,4)),asOfMonth=Number(String(asOf).slice(5,7));
+      const fy=`${asOfMonth>=4?asOfYear:asOfYear-1}-04-01`;
+      const agingMonths=await OtomyDataEngine.range(fy,asOf);
+      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName(), _rowsInRange(agingMonths,'sales',fy,asOf), _rowsInRange(agingMonths,'receipts',fy,asOf), asOf);
     }
   }
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
