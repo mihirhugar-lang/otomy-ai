@@ -981,6 +981,24 @@ function _isVendorPaymentBankRow(row){
 function _withoutVendorPaymentRows(rows){
   return Array.isArray(rows)?rows.filter(row=>!_isVendorPaymentBankRow(row)):rows;
 }
+async function _canonicalCustomerAgingAt(asOf){
+  // The engine's customer snapshot includes complete pre-FY FIFO history.
+  // A historical report still builds its range sales/receipts from the archive,
+  // but must never re-age them from that shorter window: doing so can turn a
+  // current balance into a false 15+/30+ amount (for example HONNAPPA).
+  const url=`/api/customers/?active_only=false&as_of=${asOf}`;
+  const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'});
+  if(!r.ok)return new Map();
+  const rows=await r.json(), result=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(row=>{
+    const key=String(row.name||'').trim().toUpperCase();
+    if(key)result.set(key,{
+      credit_due_15_plus:Math.round(_num(row.credit_due_15_plus)*100)/100,
+      credit_due_30_plus:Math.round(_num(row.credit_due_30_plus)*100)/100,
+    });
+  });
+  return result;
+}
 function fiveMinuteCacheBust(){
   // R2 is the source of truth and can change between two requests while the page stays open.
   // A unique query key prevents an intermediary or an old browser cache from serving the prior
@@ -1548,7 +1566,17 @@ async function archiveFetch(url){
       const asOfYear=Number(String(asOf).slice(0,4)),asOfMonth=Number(String(asOf).slice(5,7));
       const fy=`${asOfMonth>=4?asOfYear:asOfYear-1}-04-01`;
       const agingMonths=await OtomyDataEngine.range(fy,asOf);
-      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName(), _rowsInRange(agingMonths,'sales',fy,asOf), _rowsInRange(agingMonths,'receipts',fy,asOf), asOf);
+      const rangeRows=_archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName(), _rowsInRange(agingMonths,'sales',fy,asOf), _rowsInRange(agingMonths,'receipts',fy,asOf), asOf);
+      // For the current as-of date, retain range metrics but take aging only
+      // from the common engine snapshot, which has the required pre-FY history.
+      if(String(asOf)===today()){
+        const canonicalAging=await _canonicalCustomerAgingAt(asOf);
+        return rangeRows.map(row=>{
+          const aging=canonicalAging.get(String(row.name||'').trim().toUpperCase());
+          return aging?{...row,...aging}:row;
+        });
+      }
+      return rangeRows;
     }
   }
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/vendors/' || u.pathname==='/api/vendors/payables')){
@@ -2328,9 +2356,10 @@ function pdfFullTableForId(id){
     const inL=channel==='cash'?'Cash In':'Bank/UPI In',outL=channel==='cash'?'Cash Out':'Bank/UPI Out';
     const spotL=channel==='cash'?'Spot Sale (Cash)':'Spot Sale (Bank/UPI)';
     const spotTot=rows.reduce((s,r)=>s+_rowSpot(r),0);
-    const body=[['(Opening)','Opening Balance','','','','',fmtINR(side.opening||0)]];
-    rows.forEach(r=>{const sp=_rowSpot(r);body.push([r.date,r.particulars||'',r.party||'-',r.in>0?fmtINR(r.in):'-',r.out>0?fmtINR(r.out):'-',sp>0?fmtINR(sp):'-',fmtINR(r.balance)]);});
-    return pdfTableBlock(title,['Date','Particulars','Party',inL,outL,spotL,'Balance'],body,['Closing Balance','','',fmtINR(side.total_in||0),fmtINR(side.total_out||0),fmtINR(spotTot),fmtINR(side.closing||0)]);
+    const roundoffTot=rows.reduce((s,r)=>s+_num(r.settlement_roundoff),0);
+    const body=[['(Opening)','Opening Balance','','','','','','',fmtINR(side.opening||0)]];
+    rows.forEach(r=>{const sp=_rowSpot(r),settlement=_num(r.settlement_roundoff);body.push([r.date,r.particulars||'',r.ticket_no||'-',r.party||'-',r.in>0?fmtINR(r.in):'-',r.out>0?fmtINR(r.out):'-',sp>0?fmtINR(sp):'-',settlement?fmtINR(settlement):'-',fmtINR(r.balance)]);});
+    return pdfTableBlock(title,['Date','Particulars','Ticket','Party',inL,outL,spotL,'Settlement Adj.','Balance'],body,['Closing Balance','','','',fmtINR(side.total_in||0),fmtINR(side.total_out||0),fmtINR(spotTot),roundoffTot?fmtINR(roundoffTot):'-',fmtINR(side.closing||0)]);
   }
   return null;
 }
@@ -3817,15 +3846,17 @@ function _cashBookHTML(book,channel){
   const inLabel=channel==='cash'?'Cash In':'Bank / UPI In',outLabel=channel==='cash'?'Cash Out':'Bank / UPI Out';
   const spotLabel=channel==='cash'?'Spot Sale (Cash)':'Spot Sale (Bank/UPI)';
   const spotTotal=rows.reduce((s,r)=>s+_rowSpot(r),0);
-  let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Party / Customer</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">'+spotLabel+'</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
-  html+=`<tr style="background:#f6efd6"><td>${esc((book&&book.opening_as_of)||'')}</td><td colspan="2"><em>Opening Balance</em></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
+  const roundoffTotal=rows.reduce((s,r)=>s+_num(r.settlement_roundoff),0);
+  let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Ticket</th><th>Party / Customer</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">'+spotLabel+'</th><th style="text-align:right" title="Informational only — does not change cash or bank balance">Settlement Adj.</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
+  html+=`<tr style="background:#f6efd6"><td>${esc((book&&book.opening_as_of)||'')}</td><td colspan="3"><em>Opening Balance</em></td><td></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
   rows.forEach(r=>{
     const adj=r.adjustment?' style="background:#fff6e0;font-style:italic"':'';
     const sp=_rowSpot(r);
-    html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.party||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;color:#1565c0">${sp>0?fmtINR(sp):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
+    const settlement=_num(r.settlement_roundoff);
+    html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.ticket_no||'—')}</td><td>${esc(r.party||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;color:#1565c0">${sp>0?fmtINR(sp):''}</td><td style="text-align:right;color:${settlement<0?'#c62828':'#2e7d32'}">${settlement?fmtINR(settlement):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="7" class="empty">No movements in this range</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;color:#1565c0"><strong>${fmtINR(spotTotal)}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
+  if(!rows.length)html+='<tr><td colspan="9" class="empty">No movements in this range</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="4"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;color:#1565c0"><strong>${fmtINR(spotTotal)}</strong></td><td style="text-align:right;color:${roundoffTotal<0?'#c62828':'#2e7d32'}"><strong>${roundoffTotal?fmtINR(roundoffTotal):''}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
   return html;
 }
 function renderCashBook(channel,tblId,pagerId){

@@ -8,6 +8,7 @@ import gha_sync
 from gha_sync import (
     _channels_for_payment_mode,
     _ledger_archive_start,
+    _sale_settlement_roundoff,
     _split_reconciles_sale,
     merge_rows_by_archive_key,
 )
@@ -31,6 +32,15 @@ class SaleSplitGuardTests(unittest.TestCase):
             {"amount": 3173.0, "transport_charge": 0.0},
             {"cash": 3170.0, "credit": 0.0, "upi": 0.0},
         ))
+
+    def test_exposes_small_final_cash_round_off_without_changing_settlement(self):
+        self.assertEqual(
+            _sale_settlement_roundoff({
+                "amount": 3173.0, "transport_charge": 0.0,
+                "cash_amount": 3170.0, "credit_amount": 0.0, "upi_amount": 0.0,
+            }),
+            (3.0, 0.0),
+        )
 
     def test_customer_wise_payment_mode_has_a_canonical_channel_baseline(self):
         self.assertEqual(_channels_for_payment_mode(26631, "Credit"), (0.0, 26631.0, 0.0))
