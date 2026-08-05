@@ -3016,7 +3016,60 @@ def _format_material_sold(materials):
         parts.append(f"+{len(rows) - 4} more")
     return ", ".join(parts)
 
-def build_customer_range_rows(customers_full, all_sales, range_sales, range_repayments, archive_balance=None):
+def _credit_due_15_plus_by_name(customers, all_sales, all_repayments, as_of):
+    """Calculate unpaid credit material aged 15 days or more per customer."""
+    as_of = str(as_of or datetime.now(IST).date())[:10]
+    cutoff = (date.fromisoformat(as_of) - timedelta(days=15)).isoformat()
+    sales_by_name = {}
+    for index, sale in enumerate(all_sales or []):
+        name = str(sale.get("customer_name") or "").strip()
+        sale_date = str(sale.get("date") or "")[:10]
+        if not name or not sale_date or sale_date > as_of:
+            continue
+        _cash, credit, _upi = _sale_channels(sale)
+        credit = round(max(credit, 0.0), 2)
+        if credit > 0:
+            sales_by_name.setdefault(name, []).append({"date": sale_date, "unpaid": credit, "index": index})
+    receipts_by_name = {}
+    for index, repayment in enumerate(all_repayments or []):
+        name = str(repayment.get("customer_name") or "").strip()
+        repayment_date = str(repayment.get("date") or "")[:10]
+        amount = round(max(_num(repayment.get("payment_received", repayment.get("amount"))), 0.0), 2)
+        if name and repayment_date and repayment_date <= as_of and amount > 0:
+            receipts_by_name.setdefault(name, []).append({"date": repayment_date, "amount": amount, "index": index})
+
+    result = {}
+    for customer in customers or []:
+        name = str(customer.get("name") or "").strip()
+        invoices = sorted(sales_by_name.get(name, []), key=lambda row: (row["date"], row["index"]))
+        receipts = sorted(receipts_by_name.get(name, []), key=lambda row: (row["date"], row["index"]))
+        for receipt in receipts:
+            remaining = receipt["amount"]
+            for invoice in invoices:
+                if remaining <= 0:
+                    break
+                applied = min(remaining, invoice["unpaid"])
+                invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
+                remaining = round(remaining - applied, 2)
+        invoice_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
+        target = round(max(_num(customer.get("outstanding", customer.get("balance", 0.0))), 0.0), 2)
+        if target < invoice_unpaid:
+            extra_unpaid = round(invoice_unpaid - target, 2)
+            for invoice in invoices:
+                if extra_unpaid <= 0:
+                    break
+                reduction = min(extra_unpaid, invoice["unpaid"])
+                invoice["unpaid"] = round(invoice["unpaid"] - reduction, 2)
+                extra_unpaid = round(extra_unpaid - reduction, 2)
+            older_unmatched = 0.0
+        else:
+            older_unmatched = round(target - invoice_unpaid, 2)
+        overdue = round(sum(row["unpaid"] for row in invoices if row["date"] <= cutoff) + older_unmatched, 2)
+        result[name] = round(min(max(overdue, 0.0), target), 2)
+    return result
+
+
+def build_customer_range_rows(customers_full, all_sales, range_sales, range_repayments, archive_balance=None, as_of=None, all_repayments=None):
     metrics = {}
     for sale in all_sales or []:
         name = str(sale.get("customer_name") or "").strip()
@@ -3079,6 +3132,9 @@ def build_customer_range_rows(customers_full, all_sales, range_sales, range_repa
             if name:
                 outstanding_by_name[name] = _num(row.get("balance"))
 
+    due_15_plus = _credit_due_15_plus_by_name(
+        customers_full, all_sales, all_repayments if all_repayments is not None else range_repayments, as_of
+    ) if as_of else {}
     rows = []
     for customer in customers_full or []:
         row = dict(customer)
@@ -3093,6 +3149,7 @@ def build_customer_range_rows(customers_full, all_sales, range_sales, range_repa
             "range_total_sales": round(_num(metric.get("range_total_sales")), 2),
             "range_credit_sales": round(_num(metric.get("range_credit_sales")), 2),
             "range_payment_received": round(_num(metric.get("range_payment_received")), 2),
+            "credit_due_15_plus": due_15_plus.get(name, round(max(_num(row.get("credit_due_15_plus")), 0.0), 2)),
             "range_latest_sale_date": metric.get("range_latest_sale_date") or None,
             "latest_sale_date": metric.get("latest_sale_date") or None,
         })
@@ -3393,6 +3450,8 @@ def write_snapshot_bundle(
                 rows_between(all_sales, start, end),
                 rows_between(repayments, start, end),
                 archive_balance,
+                as_of=end,
+                all_repayments=repayments,
             ),
         )
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
@@ -4380,6 +4439,9 @@ def main():
         }
 
     customers_full = sorted(customers_by_name.values(), key=lambda row: row.get("name", ""))
+    due_15_plus = _credit_due_15_plus_by_name(customers_full, all_sales, all_repayments, today)
+    for row in customers_full:
+        row["credit_due_15_plus"] = due_15_plus.get(row.get("name", ""), 0.0)
     customers_outstanding = [
         {
             "id": row.get("id"),
