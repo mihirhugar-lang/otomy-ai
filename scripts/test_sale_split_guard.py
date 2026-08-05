@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 import gha_sync
-from gha_sync import _channels_for_payment_mode, _split_reconciles_sale, merge_rows_by_archive_key
+from gha_sync import (
+    _channels_for_payment_mode,
+    _ledger_archive_start,
+    _split_reconciles_sale,
+    merge_rows_by_archive_key,
+)
 
 
 class SaleSplitGuardTests(unittest.TestCase):
@@ -42,6 +48,16 @@ class SaleSplitGuardTests(unittest.TestCase):
         finally:
             gha_sync.MERGE_PROTECT_BEFORE_DATE = previous
         self.assertEqual([row["ticket_no"] for row in rows], ["10100", "10101", "10102"])
+
+    def test_recent_sync_preserves_closed_month_ledger(self):
+        self.assertEqual(
+            _ledger_archive_start("recent", date(2026, 7, 30), date(2026, 8, 1)),
+            date(2026, 8, 1),
+        )
+        self.assertEqual(
+            _ledger_archive_start("full", date(2026, 4, 1), date(2026, 8, 1)),
+            date(2026, 4, 1),
+        )
 
 
 if __name__ == "__main__":
