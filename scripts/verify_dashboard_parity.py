@@ -465,6 +465,10 @@ def verify_frontend_guard() -> None:
         "function _repaymentRowsForDisplay(data,reclassified)",
         "repaymentOverlapByCustomer",
         "r.is_operating_expense!==false",
+        "onclick=\"printDashboardConsolidated()\"",
+        "function printDashboardConsolidated()",
+        "onclick=\"printThreeMonthActiveCustomers()\"",
+        "function printThreeMonthActiveCustomers()",
     ):
         if needle not in root_html:
             fail(f"frontend balance-chain guard missing {needle!r}")
