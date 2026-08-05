@@ -799,6 +799,8 @@ def verify_customer_page_guard() -> None:
         "Material Sold",
         "Credit Sale",
         "Payment Received",
+        "Credit Due 15+ Days",
+        "credit_due_15_plus",
         "Total Outstanding",
         "range_latest_sale_date||r.latest_sale_date",
     )
