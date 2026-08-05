@@ -611,8 +611,8 @@ def _fetch_sales_window(sess, from_d, to_d):
     return tickets
 
 
-def _sales_fetch_windows(from_d, to_d, days=31):
-    """Yield bounded inclusive windows so Loctell cannot truncate a FY report."""
+def _sales_fetch_windows(from_d, to_d, days=1):
+    """Yield daily windows so Loctell cannot truncate a FY sales report."""
     cursor = from_d
     while cursor <= to_d:
         end = min(cursor + timedelta(days=days - 1), to_d)
@@ -624,8 +624,8 @@ def fetch_sales(sess, from_d, to_d):
     """Fetch complete sales safely, including full-FY rebuilds.
 
     The ERP can return an incomplete CustomerWiseReport for a very large date
-    range without an HTTP error.  Smaller bounded windows are independently
-    complete; any failed window raises and prevents publication.
+    range without an HTTP error. Daily ERP windows are independently complete;
+    any failed window raises and prevents publication.
     """
     tickets = []
     for window_start, window_end in _sales_fetch_windows(from_d, to_d):
