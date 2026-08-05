@@ -299,6 +299,23 @@ def _sale_channels(s):
     return 0.0, 0.0, total
 
 
+def _channels_for_payment_mode(total, payment_mode):
+    """Canonical unsplit sale channels from CustomerWiseReport.
+
+    ListCustomerWiseReport is the authoritative source for a ticket's gross
+    value and payment mode.  Store this baseline on every fresh row so a stale
+    archived ListSale split can never survive a rebuild; a ListSale split may
+    replace it only after it reconciles to the same gross value.
+    """
+    total = round(_num(total), 2)
+    mode = (payment_mode or "Credit").upper()
+    if mode == "CREDIT":
+        return 0.0, total, 0.0
+    if "CASH" in mode:
+        return total, 0.0, 0.0
+    return 0.0, 0.0, total
+
+
 def _split_reconciles_sale(sale, split, tolerance=1.0):
     """Return true only when a ListSale channel split ties to its ticket.
 
@@ -592,6 +609,10 @@ def _fetch_sales_window(sess, from_d, to_d):
                 gross_total = _num(cols[10] if len(cols) > 10 else (cols[13] if len(cols) > 13 else cols[8]))
                 transport_charge = round(gross_total - material_amount, 2)
                 dd, mm, yyyy = cols[2].split("-")
+                payment_mode = _norm_pay(cols[9])
+                cash_amount, credit_amount, upi_amount = _channels_for_payment_mode(
+                    gross_total, payment_mode
+                )
                 tickets.append({
                     "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
                     "sale_time": cols[3].strip(),
@@ -602,7 +623,10 @@ def _fetch_sales_window(sess, from_d, to_d):
                     "qty_mt": qty, "mdp_ton": 0.0,  # real MDP Ton is applied from ListSale splits; never default to qty
                     "amount": material_amount,
                     "transport_charge": transport_charge,
-                    "payment_mode": _norm_pay(cols[9]),
+                    "payment_mode": payment_mode,
+                    "cash_amount": cash_amount,
+                    "credit_amount": credit_amount,
+                    "upi_amount": upi_amount,
                     "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
                 })
     except Exception as e:
