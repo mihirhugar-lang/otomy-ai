@@ -121,9 +121,16 @@ def prepare_plan(
     manifest = build_manifest(root, requested_mode=requested_mode, run_id=run_id)
     current_files = manifest["files"]
     previous_files = (previous or {}).get("files") or {}
-    full_requested = requested_mode.lower() in {"full", "fy", "rebuild"}
     bootstrap = previous is None
-    publish_mode = "full" if full_requested or bootstrap else "delta"
+    # Fetch scope and publish scope are deliberately separate. A full ERP
+    # rebuild re-creates the entire FY locally, but an existing R2 bundle still
+    # needs only its content changes uploaded. Treating every full rebuild as
+    # a wholesale R2 rewrite made rollback copy every object and hit the
+    # workflow timeout before verified data could be published.
+    #
+    # The manifest provides the exact changed and deleted key sets, so a delta
+    # publish remains fully reversible even after a full source rebuild.
+    publish_mode = "full" if bootstrap else "delta"
 
     changed = sorted(
         name for name, metadata in current_files.items()
