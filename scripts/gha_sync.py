@@ -3023,26 +3023,29 @@ def _credit_due_15_plus_by_name(customers, all_sales, all_repayments, as_of):
     sales_by_name = {}
     for index, sale in enumerate(all_sales or []):
         name = str(sale.get("customer_name") or "").strip()
+        customer_key = _norm_name(name)
         sale_date = str(sale.get("date") or "")[:10]
-        if not name or not sale_date or sale_date > as_of:
+        if not customer_key or not sale_date or sale_date > as_of:
             continue
         _cash, credit, _upi = _sale_channels(sale)
         credit = round(max(credit, 0.0), 2)
         if credit > 0:
-            sales_by_name.setdefault(name, []).append({"date": sale_date, "unpaid": credit, "index": index})
+            sales_by_name.setdefault(customer_key, []).append({"date": sale_date, "unpaid": credit, "index": index})
     receipts_by_name = {}
     for index, repayment in enumerate(all_repayments or []):
         name = str(repayment.get("customer_name") or "").strip()
+        customer_key = _norm_name(name)
         repayment_date = str(repayment.get("date") or "")[:10]
         amount = round(max(_num(repayment.get("payment_received", repayment.get("amount"))), 0.0), 2)
-        if name and repayment_date and repayment_date <= as_of and amount > 0:
-            receipts_by_name.setdefault(name, []).append({"date": repayment_date, "amount": amount, "index": index})
+        if customer_key and repayment_date and repayment_date <= as_of and amount > 0:
+            receipts_by_name.setdefault(customer_key, []).append({"date": repayment_date, "amount": amount, "index": index})
 
     result = {}
     for customer in customers or []:
         name = str(customer.get("name") or "").strip()
-        invoices = sorted(sales_by_name.get(name, []), key=lambda row: (row["date"], row["index"]))
-        receipts = sorted(receipts_by_name.get(name, []), key=lambda row: (row["date"], row["index"]))
+        customer_key = _norm_name(name)
+        invoices = sorted(sales_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
+        receipts = sorted(receipts_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
         for receipt in receipts:
             remaining = receipt["amount"]
             for invoice in invoices:
@@ -4089,18 +4092,17 @@ def main():
             "Customer repayments", window_repayments, all_repayments, _repayment_key
         )
 
-    # Customer credit aging is a FY calculation, even on a recent seven-day
-    # sync.  The live window above is intentionally small for speed, but using
-    # it as the aging source makes every older invoice/receipt invisible and
-    # then incorrectly classifies the customer's entire ERP balance as 15+
-    # days due.  Build a separate complete-FY source from the monthly archive,
-    # overlaying the freshly fetched sales and repayments for the current
-    # window.  This source is used only for credit aging; period metrics keep
-    # using their normal selected-range rows.
+    # Credit aging needs the sale history that existed BEFORE this FY as well.
+    # FIFO receipts consume those older invoices first; without them, a FY-only
+    # source can make known FY receipts appear to overpay every invoice and
+    # incorrectly label the entire ERP balance as 15+ days due.  Keep this
+    # history internal to aging: visible sales/period reports remain FY/range
+    # based exactly as before.
+    aging_history_start = CUST_LEDGER_START
     aging_fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
-    aging_archive_rows = load_archive_window(aging_fy_start, today)
+    aging_archive_rows = load_archive_window(aging_history_start, today)
     missing_aging_months = []
-    _aging_month = aging_fy_start.replace(day=1)
+    _aging_month = aging_history_start.replace(day=1)
     while _aging_month < month_start:
         if not (ARCHIVE_DIR / f"{_aging_month:%Y-%m}.json").exists():
             missing_aging_months.append(f"{_aging_month:%Y-%m}")
@@ -4108,20 +4110,35 @@ def main():
             _aging_month = _aging_month.replace(year=_aging_month.year + 1, month=1)
         else:
             _aging_month = _aging_month.replace(month=_aging_month.month + 1)
+    historical_aging_sales = []
     if missing_aging_months:
-        raise RuntimeError(
-            "FY customer-aging archive is incomplete; refusing to publish 15+ values "
-            f"without {', '.join(missing_aging_months)}"
+        print(
+            "  Bootstrapping customer-aging sale history before FY: "
+            f"missing archive months {', '.join(missing_aging_months)}"
         )
+        historical_aging_sales = fetch_sales(
+            _clone_sess(sess), aging_history_start, aging_fy_start - timedelta(days=1)
+        )
+        if not historical_aging_sales:
+            raise RuntimeError(
+                "customer-aging history bootstrap returned no pre-FY sales; "
+                "refusing to publish potentially false 15+ values"
+            )
     aging_sales = merge_rows_by_archive_key(
-        aging_archive_rows.get("sales"), fresh_sales, "sales"
+        aging_archive_rows.get("sales"), historical_aging_sales, "sales"
+    )
+    aging_sales = merge_rows_by_archive_key(
+        aging_sales, fresh_sales, "sales"
     )
     aging_repayments = merge_repayment_rows(
         archive_receipts_to_repayments(aging_archive_rows.get("receipts")),
         all_repayments,
     )
+    archive_sales_for_write = merge_rows_by_archive_key(
+        all_sales, historical_aging_sales, "sales"
+    )
     print(
-        f"  Customer aging source: FY {aging_fy_start}..{today}; "
+        f"  Customer aging source: history {aging_history_start}..{today}; "
         f"{len(aging_sales)} sales, {len(aging_repayments)} repayments"
     )
     # Match localhost Bank & Cash page: ERP rows plus derived bank/UPI sales,
@@ -4614,7 +4631,7 @@ def main():
     print("  Updating monthly archive files...")
     write_archive_updates(
         today,
-        all_sales,
+        archive_sales_for_write,
         all_expenses,
         cash_rows,
         bank_rows,

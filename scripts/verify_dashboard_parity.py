@@ -271,7 +271,7 @@ def verify_negative_number_guard() -> None:
 
 
 def verify_credit_aging_guard() -> None:
-    """Prove recent-window rows cannot be used as the FY aging source."""
+    """Prove recent/FY-only rows cannot replace FIFO sale history for aging."""
     gha_sync_path = ROOT / "scripts" / "gha_sync.py"
     spec = importlib.util.spec_from_file_location("otomy_gha_sync_credit_aging", gha_sync_path)
     if spec is None or spec.loader is None:
@@ -279,24 +279,28 @@ def verify_credit_aging_guard() -> None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    customer = [{"name": "HONNAPPA", "outstanding": 217194.0}]
+    customer = [{"name": "HONNAPPA", "outstanding": 229346.0}]
     fy_sales = [
         {"customer_name": "HONNAPPA", "date": "2026-04-01", "payment_mode": "Credit", "amount": 500000.0, "transport_charge": 0.0},
         {"customer_name": "HONNAPPA", "date": "2026-08-01", "payment_mode": "Credit", "amount": 300000.0, "transport_charge": 0.0},
     ]
-    fy_repayments = [{"customer_name": "HONNAPPA", "date": "2026-04-02", "payment_received": 500000.0, "amount": 500000.0}]
+    fy_repayments = [{"customer_name": "HONNAPPA", "date": "2026-04-02", "payment_received": 1000000.0, "amount": 1000000.0}]
+    history_sales = [{"customer_name": "Honnappa", "date": "2025-03-01", "payment_mode": "Credit", "amount": 500000.0, "transport_charge": 0.0}] + fy_sales
     recent_only = module._credit_due_15_plus_by_name(customer, [], [], "2026-08-05")["HONNAPPA"]
-    complete_fy = module._credit_due_15_plus_by_name(customer, fy_sales, fy_repayments, "2026-08-05")["HONNAPPA"]
-    if recent_only != 217194.0 or complete_fy != 0.0:
+    fy_only = module._credit_due_15_plus_by_name(customer, fy_sales, fy_repayments, "2026-08-05")["HONNAPPA"]
+    complete_history = module._credit_due_15_plus_by_name(customer, history_sales, fy_repayments, "2026-08-05")["HONNAPPA"]
+    if recent_only != 229346.0 or fy_only != 229346.0 or complete_history != 0.0:
         fail(
-            "credit-aging fixture did not reproduce/protect the recent-window bug: "
-            f"recent_only={recent_only} complete_fy={complete_fy}"
+            "credit-aging fixture did not reproduce/protect the missing-history bug: "
+            f"recent_only={recent_only} fy_only={fy_only} complete_history={complete_history}"
         )
 
     source = gha_sync_path.read_text()
     for needle in (
-        "aging_fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)",
-        "aging_archive_rows = load_archive_window(aging_fy_start, today)",
+        "aging_history_start = CUST_LEDGER_START",
+        "aging_archive_rows = load_archive_window(aging_history_start, today)",
+        "historical_aging_sales = fetch_sales(",
+        "archive_sales_for_write = merge_rows_by_archive_key(",
         "aging_sales = merge_rows_by_archive_key(",
         "aging_repayments = merge_repayment_rows(",
         "customers_full, aging_sales, aging_repayments, today",
@@ -305,7 +309,7 @@ def verify_credit_aging_guard() -> None:
     ):
         if needle not in source:
             fail(f"gha_sync.py lost complete-FY credit-aging wiring: missing {needle!r}")
-    print("Credit-aging guard passed: recent-window data cannot classify the complete ERP balance as 15+.")
+    print("Credit-aging guard passed: pre-FY FIFO history cannot be misclassified as 15+ debt.")
 
 
 def verify_archive_balance_guard() -> None:
