@@ -96,6 +96,8 @@ REQUIRED_CUSTOMER_RANGE_FIELDS = (
     "material_sold",
     "range_credit_sales",
     "range_payment_received",
+    "credit_due_15_plus",
+    "credit_due_30_plus",
     "total_outstanding",
     "range_latest_sale_date",
     "latest_sale_date",
@@ -854,6 +856,8 @@ def verify_customer_page_guard() -> None:
         "Payment Received",
         "Credit Due 15+ Days",
         "credit_due_15_plus",
+        "Credit Due 30+ Days",
+        "credit_due_30_plus",
         "Total Outstanding",
         "range_latest_sale_date||r.latest_sale_date",
     )
