@@ -492,8 +492,7 @@ def verify_frontend_guard() -> None:
     for needle in (
         "'/api/customers/'",
         "'/api/customers/outstanding'",
-        "const customerSnapshotPath=(u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding');",
-        "customerSnapshotPath || !requestedTo",
+        "const preferSnapshotFirst=snapshotPreferredPath;",
     ):
         if needle not in block:
             fail(
@@ -511,8 +510,8 @@ def verify_frontend_guard() -> None:
         "OtomyDataEngine.summarize(",
         "OtomyDataEngine.day(",
         "const snapshotPreferredPath=new Set(",
-        "String(requestedTo)>=today()",
-        "String(requestedTo)===yesterday()",
+        "const preferSnapshotFirst=snapshotPreferredPath;",
+        "const archived=preferSnapshotFirst?await archiveFetch(url):null;",
         "'/api/sync/erp/cashbook'",
         "async function _buildCashBook(from,to)",
         "const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`)",
