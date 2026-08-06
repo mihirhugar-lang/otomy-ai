@@ -2183,19 +2183,18 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Every Print / PDF action produces an actual PDF file. Browser-print HTML
-  // blobs looked like links on phones and could not be forwarded reliably.
-  const staging=document.createElement('div');
-  staging.className=className;
-  staging.style.cssText='position:fixed;left:-12000px;top:0;width:1120px;display:block;opacity:0;pointer-events:none;z-index:-1';
-  staging.innerHTML=content;
-  document.body.appendChild(staging);
-  try{
-    const subtitle=staging.querySelector('.print-ph p')?.innerText||'';
-    return downloadPdfReport(pdfBuildPayload(title,staging,subtitle));
+  // iOS installed app (standalone): print in-place is blocked by iOS -> open in a Safari view & auto-print.
+  if(_isStandalonePWA() && _isIOS()){
+    printViaBlob(title, content, className);
+    return;
   }
-  catch(e){flash('Could not create PDF file',false);return false;}
-  finally{staging.remove();}
+  // Mobile browser (Safari/Chrome tab): hidden iframe -> no new tab, dismisses back to the page.
+  if(isMobilePrint() && !_isStandalonePWA()){
+    printViaIframe(title, content, className);
+    return;
+  }
+  // Desktop and Android installed app: print the current document directly via the @media print rules.
+  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
@@ -2520,41 +2519,13 @@ function buildPdfBytes(report){
 function downloadPdfReport(payload){
   const pdf=buildPdfBytes(payload);
   const blob=new Blob([pdf],{type:'application/pdf'});
-  const filename=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
-  const url=URL.createObjectURL(blob);
-  const mobile=isMobilePrint()||_isStandalonePWA();
-  const openPdf=()=>{
-    const win=window.open(url,'_blank');
-    if(!win)window.location.href=url;
-    flash('PDF opened. Use Share to forward it.');
-  };
-  // On a phone this invokes the native share sheet with a real PDF attachment
-  // (WhatsApp, Mail, Files, etc.), never an HTML/blob link.
-  let file=null,canShare=false;
-  try{
-    file=new File([blob],filename,{type:'application/pdf'});
-    canShare=mobile&&typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare({files:[file]}));
-  }catch(e){}
-  if(canShare){
-    navigator.share({title:pdfClean(payload.title),files:[file]}).then(()=>flash('PDF shared')).catch(e=>{
-      if(e?.name!=='AbortError')openPdf();
-    });
-    setTimeout(()=>URL.revokeObjectURL(url),300000);
-    flash('Opening PDF share sheet…');
-    return true;
-  }
-  if(mobile){
-    openPdf();
-    setTimeout(()=>URL.revokeObjectURL(url),300000);
-    return true;
-  }
   const a=document.createElement('a');
-  a.href=url;
-  a.download=filename;
+  a.href=URL.createObjectURL(blob);
+  a.download=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
   flash('PDF downloaded');
   return true;
 }
