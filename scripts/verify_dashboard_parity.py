@@ -916,18 +916,21 @@ def verify_pdf_export_guard() -> None:
         "CrusherOps — Dashboard Daily Report",
         "&nbsp;|&nbsp; Printed:",
         "OTOMY_APP_VERSION='2026-08-02-stale-guard-v1'",
+        "return downloadPdfReport(pdfBuildPayload(title,staging,subtitle));",
+        "new File([blob],filename,{type:'application/pdf'})",
+        "navigator.share({title:pdfClean(payload.title),files:[file]})",
     )
     for needle in required:
         if needle not in root_html:
             fail(f"PDF print guard missing {needle!r}")
     forbidden = (
-        "return downloadPdfReport(pdfBuildPayload(",
-        "downloadPdfReport(pdfBuildPayload('Dashboard Daily Report'",
+        "printViaBlob(title, content, className);",
+        "printViaIframe(title, content, className);",
     )
     for needle in forbidden:
         if needle in root_html:
             fail(f"PDF print guard found direct downloader path: {needle!r}")
-    print("PDF print guard passed: all page PDF buttons use the browser print flow.")
+    print("PDF print guard passed: all page PDF buttons generate a shareable PDF file.")
 
 
 def verify_compliance_code_guard() -> None:
