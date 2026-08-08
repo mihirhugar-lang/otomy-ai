@@ -14,6 +14,7 @@ on:
         options:
           - full
           - recent
+          - vendor
         default: full
       full_from:
         description: "Full rebuild start date (YYYY-MM-DD)"
@@ -97,7 +98,9 @@ jobs:
 
       - name: Run canonical cashbook fixture guard
         if: steps.initial_control.outputs.enabled == 'true'
-        run: python3 scripts/test_cashbook_parity.py
+        run: |
+          python3 scripts/test_cashbook_parity.py
+          python3 scripts/test_vendor_aging.py
 
       - name: Run the single Loctell common engine
         if: steps.initial_control.outputs.enabled == 'true'
@@ -113,12 +116,25 @@ jobs:
           OTOMY_ERP_RETRY_DELAY: "1.5"
           OTOMY_DEBTOR_WORKERS: "4"
           OTOMY_BALANCE_WORKERS: "4"
-        run: python3 scripts/gha_sync.py
+        run: |
+          if [ "$OTOMY_SYNC_MODE" = "vendor" ]; then
+            python3 scripts/vendor_only_refresh.py --from-date "$OTOMY_FULL_FROM"
+          else
+            python3 scripts/gha_sync.py
+          fi
 
       - name: Verify the generated common bundle
         if: steps.initial_control.outputs.enabled == 'true'
         run: |
-          python3 scripts/verify_dashboard_parity.py
+          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" = "vendor" ]; then
+            # This lane deliberately changes only vendor objects.  Validate the
+            # common code invariants plus the vendor bundle itself, without
+            # regenerating/rechecking unrelated financial snapshots.
+            python3 scripts/verify_dashboard_parity.py --code-only
+            python3 scripts/verify_vendor_aging.py --from-date "${{ github.event.inputs.full_from }}"
+          else
+            python3 scripts/verify_dashboard_parity.py
+          fi
           # Validate the generated historical ledger/cashbook before any R2
           # object is touched.  Read-back remains an integrity check; this
           # pre-publish guard makes a bad recent build unable to go live.

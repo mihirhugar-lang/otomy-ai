@@ -36,6 +36,7 @@ SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
+VENDOR_MASTER_PATH = Path(__file__).resolve().parent.parent / "seed" / "vendor_master.json"
 BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
@@ -447,6 +448,14 @@ def load_customer_master_overrides():
         with open(CUSTOMER_MASTER_OVERRIDES_PATH) as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def load_vendor_master():
+    try:
+        with open(VENDOR_MASTER_PATH) as f:
+            rows = json.load(f)
+        return rows if isinstance(rows, list) else []
     except Exception:
         return []
 
@@ -2963,6 +2972,114 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
     return ledgers
 
 
+def vendor_payable_due_aging(entries, payable, as_of):
+    """Customer-style FIFO aging for supplier bills, anchored to Loctell payable."""
+    target = round(max(_num(payable), 0.0), 2)
+    result = {f"payable_due_{days}_plus": 0.0 for days in (15, 30, 45, 60)}
+    result["payable_prior_ledger"] = 0.0
+    if target <= 0:
+        return result
+    invoices, payments = [], []
+    for entry in entries or []:
+        entry_date = str(entry.get("date") or "")[:10]
+        if not entry_date or entry_date > str(as_of):
+            continue
+        amount = round(_num(entry.get("credit") or entry.get("debit")), 2)
+        if amount <= 0:
+            continue
+        if entry.get("type") == "purchase" or entry.get("vch_type") == "Purchase":
+            invoices.append({"date": entry_date, "unpaid": amount})
+        else:
+            payments.append(amount)
+    invoices.sort(key=lambda row: row["date"])
+    for amount in payments:
+        remaining = amount
+        for invoice in invoices:
+            if remaining <= 0:
+                break
+            applied = min(remaining, invoice["unpaid"])
+            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
+            remaining = round(remaining - applied, 2)
+    ledger_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
+    if ledger_unpaid > target:
+        reduction = round(ledger_unpaid - target, 2)
+        for invoice in invoices:
+            if reduction <= 0:
+                break
+            applied = min(reduction, invoice["unpaid"])
+            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
+            reduction = round(reduction - applied, 2)
+    prior = round(max(target - sum(row["unpaid"] for row in invoices), 0.0), 2)
+    result["payable_prior_ledger"] = prior
+    as_of_date = date.fromisoformat(str(as_of))
+    for days in (15, 30, 45, 60):
+        cutoff = str(as_of_date - timedelta(days=days))
+        due = prior + sum(row["unpaid"] for row in invoices if row["date"] <= cutoff)
+        result[f"payable_due_{days}_plus"] = round(min(max(due, 0.0), target), 2)
+    return result
+
+
+def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
+    # Loctell can return the same supplier more than once in a balance payload.
+    # Preserve the existing endpoint convention: the final canonical row wins;
+    # do not add duplicates together and invent a payable that Loctell did not
+    # report.
+    balances = {
+        _norm_name(row.get("name")): _num(row.get("payable", row.get("balance", 0.0)))
+        for row in balance_rows or []
+        if str(row.get("name") or "").strip()
+    }
+    rows = []
+    for source in master_rows:
+        row = dict(source)
+        name = str(row.get("name") or "").strip()
+        payable = round(balances.get(_norm_name(name), 0.0), 2)
+        ledger = vendor_ledgers.get(str(row.get("id"))) or {}
+        entries = [entry for entry in (ledger.get("entries") or []) if str(entry.get("date") or "")[:10] <= str(as_of)]
+        row.update({
+            "active": row.get("active", True),
+            "payable": payable,
+            "total_purchases": round(sum(_num(entry.get("credit")) for entry in entries), 2),
+            "total_payments": round(sum(_num(entry.get("debit")) for entry in entries), 2),
+            **vendor_payable_due_aging(entries, payable, as_of),
+        })
+        rows.append(row)
+    return sorted(rows, key=lambda row: str(row.get("name") or "").upper())
+
+
+def canonical_vendor_master(seed_rows, creditors):
+    """Merge the checked-in full master with legacy seed metadata and ERP rows.
+
+    The explicit master makes a zero-balance supplier visible.  Creditors are
+    still merged so a supplier newly created in Loctell is never hidden while
+    waiting for a deliberate master-file update.
+    """
+    by_name = {}
+    max_id = 0
+    for source in list(load_vendor_master()) + list(seed_rows or []):
+        row = dict(source or {})
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        key = _norm_name(name)
+        current = by_name.get(key, {})
+        merged = {**current, **row, "name": name, "active": row.get("active", current.get("active", True))}
+        by_name[key] = merged
+        max_id = max(max_id, int(merged.get("id") or 0))
+    for creditor in creditors or []:
+        name = str(creditor.get("name") or "").strip()
+        if not name:
+            continue
+        key = _norm_name(name)
+        if key not in by_name:
+            max_id += 1
+            by_name[key] = {
+                "id": max_id, "name": name, "gstin": "", "phone": "", "address": "",
+                "opening_balance": 0.0, "notes": "", "active": True,
+            }
+    return sorted(by_name.values(), key=lambda row: str(row.get("name") or "").upper())
+
+
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
 
 
@@ -4674,36 +4791,9 @@ def main():
     write("customers.json",             customers_full)
 
     # ── vendors ───────────────────────────────────────────────────────────────
-    seed_vendors = seed_endpoints.get("vendors_all", [])
-    creditors_by_name = {c["name"]: c for c in creditors}
-    vendors_by_name = {}
-    max_vendor_id = 0
-    for seed_row in seed_vendors:
-        row = dict(seed_row)
-        max_vendor_id = max(max_vendor_id, int(row.get("id") or 0))
-        c = creditors_by_name.pop(row.get("name", ""), None)
-        if c:
-            payments_total = round(sum(_num(payment.get("amount")) for payment in vendor_payments if payment.get("vendor_name") == row.get("name", "")), 2)
-            row.update({
-                "payable": c["payable"],
-                "total_payments": payments_total,
-                "age_45_plus": round(max(c["payable"], 0.0), 2),
-            })
-        vendors_by_name[row.get("name", "")] = row
-
-    for name, c in creditors_by_name.items():
-        max_vendor_id += 1
-        payments_total = round(sum(_num(payment.get("amount")) for payment in vendor_payments if payment.get("vendor_name") == name), 2)
-        vendors_by_name[name] = {
-            "id": max_vendor_id, "name": c["name"], "gstin": "", "phone": "", "address": "",
-            "opening_balance": c["payable"], "notes": "", "active": True,
-            "payable": c["payable"], "total_purchases": 0.0, "total_payments": payments_total,
-            "age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0,
-            "age_45_plus": round(max(c["payable"], 0.0), 2),
-        }
-
-    vendors_full = sorted(vendors_by_name.values(), key=lambda row: row.get("name", ""))
+    vendors_full = canonical_vendor_master(seed_endpoints.get("vendors_all", []), creditors)
     vendor_ledgers = build_vendor_ledgers(vendors_full, vendor_payments, vendor_ledgers_full)
+    vendors_full = vendor_rows_as_of(vendors_full, creditors, vendor_ledgers, today)
     vendors_payables = [
         {
             "id": row.get("id"),
@@ -4713,6 +4803,11 @@ def main():
             "payable": row.get("payable", 0.0),
             "total_purchases": row.get("total_purchases", 0.0),
             "total_payments": row.get("total_payments", 0.0),
+            "payable_due_15_plus": row.get("payable_due_15_plus", 0.0),
+            "payable_due_30_plus": row.get("payable_due_30_plus", 0.0),
+            "payable_due_45_plus": row.get("payable_due_45_plus", 0.0),
+            "payable_due_60_plus": row.get("payable_due_60_plus", 0.0),
+            "payable_prior_ledger": row.get("payable_prior_ledger", 0.0),
         }
         for row in vendors_full
         if row.get("active", True) and _num(row.get("payable")) > 0
