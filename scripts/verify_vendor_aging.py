@@ -43,6 +43,25 @@ def _check_payables(rows, payables, label):
         raise AssertionError(f"{label}: payable list does not equal positive master balances")
 
 
+def _check_ledger(root, row):
+    vendor_id = row.get("id")
+    name = str(row.get("name") or "").strip()
+    ledger = _read_snapshot(root, f"/api/vendors/ledger/{vendor_id}")
+    if ledger.get("vendor_id") != vendor_id or str(ledger.get("vendor_name") or "").strip() != name:
+        raise AssertionError(f"vendor ledger identity mismatch: id={vendor_id} name={name}")
+    if ledger.get("source") != "erp":
+        raise AssertionError(f"vendor ledger is not canonical ERP data: {name}")
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        raise AssertionError(f"vendor ledger entries are invalid: {name}")
+    for entry in entries:
+        if entry.get("type") not in {"purchase", "payment"}:
+            raise AssertionError(f"vendor ledger entry type is invalid: {name}")
+        for field in ("debit", "credit", "running_balance"):
+            if not isinstance(entry.get(field), (int, float)):
+                raise AssertionError(f"vendor ledger {field} is not numeric: {name}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default="data")
@@ -57,6 +76,10 @@ def main() -> int:
         payables = _read_snapshot(root, f"/api/vendors/payables?as_of={as_of}")
         _check_rows(rows, expected_names, as_of)
         _check_payables(rows, payables, as_of)
+    current_rows = _read_snapshot(root, "/api/vendors/?active_only=false")
+    _check_rows(current_rows, expected_names, "current")
+    for row in current_rows:
+        _check_ledger(root, row)
     print(f"vendor aging verification passed: master={len(expected_names)}, checked_dates={len(dates)}")
     return 0
 

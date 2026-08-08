@@ -1134,11 +1134,17 @@ def _norm_name(s):
 VENDOR_LEDGER_START = date(2025, 2, 15)  # full itemized vendor history begins here
 
 
-def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d):
+def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
     """Full itemized supplier ledgers (every bill + payment) for a Tally-style view, keyed by
     normalised vendor name. Tally supplier convention: Purchase=Credit (raises payable),
-    Payment=Debit (lowers payable). Resilient: a creditor that errors just yields no entries
-    (its ledger falls back to the lightweight payments-only build) — never aborts the sync."""
+    Payment=Debit (lowers payable).
+
+    The ordinary common-engine path is deliberately resilient: a failed supplier
+    request returns no entries and the prior local snapshot can remain in use.
+    A vendor-only repair can instead request ``strict=True``. In that mode every
+    requested Loctell supplier request must succeed (including an empty ledger),
+    so a partial ledger bundle can never be published.
+    """
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
     if not creditors:
         return {}
@@ -1175,14 +1181,28 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d):
                                     "debit": round(payment, 2), "credit": 0.0})
         except Exception as e:
             print(f"  supplier ledger fetch error ({name}); using lightweight fallback: {e}")
-            return (name, [])
-        return (name, entries)
+            return (name, [], str(e))
+        return (name, entries, None)
 
     result = {}
+    failures = []
     with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
-        for name, entries in pool.map(_one, creditors):
-            if entries:
+        for name, entries, error in pool.map(_one, creditors):
+            if error:
+                failures.append(f"{name}: {error}")
+                continue
+            if strict:
+                # An empty but successfully-read ledger is still canonical ERP
+                # data.  Preserve the key so callers do not mistake it for a
+                # failed fetch and fall back to an old local calculation.
                 result[_norm_name(name)] = entries
+            elif entries:
+                result[_norm_name(name)] = entries
+    if failures and strict:
+        raise ErpFetchError(
+            "supplier ledger fetch failed; refusing a partial vendor bundle: "
+            + "; ".join(failures)
+        )
     return result
 
 
@@ -2923,7 +2943,7 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
         name = vendor.get("name", "")
         payable = round(_num(vendor.get("payable")), 2)
         full_entries = full_ledgers.get(_norm_name(name))
-        if full_entries:
+        if full_entries is not None:
             # Tally view from the full loctell ledger: Purchase=Credit, Payment=Debit, running=payable.
             entries_sorted = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "purchase" else 1))
             window_net = round(sum(e["credit"] - e["debit"] for e in entries_sorted), 2)
@@ -4443,7 +4463,12 @@ def main():
     vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()
     print(f"  {len(vendor_payments)} vendor payments")
     try:
-        vendor_ledgers_full = fetch_supplier_ledgers_full(sess, creditors, VENDOR_LEDGER_START, today)
+        # Fetch the complete checked-in supplier master, not only today's
+        # payable suppliers.  A settled supplier can still have a bill/payment
+        # history that must remain visible in its Tally-style ledger.
+        vendor_ledger_sources = canonical_vendor_master([], creditors)
+        vendor_ledger_sources = vendor_rows_as_of(vendor_ledger_sources, creditors, {}, today)
+        vendor_ledgers_full = fetch_supplier_ledgers_full(sess, vendor_ledger_sources, VENDOR_LEDGER_START, today)
         print(f"  {len(vendor_ledgers_full)} full vendor ledgers")
     except Exception as e:
         print(f"  full vendor ledgers unavailable; using lightweight fallback: {e}")
@@ -4792,6 +4817,9 @@ def main():
 
     # ── vendors ───────────────────────────────────────────────────────────────
     vendors_full = canonical_vendor_master(seed_endpoints.get("vendors_all", []), creditors)
+    # Set the current Loctell payable before calculating ERP-ledger openings.
+    # The master is a name/ID list, not itself a balance snapshot.
+    vendors_full = vendor_rows_as_of(vendors_full, creditors, {}, today)
     vendor_ledgers = build_vendor_ledgers(vendors_full, vendor_payments, vendor_ledgers_full)
     vendors_full = vendor_rows_as_of(vendors_full, creditors, vendor_ledgers, today)
     vendors_payables = [

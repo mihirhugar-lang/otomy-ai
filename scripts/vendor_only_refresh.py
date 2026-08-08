@@ -62,30 +62,43 @@ def main() -> int:
         day += timedelta(days=1)
     current_creditors = balances_by_day[str(end)]
     vendor_master = engine.canonical_vendor_master([], current_creditors)
-    ledgers_full = engine.fetch_supplier_ledgers_full(
-        session, current_creditors, engine.VENDOR_LEDGER_START, end
-    )
-    unpaid_without_ledger = [
-        creditor["name"] for creditor in current_creditors
-        if engine._num(creditor.get("payable")) > 0
-        and engine._norm_name(creditor.get("name")) not in ledgers_full
+    missing_supplier_ids = [
+        row["name"] for row in vendor_master
+        if not str(row.get("erp_supplier_id") or "").strip()
     ]
-    if unpaid_without_ledger:
+    if missing_supplier_ids:
         raise RuntimeError(
-            "Supplier ledger is missing for payable supplier(s); refusing partial aging: "
-            + ", ".join(unpaid_without_ledger)
+            "canonical vendor master is missing Loctell supplier IDs; refusing an incomplete ledger refresh: "
+            + ", ".join(missing_supplier_ids)
         )
 
-    vendor_ledgers = engine.build_vendor_ledgers(vendor_master, [], ledgers_full)
+    # Apply today's Loctell payable before deriving each full-ledger opening.
+    # Otherwise a ledger can be built with a zero closing balance merely because
+    # the master file is a master list rather than a balance snapshot.
+    current_master = engine.vendor_rows_as_of(vendor_master, current_creditors, {}, str(end))
+    ledgers_full = engine.fetch_supplier_ledgers_full(
+        session, current_master, engine.VENDOR_LEDGER_START, end, strict=True
+    )
+    missing_ledgers = [
+        row["name"] for row in current_master
+        if engine._norm_name(row.get("name")) not in ledgers_full
+    ]
+    if missing_ledgers:
+        raise RuntimeError(
+            "Supplier ledger is missing after a successful fetch; refusing partial vendor bundle: "
+            + ", ".join(missing_ledgers)
+        )
+
+    vendor_ledgers = engine.build_vendor_ledgers(current_master, [], ledgers_full)
     snapshots_written = 0
     for as_of, balance_rows in balances_by_day.items():
-        rows = engine.vendor_rows_as_of(vendor_master, balance_rows, vendor_ledgers, as_of)
+        rows = engine.vendor_rows_as_of(current_master, balance_rows, vendor_ledgers, as_of)
         payables = _payables(rows)
         engine.write_snapshot(f"/api/vendors/?active_only=false&as_of={as_of}", rows)
         engine.write_snapshot(f"/api/vendors/payables?as_of={as_of}", payables)
         snapshots_written += 2
 
-    current_rows = engine.vendor_rows_as_of(vendor_master, current_creditors, vendor_ledgers, str(end))
+    current_rows = engine.vendor_rows_as_of(current_master, current_creditors, vendor_ledgers, str(end))
     current_payables = _payables(current_rows)
     _write_json("vendors.json", current_rows)
     _write_json("vendors_payables.json", current_payables)
@@ -94,6 +107,12 @@ def main() -> int:
     engine.write_snapshot(f"/api/vendors/?active_only=false&as_of={end}", current_rows)
     engine.write_snapshot("/api/vendors/payables", current_payables)
     engine.write_snapshot(f"/api/vendors/payables?as_of={end}", current_payables)
+    for row in current_rows:
+        ledger = vendor_ledgers.get(str(row["id"]))
+        if not ledger or ledger.get("source") != "erp":
+            raise RuntimeError(f"vendor ledger is not canonical ERP data: {row['name']}")
+        engine.write_snapshot(f"/api/vendors/ledger/{row['id']}", ledger)
+        snapshots_written += 1
     print(
         f"Vendor-only refresh staged: master={len(current_rows)}, payable={len(current_payables)}, "
         f"days={len(balances_by_day)}, snapshots={snapshots_written + 5}"
