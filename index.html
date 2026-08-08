@@ -483,6 +483,10 @@ table{font-family:var(--tally-mono) !important;font-variant-numeric:tabular-nums
 thead th{background:#1f4e79 !important;background-image:none !important;color:#fff !important;text-transform:uppercase;font-weight:600;border:1px solid #163a5c;padding:5px 10px !important;font-size:11px;letter-spacing:.3px}
 thead th.sortable:hover{background:#163a5c !important}
 tbody td{border-bottom:1px dotted #d8c9a2 !important;color:#12233f;padding:4px 10px !important;line-height:1.4}
+/* Fine white cell dividers: the same light table separation used by Daily Book, across every report table. */
+table thead th+th{border-left:1px dotted rgba(255,255,255,.72)}
+table tbody td+td{border-left:1px dotted rgba(255,255,255,.92)}
+table tfoot td+td{border-left:1px dotted rgba(255,255,255,.86)}
 tbody tr{background:transparent}
 tbody tr:nth-child(even){background:#faf5e4}
 tbody tr:hover{background:#e8f1fc !important}
@@ -528,6 +532,8 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .topbar-date{color:#c2610c !important;font-weight:700}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
+<script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
+<script src="/static/vendor/jspdf-2.5.1.umd.min.js"></script>
 </head>
 <body>
 
@@ -2179,18 +2185,68 @@ function printViaBlob(title, content, className=''){
     setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
   }catch(e){try{window.print();}catch(e2){}}
 }
+// On phones and installed apps, make the same styled report into a real PDF file.
+// The desktop route remains the browser's normal print preview.
+async function shareStyledMobilePdf(title, content, className=''){
+  if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
+  const pa=document.getElementById('print-area');
+  const oldStyle=pa.getAttribute('style');
+  pa.className=className;
+  pa.innerHTML=content;
+  pa.style.setProperty('display','block','important');
+  pa.style.setProperty('position','fixed','important');
+  pa.style.setProperty('left','-12000px','important');
+  pa.style.setProperty('top','0','important');
+  pa.style.setProperty('width','1120px','important');
+  pa.style.setProperty('max-width','none','important');
+  pa.style.setProperty('padding','12px','important');
+  pa.style.setProperty('background','#fffdf8','important');
+  pa.style.setProperty('overflow','visible','important');
+  try{
+    if(document.fonts?.ready)await document.fonts.ready;
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+    const canvas=await window.html2canvas(pa,{backgroundColor:'#fffdf8',scale:1,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+    const pageWidth=pdf.internal.pageSize.getWidth();
+    const pageHeight=pdf.internal.pageSize.getHeight();
+    const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
+    for(let y=0,page=0;y<canvas.height;y+=sliceHeight,page++){
+      const height=Math.min(sliceHeight,canvas.height-y);
+      const slice=document.createElement('canvas');
+      slice.width=canvas.width;
+      slice.height=height;
+      const ctx=slice.getContext('2d');
+      ctx.fillStyle='#fffdf8';
+      ctx.fillRect(0,0,slice.width,slice.height);
+      ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
+      if(page)pdf.addPage('a4','landscape');
+      pdf.addImage(slice.toDataURL('image/jpeg',0.94),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');
+    }
+    const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
+    const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
+    if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+      try{await navigator.share({title,files:[file]});return;}
+      catch(error){if(error?.name==='AbortError')return;}
+    }
+    const url=URL.createObjectURL(file);
+    const popup=window.open(url,'_blank');
+    if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
+    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
+  }finally{
+    if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
+  }
+}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // iOS installed app (standalone): print in-place is blocked by iOS -> open in a Safari view & auto-print.
-  if(_isStandalonePWA() && _isIOS()){
-    printViaBlob(title, content, className);
-    return;
-  }
-  // Mobile browser (Safari/Chrome tab): hidden iframe -> no new tab, dismisses back to the page.
-  if(isMobilePrint() && !_isStandalonePWA()){
-    printViaIframe(title, content, className);
+  // Every mobile route receives a shareable PDF file. If rendering fails, preserve the former native print route.
+  if(isMobilePrint()){
+    shareStyledMobilePdf(title, content, className).catch(()=>{
+      if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
+      else printViaIframe(title, content, className);
+    });
     return;
   }
   // Desktop and Android installed app: print the current document directly via the @media print rules.
