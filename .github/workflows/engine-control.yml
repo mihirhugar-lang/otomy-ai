@@ -1,0 +1,50 @@
+name: Otomy engine control
+
+on:
+  workflow_dispatch:
+    inputs:
+      state:
+        description: "Publishing state"
+        type: choice
+        required: true
+        options:
+          - paused
+          - running
+
+concurrency:
+  group: otomy-common-engine-sync
+  cancel-in-progress: false
+
+jobs:
+  set-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Write and verify engine state
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          REQUESTED_STATE: ${{ inputs.state }}
+        run: |
+          case "$REQUESTED_STATE" in
+            paused|running) ;;
+            *) echo "Unsupported engine state" >&2; exit 1 ;;
+          esac
+          state_file="$RUNNER_TEMP/otomy-engine-state.json"
+          readback_file="$RUNNER_TEMP/otomy-engine-state-readback.json"
+          jq -n --arg state "$REQUESTED_STATE" --arg changed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{state:$state, changed_at:$changed_at, changed_by:"manual-engine-control"}' > "$state_file"
+          aws s3 cp "$state_file" "s3://otomy-data/control/engine_state.json" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/json --only-show-errors
+          aws s3 cp "s3://otomy-data/control/engine_state.json" "$readback_file" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          jq -e --arg state "$REQUESTED_STATE" '.state == $state' "$readback_file" >/dev/null
+          {
+            echo '## Otomy engine state'
+            echo
+            echo "Verified state: \`$REQUESTED_STATE\`."
+          } >> "$GITHUB_STEP_SUMMARY"
