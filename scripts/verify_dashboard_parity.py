@@ -133,14 +133,12 @@ def required_preset_ranges() -> dict[str, tuple[dt.date, dt.date]]:
     week_start = today - dt.timedelta(days=today.weekday())
     last_month_end = today.replace(day=1) - dt.timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
-    financial_year_start = dt.date(today.year if today.month >= 4 else today.year - 1, 4, 1)
     return {
         "today": (today, today),
         "yesterday": (today - dt.timedelta(days=1), today - dt.timedelta(days=1)),
         "thisweek": (week_start, today),
         "lastweek": (week_start - dt.timedelta(days=7), week_start - dt.timedelta(days=1)),
         "MTD": (today.replace(day=1), today),
-        "FYTD": (financial_year_start, today),
         "lastmonth": (last_month_start, last_month_end),
     }
 
@@ -1122,9 +1120,14 @@ def verify_fytd_cashbook_parity() -> None:
     snapshot files.  It catches a recent-sync regression where the MTD bundle
     advances but the Apr-1 FYTD bundle is left over from an earlier run.
     """
-    ranges = required_preset_ranges()
-    fy_start, today = ranges["FYTD"]
-    mtd_start, _ = ranges["MTD"]
+    configured_as_of = os.environ.get("OTOMY_VERIFY_AS_OF", "").strip()
+    today = (
+        dt.date.fromisoformat(configured_as_of)
+        if configured_as_of
+        else dt.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    )
+    fy_start = dt.date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+    mtd_start = today.replace(day=1)
     _, fytd_control = dashboard_snapshot(fy_start, today)
     _, mtd_control = dashboard_snapshot(mtd_start, today)
     fytd_url = f"/api/sync/erp/cashbook?from_date={fy_start}&to_date={today}"
