@@ -563,6 +563,35 @@ def assert_fresh_source_rows_preserved(label, fresh_rows, merged_rows, key_fn):
         )
     print(f"  {label} source-window coverage: {len(expected)} fresh rows preserved")
 
+
+def assert_fytd_source_coverage(fy_start, as_of, sales, expenses):
+    """Fail closed rather than publish an anchor-only FYTD snapshot.
+
+    A recent sync fetches a small Loctell delta, but its FYTD snapshots are
+    served directly by the UI. Closing-balance parity alone cannot detect a
+    truncated source because a later balance anchor can make it tie.
+    """
+    fy_start = fy_start if isinstance(fy_start, date) else date.fromisoformat(str(fy_start)[:10])
+    as_of = as_of if isinstance(as_of, date) else date.fromisoformat(str(as_of)[:10])
+    expected_months = set()
+    cursor = fy_start.replace(day=1)
+    while cursor <= as_of:
+        expected_months.add(cursor.strftime("%Y-%m"))
+        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+    for label, rows in (("Sales", sales), ("Expenses", expenses)):
+        covered_months = {
+            str(row.get("date") or "")[:7]
+            for row in rows or []
+            if str(fy_start) <= str(row.get("date") or "")[:10] <= str(as_of)
+        }
+        missing = sorted(expected_months - covered_months)
+        if missing:
+            raise RuntimeError(
+                f"FYTD source coverage failed for {label}: missing month(s) {', '.join(missing)}; "
+                "refusing to publish a truncated FYTD snapshot"
+            )
+    print(f"  FYTD source coverage: {', '.join(sorted(expected_months))}")
+
 def archive_receipts_to_repayments(receipts):
     rows = []
     for receipt in receipts or []:
@@ -1803,6 +1832,13 @@ def _erp_credit_ref(row):
 def _bank_dedupe_key(row):
     source = str(row.get("source") or "").strip()
     date_value, credit, debit = _bank_amount_key(row)
+    # Two independently-recorded bank expenses can legitimately have the same
+    # date, amount and visible description.  Their stable expense id is the
+    # only safe way to collapse an archive copy with its regenerated copy
+    # without dropping a real payment (for example the two 21-Apr ₹15,000
+    # farmer payments).
+    if source == "Expense" and row.get("id"):
+        return ("expense", str(row["id"]))
     if source == "Credit Payment":
         return ("credit-payment", date_value, credit, debit, str(row.get("bank_name") or ""))
     return (
@@ -3942,6 +3978,12 @@ def main():
         sync_start = today - timedelta(days=recent_days - 1)
         sync_label = f"last {recent_days} days"
     archive_start = min(sync_start, last_month_start)
+    # A recent sync fetches only a small Loctell delta, but it also publishes
+    # canonical FYTD snapshots.  Those snapshots must be derived from the
+    # complete FY archive, never from the latest balance anchor onward.
+    # Keeping sync_start unchanged preserves the cheap delta fetch; only the
+    # local archive read is widened.
+    archive_start = min(archive_start, financial_year_start)
     # The balance overlay runs from the latest verified anchor and needs EVERY movement after it.
     # When the anchor predates the sync window (e.g. a 28-Jun anchor while August's "last month" is
     # July), the days between the anchor and the window start (29-30 Jun) fall in a gap and the
@@ -5057,6 +5099,7 @@ def main():
     )
 
     print("  Writing static API snapshot files...")
+    assert_fytd_source_coverage(financial_year_start, today, all_sales, all_expenses)
     write_snapshot_bundle(
         today,
         yesterday,
