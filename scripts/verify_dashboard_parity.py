@@ -335,6 +335,24 @@ def verify_archive_balance_guard() -> None:
     print("Archive balance guard passed: historical rows and cross-month weekly repayments are protected.")
 
 
+def verify_dashboard_balance_source_guard() -> None:
+    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    required = (
+        "ending_debtors=None,",
+        "end_debtors = debtors_as_of(end) or archive_balance_rows(",
+        "end_creditors = creditors_as_of(end) or archive_balance_rows(",
+        "ending_debtors=end_debtors,",
+        "vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))",
+        'summary["receivables"] = round(sum(row["balance"] for row in receivable_rows), 2)',
+        'summary["payables"] = round(sum(row["balance"] for row in payable_rows), 2)',
+        'write_snapshot(f"/api/vendors/payables?as_of={end}", payable_rows)',
+    )
+    for needle in required:
+        if needle not in source:
+            fail(f"dashboard balance source guard missing {needle!r}")
+    print("Dashboard balance source guard passed: tiles use selected-date customer/vendor rows.")
+
+
 def payment_channel(mode: object) -> str:
     return "cash" if "CASH" in str(mode or "").upper() else "bank"
 
@@ -971,6 +989,39 @@ def verify_customer_page_presets() -> None:
     print(f"Customer page snapshot guard passed for {checked} tabs.")
 
 
+def verify_dashboard_balance_page_parity() -> None:
+    checked = 0
+    for preset, (start, end) in required_preset_ranges().items():
+        control_url, control = dashboard_snapshot(start, end)
+        customer_url, customers = api_snapshot(
+            f"/api/customers/?active_only=false&from_date={start}&to_date={end}&as_of={end}"
+        )
+        vendor_url, vendors = api_snapshot(f"/api/vendors/payables?as_of={end}")
+        if not isinstance(customers, list) or not isinstance(vendors, list):
+            fail(f"{preset} balance page snapshot is not a list: {customer_url} / {vendor_url}")
+        receivables = round(sum(
+            max(number_value(row.get("total_outstanding", row.get("outstanding", row.get("balance", 0))), "customer outstanding"), 0)
+            for row in customers if row.get("active", True)
+        ), 2)
+        payables = round(sum(
+            max(number_value(row.get("payable", row.get("balance", 0)), "vendor payable"), 0)
+            for row in vendors if row.get("active", True)
+        ), 2)
+        summary = control.get("summary") or {}
+        dashboard_receivables = round(number_value(summary.get("receivables"), f"{preset} dashboard receivables"), 2)
+        dashboard_payables = round(number_value(summary.get("payables"), f"{preset} dashboard payables"), 2)
+        if abs(dashboard_receivables - receivables) > 0.01:
+            fail(
+                f"{preset} receivables mismatch: dashboard={dashboard_receivables} "
+                f"customer-page={receivables}"
+            )
+        if abs(dashboard_payables - payables) > 0.01:
+            fail(
+                f"{preset} payables mismatch: dashboard={dashboard_payables} vendor-page={payables}")
+        checked += 1
+    print(f"Dashboard/customer/vendor balance parity passed for {checked} tabs.")
+
+
 def verify_all_dashboard_presets() -> None:
     checked = 0
     for preset, (start, end) in required_preset_ranges().items():
@@ -1075,6 +1126,7 @@ def main() -> None:
     verify_negative_number_guard()
     verify_credit_aging_guard()
     verify_archive_balance_guard()
+    verify_dashboard_balance_source_guard()
     verify_payment_split_guard()
     verify_ledger_split_guard()
     verify_no_vendor_payment_bank_guard()
@@ -1084,6 +1136,7 @@ def main() -> None:
     if args.code_only:
         print("Code-only parity guard passed.")
         return
+    verify_dashboard_balance_page_parity()
     verify_daily_balance_chain()
     verify_no_balance_adjustment_rows()
     verify_all_dashboard_presets()

@@ -3331,6 +3331,7 @@ def build_customer_range_rows(
     range_sales,
     range_repayments,
     archive_balance=None,
+    ending_debtors=None,
     as_of=None,
     all_repayments=None,
     aging_sales=None,
@@ -3392,11 +3393,21 @@ def build_customer_range_rows(
         metric["range_payment_received"] += _num(repayment.get("payment_received", repayment.get("amount")))
 
     outstanding_by_name = {}
-    if archive_balance:
+    use_exact_end_balance = ending_debtors is not None
+    if use_exact_end_balance:
+        # Use the selected date's Loctell debtor list. A customer absent from
+        # that historical list must not inherit today's outstanding balance.
+        for row in ending_debtors or []:
+            name = str(row.get("name") or "").strip()
+            if name:
+                outstanding_by_name[_norm_name(name)] = _num(
+                    row.get("outstanding", row.get("balance", 0.0))
+                )
+    elif archive_balance:
         for row in archive_balance.get("receivables_rows") or archive_balance.get("top_receivables") or []:
             name = str(row.get("name") or "").strip()
             if name:
-                outstanding_by_name[name] = _num(row.get("balance"))
+                outstanding_by_name[_norm_name(name)] = _num(row.get("balance"))
 
     due_15_plus = _credit_due_15_plus_by_name(
         customers_full,
@@ -3418,7 +3429,10 @@ def build_customer_range_rows(
         row = dict(customer)
         name = str(row.get("name") or "").strip()
         metric = metrics.get(name, {})
-        outstanding = outstanding_by_name.get(name, _num(row.get("outstanding", row.get("balance", 0.0))))
+        outstanding = outstanding_by_name.get(
+            _norm_name(name),
+            0.0 if use_exact_end_balance else _num(row.get("outstanding", row.get("balance", 0.0))),
+        )
         row.update({
             "balance": round(outstanding, 2),
             "outstanding": round(outstanding, 2),
@@ -3607,6 +3621,28 @@ def write_snapshot_bundle(
         rows = balance_snapshots.get(str(as_of), {}).get("creditors") or []
         return [{"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))} for row in rows]
 
+    def archive_balance_rows(balance, rows_key, amount_key):
+        """Use archived end balances only when a fresh ERP point snapshot is unavailable."""
+        return [
+            {"name": row.get("name"), amount_key: _num(row.get("balance"))}
+            for row in ((balance or {}).get(rows_key) or [])
+            if str(row.get("name") or "").strip()
+        ]
+
+    def positive_balance_rows(rows, amount_key):
+        result = []
+        for row in rows or []:
+            amount = round(_num(row.get(amount_key, row.get("balance", 0.0))), 2)
+            if not row.get("active", True) or amount <= 0:
+                continue
+            result.append({
+                "id": row.get("id"), "name": row.get("name"), "balance": amount,
+                # Vendor page's payable endpoint uses `payable`; Dashboard top
+                # lists use `balance`. Carry both names for one exact amount.
+                **({"payable": amount} if amount_key == "payable" else {}),
+            })
+        return sorted(result, key=lambda row: (-row["balance"], str(row.get("name") or "")))
+
     def overlay_anchor_date(as_of):
         anchors = [
             row for row in _balance_overlay().get("anchors", [])
@@ -3708,14 +3744,38 @@ def write_snapshot_bundle(
                 cash_balance_office_book=cash_balance_office_book,
                 repayments=rows_between(repayments, start, end),
             )
-        control = apply_seed_control_overrides(control, local_seed, start, end)
         archive_balance = archive_balances.get(str(end)) if end < today and isinstance(archive_balances, dict) else None
-        if archive_balance:
-            summary = control.setdefault("summary", {})
-            summary["receivables"] = round(_num(archive_balance.get("receivables")), 2)
-            summary["payables"] = round(_num(archive_balance.get("payables")), 2)
-            control["top_receivables"] = archive_balance.get("top_receivables", [])
-            control["top_payables"] = archive_balance.get("top_payables", [])
+        end_debtors = debtors_as_of(end) or archive_balance_rows(
+            archive_balance, "receivables_rows", "outstanding"
+        )
+        end_creditors = creditors_as_of(end) or archive_balance_rows(
+            archive_balance, "payables_rows", "payable"
+        )
+        customer_rows = build_customer_range_rows(
+            customers_full,
+            all_sales,
+            rows_between(all_sales, start, end),
+            rows_between(repayments, start, end),
+            archive_balance,
+            ending_debtors=end_debtors,
+            as_of=end,
+            all_repayments=repayments,
+            aging_sales=aging_sales,
+            aging_repayments=aging_repayments,
+        )
+        vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))
+        receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
+        payable_rows = positive_balance_rows(vendor_rows, "payable")
+
+        # The Dashboard must not have independent balance math. Its tiles and
+        # top-five lists come directly from the selected-date Customer/Vendor
+        # rows written below.
+        control = apply_seed_control_overrides(control, local_seed, start, end)
+        summary = control.setdefault("summary", {})
+        summary["receivables"] = round(sum(row["balance"] for row in receivable_rows), 2)
+        summary["payables"] = round(sum(row["balance"] for row in payable_rows), 2)
+        control["top_receivables"] = receivable_rows[:5]
+        control["top_payables"] = payable_rows[:5]
         overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments)
         if overlay_balance:
             summary = control.setdefault("summary", {})
@@ -3725,18 +3785,10 @@ def write_snapshot_bundle(
         write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
         write_snapshot(
             f"/api/customers/?active_only=false&from_date={start}&to_date={end}&as_of={end}",
-            build_customer_range_rows(
-                customers_full,
-                all_sales,
-                rows_between(all_sales, start, end),
-                rows_between(repayments, start, end),
-                archive_balance,
-                as_of=end,
-                all_repayments=repayments,
-                aging_sales=aging_sales,
-                aging_repayments=aging_repayments,
-            ),
+            customer_rows,
         )
+        write_snapshot(f"/api/vendors/?active_only=false&as_of={end}", vendor_rows)
+        write_snapshot(f"/api/vendors/payables?as_of={end}", payable_rows)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
         write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", rows_between(boulder_rows, start, end))
