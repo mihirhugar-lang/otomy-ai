@@ -71,6 +71,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 
 /* ── KPI Cards ── */
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+#section-dashboard>.kpi-row{grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+#section-dashboard>.kpi-row .kpi{min-width:0;padding:14px 10px}
+#section-dashboard>.kpi-row .kpi-value{font-size:clamp(14px,1.35vw,20px)}
 .kpi{background:linear-gradient(180deg,#fff,#fffaf5);border-radius:18px;padding:16px 18px;box-shadow:var(--shadow);border:1px solid rgba(245,158,11,.18);border-top:4px solid var(--amber)}
 .kpi.green{border-color:#2e7d32}.kpi.blue{border-color:#1565c0}.kpi.red{border-color:#c62828}.kpi.navy{border-color:#1a237e}.kpi.purple{border-color:#6a1b9a}
 .kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
@@ -237,12 +240,15 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .customer-sales-table th:nth-child(3),.customer-sales-table td:nth-child(3){min-width:210px;max-width:380px}
 .metric-note{font-size:11px;color:#8a6b46;margin-top:6px}
 .cash-card{border-top:4px solid #175cd3}
-.cash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.cash-grid .kpi{margin-bottom:0;min-height:112px;display:flex;flex-direction:column;justify-content:center}
+.cash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:55px;gap:12px}
+.cash-grid .kpi{margin-bottom:0;min-height:0;height:100%;padding:6px 10px;display:flex;flex-direction:column;justify-content:center}
+.cash-grid .kpi-label{font-size:9px;letter-spacing:.28px;line-height:1.1;white-space:nowrap}
+.cash-grid .kpi-value{font-size:18px;line-height:1.1;letter-spacing:-.25px;white-space:nowrap}
 #flash{position:fixed;top:70px;right:20px;z-index:9999;min-width:220px}
 .flash-msg{padding:11px 16px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:6px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .flash-ok{background:#2e7d32;color:#fff}.flash-err{background:#c62828;color:#fff}
-@media(max-width:1000px){.control-hero,.insight-grid,.money-list{grid-template-columns:1fr}.control-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1000px){.control-hero,.insight-grid,.money-list{grid-template-columns:1fr}.control-grid{grid-template-columns:repeat(2,1fr)}.cash-grid{grid-auto-rows:92px}}
+@media(max-width:1180px){#section-dashboard>.kpi-row{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){
   body{display:block;min-width:0;overflow-x:hidden}
   body.mobile-nav-open{overflow:hidden}
@@ -274,7 +280,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .preset-dates{display:flex;flex:0 0 100%;flex-wrap:wrap;margin:8px 0 0;gap:6px}
   .preset-dates input{min-width:128px;flex:1}
   .print-btn{margin-left:0;flex:0 0 auto;padding:7px 12px}
-  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+ .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+ #section-dashboard>.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
   #ledger-summary,#ledger-average-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
   #ledger-average-panel{margin-top:12px}
   .kpi{padding:12px 10px;border-radius:15px;min-width:0}
@@ -291,7 +298,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .control-metric span{font-size:9px;line-height:1.25}
   .control-metric strong{font-size:17px;line-height:1.2;word-break:break-word}
   .cash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-  .cash-grid .kpi{min-height:92px}
+  .cash-grid .kpi{min-height:0}
   .form-grid{grid-template-columns:1fr}
   .form-actions{gap:8px}.form-actions .btn{flex:1;min-width:130px}
   .date-nav{gap:7px}.date-nav input{flex:1;min-width:135px}
@@ -406,8 +413,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .control-metric{padding:6px 7px!important;border-radius:6px!important;min-height:40px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;overflow:visible!important}
   #print-area.dashboard-print .control-metric span{font-size:7.5px!important;line-height:1.1!important;margin:0 0 2px!important;white-space:normal!important}
   #print-area.dashboard-print .control-metric strong{font-size:11px!important;line-height:1.15!important;margin:0!important;white-space:normal!important}
-  #print-area.dashboard-print .cash-grid{gap:5px!important}
-  #print-area.dashboard-print .cash-grid .kpi{min-height:48px!important}
+  #print-area.dashboard-print .cash-grid{gap:5px!important;grid-auto-rows:48px!important}
+  #print-area.dashboard-print .cash-grid .kpi{min-height:0!important}
   #print-area.dashboard-print .kpi-value{font-size:13px!important}
   #print-area.dashboard-print .kpi-label{font-size:8px!important}
   #print-area.dashboard-print .money-list{grid-template-columns:1fr 1fr!important;break-inside:auto!important;page-break-inside:auto!important}
@@ -527,6 +534,9 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .cash-card{background:#fdfbf0 !important}
 /* Dashboard tiles use the same visible Tally paper surface as Cash Position. Keep Director Control Room tiles separate. */
 #section-dashboard .kpi,#section-dashboard .cash-card,#section-dashboard .cash-card .kpi{background:linear-gradient(180deg,#fdfbf0 0%,#f2e7c9 100%) !important;box-shadow:0 2px 5px rgba(90,70,30,.12) !important}
+#section-dashboard .cash-card .kpi.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18))!important;border-color:rgba(5,150,105,.55)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 8px 18px rgba(5,150,105,.14)!important}
+#section-dashboard .cash-card .kpi.glass-green .kpi-label{color:#166534}
+#section-dashboard .cash-card .kpi.glass-green .kpi-value{color:#065f46}
 .card{border:3px double #8ba0c0 !important}
 .card.cash-card,.control-panel{border:3px double #6f86ad !important}
 .tbl-wrap,.report-table-wrap{scrollbar-color:#8ba0c0 #2b4568;scrollbar-width:thin}
@@ -611,15 +621,17 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
     <button class="print-btn" onclick="printDashboardConsolidated()">Consolidated Print / PDF</button>
   </div>
-  <div id="dash-profit-bar"></div>
-  <div class="kpi-row">
-    <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
-    <div class="kpi green"><div class="kpi-label">Spot Sale (Bank+Cash)</div><div class="kpi-value" id="d-cash">—</div></div>
-    <div class="kpi purple"><div class="kpi-label">Credit Sale</div><div class="kpi-value" id="d-credit-sale">—</div></div>
-    <div class="kpi navy"><div class="kpi-label">Credit Repayment</div><div class="kpi-value" id="d-credit-repay">—</div></div>
-    <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
-    <div class="kpi blue"><div class="kpi-label">Profit / MT</div><div class="kpi-value" id="d-profit-mt">—</div></div>
-  </div>
+<div id="dash-profit-bar"></div>
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
+  <div class="kpi green"><div class="kpi-label">Spot Cash</div><div class="kpi-value" id="d-spot-cash">—</div></div>
+  <div class="kpi green"><div class="kpi-label">Spot Bank</div><div class="kpi-value" id="d-spot-bank">—</div></div>
+  <div class="kpi navy"><div class="kpi-label">Credit Cash In</div><div class="kpi-value" id="d-credit-cash-in">—</div></div>
+  <div class="kpi navy"><div class="kpi-label">Credit Bank In</div><div class="kpi-value" id="d-credit-bank-in">—</div></div>
+  <div class="kpi purple"><div class="kpi-label">Credit Sale</div><div class="kpi-value" id="d-credit-sale">—</div></div>
+  <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
+  <div class="kpi blue"><div class="kpi-label">Profit / Tonne</div><div class="kpi-value" id="d-profit-mt">—</div></div>
+</div>
   <div id="dash-print-area">
     <div id="control-room"></div>
   </div>
@@ -2913,12 +2925,20 @@ function renderDashSummary(data,d){
   const bar=document.getElementById('dash-profit-bar');
   bar.className='profit-bar '+(profit>=0?'pos':'neg');
   bar.innerHTML=`<div><div class="pl">Gross Profit — ${esc(label)}</div><div class="pv">${fmtINR(profit)}</div></div><div style="text-align:right"><div class="pl">Margin</div><div style="font-size:22px;font-weight:800">${fmtNum(s.margin_pct||0,1)}%</div></div>`;
-  document.getElementById('d-sales').textContent=fmtINR2(s.sales);
-  const _rc=_reclassifySales(data);
-  document.getElementById('d-cash').textContent=fmtINR(_rc.spot);
-  document.getElementById('d-credit-sale').textContent=fmtINR(_rc.credit);
-  document.getElementById('d-credit-repay').textContent=fmtINR(_rc.paymentReceived);
-  document.getElementById('d-exp').textContent=fmtINR(s.expenses);
+document.getElementById('d-sales').textContent=fmtINR(s.sales);
+const _rc=_reclassifySales(data);
+const _repayRows=_repaymentRowsForDisplay(data,_rc);
+const _salesTotals=data.customer_sales_totals||{};
+const _spotCash=_num(_salesTotals.cash_received);
+const _spotBank=_num(_salesTotals.bank_received);
+const _creditCashIn=_repayRows.reduce((sum,row)=>sum+_num(row.display_cash_received),0);
+const _creditBankIn=_repayRows.reduce((sum,row)=>sum+_num(row.display_bank_received),0);
+document.getElementById('d-spot-cash').textContent=fmtINR(_spotCash);
+document.getElementById('d-spot-bank').textContent=fmtINR(_spotBank);
+document.getElementById('d-credit-cash-in').textContent=fmtINR(_creditCashIn);
+document.getElementById('d-credit-bank-in').textContent=fmtINR(_creditBankIn);
+document.getElementById('d-credit-sale').textContent=fmtINR(_rc.credit);
+document.getElementById('d-exp').textContent=fmtINR(s.expenses);
   document.getElementById('d-profit-mt').textContent=fmtINR2(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
 
@@ -2970,6 +2990,10 @@ async function renderControlRoom(data){
     </tr>`;
   }).join('')||'<tr><td colspan="11" class="empty">No sales in this period</td></tr>';
   const salesTotals=data.customer_sales_totals||{};
+  const totalBankReceived=_num(salesTotals.bank_received)+repaymentBankTotal;
+  const totalMdpTonne=_num(salesTotals.mdp_ton)||((data.customer_sales||[]).reduce((sum,row)=>sum+_num(row.mdp_ton),0));
+  const isGSTCustomer=row=>/GST/i.test(String(row?.customer_name||''));
+  const gstCustomerReceived=(data.customer_sales||[]).filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.cash_received)+_num(row.bank_received),0)+_repayShown.filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.display_payment_received),0);
   const machineRows=(data.machine_summary||[]).map(r=>`<tr>
       <td>${esc(r.machine)}</td>
       <td>${fmtNum(r.running_hours,2)}</td>
@@ -3023,6 +3047,10 @@ async function renderControlRoom(data){
           <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(_rc.credit)}</div></div>
           <div class="kpi red"><div class="kpi-label">Receivables</div><div class="kpi-value">${fmtINR(s.receivables)}</div></div>
           <div class="kpi navy"><div class="kpi-label">Payables</div><div class="kpi-value">${fmtINR(s.payables)}</div></div>
+          <div class="kpi glass-green"><div class="kpi-label">GST Tax Money</div><div class="kpi-value">${fmtINR(totalBankReceived)}</div></div>
+          <div class="kpi green"><div class="kpi-label">Total MDP / Tonne</div><div class="kpi-value">${fmtNum(totalMdpTonne,2)} MT</div></div>
+          <div class="kpi glass-green"><div class="kpi-label">GST Got Received From Customer</div><div class="kpi-value">${fmtINR(gstCustomerReceived)}</div></div>
+          <div class="kpi green"><div class="kpi-label">Total Sale Tonne</div><div class="kpi-value">${fmtNum(s.sales_qty_mt,2)} MT</div></div>
         </div>
       </div>
     </div>
