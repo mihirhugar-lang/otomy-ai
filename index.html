@@ -2232,15 +2232,25 @@ async function shareStyledMobilePdf(title, content, className=''){
     const pageHeight=pdf.internal.pageSize.getHeight();
     const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
     // A raster PDF cannot repeat a CSS table header, but it can safely start the next page at a row boundary.
-    // This prevents a customer, cashbook, or repayment row from being cut in half at the page edge.
+    // Use all rows, including headers and totals, so no customer name or amount is cut at a page edge.
     const paRect=pa.getBoundingClientRect();
     const verticalScale=canvas.width/Math.max(paRect.width,1);
-    const rowStarts=[...pa.querySelectorAll('tbody tr')].map(row=>Math.round((row.getBoundingClientRect().top-paRect.top)*verticalScale)).filter(y=>y>0&&y<canvas.height).sort((a,b)=>a-b);
+    const rowBounds=[...pa.querySelectorAll('tr')].map(row=>{
+      const box=row.getBoundingClientRect();
+      return {top:Math.round((box.top-paRect.top)*verticalScale),bottom:Math.round((box.bottom-paRect.top)*verticalScale)};
+    }).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<canvas.height);
     const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
     for(let y=0,page=0;y<canvas.height;page++){
       const target=Math.min(y+sliceHeight,canvas.height);
-      const candidates=rowStarts.filter(top=>top>y+minimumSlice&&top<target-6);
-      const end=target<canvas.height&&candidates.length?candidates[candidates.length-1]:target;
+      // Keep a full page whenever the target lies in whitespace. Move only when it intersects a table row.
+      let end=target;
+      while(end<canvas.height){
+        const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);
+        if(!crossing.length)break;
+        const beforeRow=Math.min(...crossing.map(row=>row.top));
+        if(beforeRow-y<minimumSlice)break;
+        end=beforeRow;
+      }
       const height=Math.max(1,end-y);
       const slice=document.createElement('canvas');
       slice.width=canvas.width;
