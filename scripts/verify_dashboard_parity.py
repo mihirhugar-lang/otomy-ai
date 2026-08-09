@@ -133,6 +133,7 @@ def required_preset_ranges() -> dict[str, tuple[dt.date, dt.date]]:
     week_start = today - dt.timedelta(days=today.weekday())
     last_month_end = today.replace(day=1) - dt.timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
+    fy_start = dt.date(today.year if today.month >= 4 else today.year - 1, 4, 1)
     return {
         "today": (today, today),
         "yesterday": (today - dt.timedelta(days=1), today - dt.timedelta(days=1)),
@@ -140,6 +141,7 @@ def required_preset_ranges() -> dict[str, tuple[dt.date, dt.date]]:
         "lastweek": (week_start - dt.timedelta(days=7), week_start - dt.timedelta(days=1)),
         "MTD": (today.replace(day=1), today),
         "lastmonth": (last_month_start, last_month_end),
+        "FYTD": (fy_start, today),
     }
 
 

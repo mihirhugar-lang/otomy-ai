@@ -117,6 +117,25 @@ class SourceWindowCoverageTests(unittest.TestCase):
                 "fixture", [{"id": "a"}, {"id": "b"}], [{"id": "a"}], lambda row: row["id"]
             )
 
+    def test_rejects_an_anchor_only_fytd_source(self):
+        engine = load_engine()
+        fy_start, as_of = date(2026, 4, 1), date(2026, 8, 9)
+        complete = [{"date": f"2026-{month:02d}-01"} for month in range(4, 9)]
+        engine.assert_fytd_source_coverage(fy_start, as_of, complete, complete)
+        truncated = [{"date": f"2026-{month:02d}-01"} for month in range(6, 9)]
+        with self.assertRaisesRegex(RuntimeError, "FYTD source coverage failed.*2026-04.*2026-05"):
+            engine.assert_fytd_source_coverage(fy_start, as_of, truncated, truncated)
+
+    def test_keeps_distinct_same_amount_expense_bank_payments(self):
+        engine = load_engine()
+        base = {
+            "date": "2026-04-21", "description": "Expense paid by bank/UPI - COMPONTATION / FARMER - Default Ledger",
+            "credit": 0.0, "debit": 15000.0, "bank_name": "UPI/Bank Expense", "source": "Expense",
+        }
+        rows = [dict(base, id="expense-518"), dict(base, id="expense-519"), dict(base, id="expense-518")]
+        deduped = engine.dedupe_bank_rows(rows)
+        self.assertEqual(sorted(row["id"] for row in deduped), ["expense-518", "expense-519"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
