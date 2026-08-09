@@ -391,7 +391,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print h3 span,#print-area .card h3 span{color:#000!important;font-weight:700!important}
   #print-area.dashboard-print .print-break-before{break-before:auto!important;page-break-before:auto!important}
   #print-area.dashboard-print .print-section{break-inside:auto!important;page-break-inside:auto!important;margin:0 0 5px 0!important;padding:6px 7px!important}
-  #print-area.dashboard-print tr{break-inside:auto!important;page-break-inside:auto!important}
+  /* Consolidated report tables must flow fully in print, never keep their on-screen scroll box. */
+  #print-area.dashboard-print .tbl-wrap,#print-area.dashboard-print .report-table-wrap{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important}
+  #print-area.dashboard-print .print-section tr{break-inside:avoid!important;page-break-inside:avoid!important}
   #print-area.dashboard-print .profit-bar{margin-bottom:5px!important;padding:7px 10px!important}
   #print-area.dashboard-print .kpi-row{grid-template-columns:repeat(4,1fr)!important;gap:5px!important;margin-bottom:5px!important}
   #print-area.dashboard-print .kpi{padding:6px 7px!important;border-radius:6px!important;min-height:auto!important}
@@ -426,9 +428,22 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .payment-table th:nth-child(7)::after{content:"Sale Adj."}
   #print-area.dashboard-print .payment-table th:nth-child(8)::after{content:"Credit"}
   #print-area.dashboard-print .payment-table th:nth-child(9)::after{content:"Balance"}
-  #print-area.dashboard-print .payment-table th:nth-child(1),#print-area.dashboard-print .payment-table td:nth-child(1){width:9%!important}
-  #print-area.dashboard-print .payment-table th:nth-child(2),#print-area.dashboard-print .payment-table td:nth-child(2){width:22%!important}
-  #print-area.dashboard-print .payment-table th:nth-child(n+4),#print-area.dashboard-print .payment-table td:nth-child(n+4){width:11.5%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(1),#print-area.dashboard-print .payment-table td:nth-child(1){width:8.5%!important}
+  #print-area.dashboard-print .payment-table th:nth-child(2),#print-area.dashboard-print .payment-table td:nth-child(2){width:20.5%!important}
+  #print-area.dashboard-print .payment-table th:nth-child(4),#print-area.dashboard-print .payment-table td:nth-child(4){width:11.5%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(5),#print-area.dashboard-print .payment-table td:nth-child(5){width:10.5%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(6),#print-area.dashboard-print .payment-table td:nth-child(6){width:12%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(7),#print-area.dashboard-print .payment-table td:nth-child(7){width:11.5%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(8),#print-area.dashboard-print .payment-table td:nth-child(8){width:11.5%!important;text-align:right!important}
+  #print-area.dashboard-print .payment-table th:nth-child(9),#print-area.dashboard-print .payment-table td:nth-child(9){width:14%!important;text-align:right!important;white-space:nowrap!important}
+  /* Six-column consolidated repayment report: reserve enough width for the final balance. */
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(1),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(1){width:30%!important}
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(2),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(2){width:12%!important}
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(3),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(3){width:11%!important}
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(4),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(4){width:16%!important}
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(5),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(5){width:14%!important}
+  #print-area.dashboard-print .consolidated-repayment-table th:nth-child(6),#print-area.dashboard-print .consolidated-repayment-table td:nth-child(6){width:17%!important;white-space:nowrap!important}
+  #print-area.dashboard-print .consolidated-repayment-table td:nth-child(n+2){text-align:right!important;white-space:nowrap!important;font-variant-numeric:tabular-nums}
   #print-area.dashboard-print .customer-sales-table th:nth-child(10),#print-area.dashboard-print .customer-sales-table td:nth-child(10){display:none!important}
   #print-area.dashboard-print .customer-sales-table th{font-size:0!important;line-height:1!important;white-space:normal!important}
   #print-area.dashboard-print .customer-sales-table th::after{font-size:5.5px!important;line-height:1!important;display:block!important}
@@ -594,7 +609,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
     <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
-    <button class="print-btn" onclick="printDashboardConsolidated()">Monthly Consolidated Print / PDF</button>
+    <button class="print-btn" onclick="printDashboardConsolidated()">Consolidated Print / PDF</button>
   </div>
   <div id="dash-profit-bar"></div>
   <div class="kpi-row">
@@ -2200,6 +2215,13 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('padding','12px','important');
   pa.style.setProperty('background','#fffdf8','important');
   pa.style.setProperty('overflow','visible','important');
+  // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
+  pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
+    wrap.style.setProperty('height','auto','important');
+    wrap.style.setProperty('max-height','none','important');
+    wrap.style.setProperty('min-height','0','important');
+    wrap.style.setProperty('overflow','visible','important');
+  });
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -2209,8 +2231,17 @@ async function shareStyledMobilePdf(title, content, className=''){
     const pageWidth=pdf.internal.pageSize.getWidth();
     const pageHeight=pdf.internal.pageSize.getHeight();
     const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
-    for(let y=0,page=0;y<canvas.height;y+=sliceHeight,page++){
-      const height=Math.min(sliceHeight,canvas.height-y);
+    // A raster PDF cannot repeat a CSS table header, but it can safely start the next page at a row boundary.
+    // This prevents a customer, cashbook, or repayment row from being cut in half at the page edge.
+    const paRect=pa.getBoundingClientRect();
+    const verticalScale=canvas.width/Math.max(paRect.width,1);
+    const rowStarts=[...pa.querySelectorAll('tbody tr')].map(row=>Math.round((row.getBoundingClientRect().top-paRect.top)*verticalScale)).filter(y=>y>0&&y<canvas.height).sort((a,b)=>a-b);
+    const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
+    for(let y=0,page=0;y<canvas.height;page++){
+      const target=Math.min(y+sliceHeight,canvas.height);
+      const candidates=rowStarts.filter(top=>top>y+minimumSlice&&top<target-6);
+      const end=target<canvas.height&&candidates.length?candidates[candidates.length-1]:target;
+      const height=Math.max(1,end-y);
       const slice=document.createElement('canvas');
       slice.width=canvas.width;
       slice.height=height;
@@ -2220,6 +2251,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
       if(page)pdf.addPage('a4','landscape');
       pdf.addImage(slice.toDataURL('image/jpeg',0.94),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');
+      y=end;
     }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
@@ -2623,6 +2655,12 @@ function _dashboardBookCopy(id){
   if(!card)return '<div class="card print-section"><h3>Cash / Bank Book</h3><div class="empty">Book data is not ready yet</div></div>';
   const copy=card.cloneNode(true);
   copy.querySelectorAll('.no-print').forEach(el=>el.remove());
+  copy.classList.add('print-book-section');
+  copy.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
+    wrap.style.removeProperty('height');
+    wrap.style.removeProperty('max-height');
+    wrap.style.removeProperty('overflow');
+  });
   return copy.outerHTML;
 }
 async function printDashboardConsolidated(){
@@ -2668,7 +2706,7 @@ async function printDashboardConsolidated(){
     const expenseCash=expenses.reduce((s,r)=>s+r.cash,0),expenseBank=expenses.reduce((s,r)=>s+r.bank,0);
     const profit=document.getElementById('dash-profit-bar'),kpis=document.querySelector('#section-dashboard .kpi-row'),ownerControl=document.querySelector('#control-room .control-hero');
     const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Consolidated Report</h1><p>Period: ${esc(f)} to ${esc(t)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit?profit.outerHTML:''}${kpis?kpis.outerHTML:''}${ownerControl?ownerControl.outerHTML:''}
-      <div class="card print-section"><h3>Credit Repayment — Consolidated by Customer</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Bank / UPI</th><th>Cash</th><th>Credit Repayment</th><th>Sale Adjusted</th><th>Latest Balance To Pay</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td><strong>Total (${repayments.length})</strong></td><td><strong>${fmtINR(repaymentBank)}</strong></td><td><strong>${fmtINR(repaymentCash)}</strong></td><td><strong>${fmtINR(repaymentPayment)}</strong></td><td><strong>${fmtINR(repaymentAdjusted)}</strong></td><td><strong>${fmtINR(repaymentBalance)}</strong></td></tr></tfoot></table></div></div>
+      <div class="card print-section"><h3>Credit Repayment — Consolidated by Customer</h3><div class="report-table-wrap"><table class="report-table consolidated-repayment-table"><thead><tr><th>Customer</th><th>Bank / UPI</th><th>Cash</th><th>Credit Repayment</th><th>Sale Adjusted</th><th>Latest Balance To Pay</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td><strong>Total (${repayments.length})</strong></td><td><strong>${fmtINR(repaymentBank)}</strong></td><td><strong>${fmtINR(repaymentCash)}</strong></td><td><strong>${fmtINR(repaymentPayment)}</strong></td><td><strong>${fmtINR(repaymentAdjusted)}</strong></td><td><strong>${fmtINR(repaymentBalance)}</strong></td></tr></tfoot></table></div></div>
       <div class="card print-section"><h3>Customer Wise Sales — Consolidated</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Material</th><th>Total Tickets</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="2"><strong>Total (${sales.length})</strong></td><td><strong>${fmtNum(salesTickets,0)}</strong></td><td><strong>${fmtNum(salesQty,2)}</strong></td><td><strong>${fmtINR2(salesAmount)}</strong></td><td><strong>${fmtINR(salesBank)}</strong></td><td><strong>${fmtINR(salesCash)}</strong></td><td><strong>${fmtINR(salesCredit)}</strong></td></tr></tfoot></table></div></div>
       <div class="card print-section"><h3>Expenses — Consolidated by Category</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Expense Category</th><th>Entries</th><th>Cash</th><th>Bank / UPI</th><th>Total</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td><strong>Total (${expenses.length})</strong></td><td><strong>${fmtNum(expenses.reduce((s,r)=>s+r.entries,0),0)}</strong></td><td><strong>${fmtINR(expenseCash)}</strong></td><td><strong>${fmtINR(expenseBank)}</strong></td><td><strong>${fmtINR(expenseCash+expenseBank)}</strong></td></tr></tfoot></table></div></div>
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}`;
