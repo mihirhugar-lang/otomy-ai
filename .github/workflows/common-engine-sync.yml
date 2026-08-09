@@ -101,6 +101,7 @@ jobs:
         run: |
           python3 scripts/test_cashbook_parity.py
           python3 scripts/test_vendor_aging.py
+          python3 scripts/test_dashboard_balance_parity.py
 
       - name: Run the single Loctell common engine
         if: steps.initial_control.outputs.enabled == 'true'

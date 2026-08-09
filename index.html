@@ -483,10 +483,10 @@ table{font-family:var(--tally-mono) !important;font-variant-numeric:tabular-nums
 thead th{background:#1f4e79 !important;background-image:none !important;color:#fff !important;text-transform:uppercase;font-weight:600;border:1px solid #163a5c;padding:5px 10px !important;font-size:11px;letter-spacing:.3px}
 thead th.sortable:hover{background:#163a5c !important}
 tbody td{border-bottom:1px dotted #d8c9a2 !important;color:#12233f;padding:4px 10px !important;line-height:1.4}
-/* Fine white cell dividers: the same light table separation used by Daily Book, across every report table. */
+/* Visible dotted cell dividers across report tables; Daily Book keeps its own dedicated grid. */
 table thead th+th{border-left:1px dotted rgba(255,255,255,.72)}
-table tbody td+td{border-left:1px dotted rgba(255,255,255,.92)}
-table tfoot td+td{border-left:1px dotted rgba(255,255,255,.86)}
+table tbody td+td{border-left:1px dotted #b8a77c}
+table tfoot td+td{border-left:1px dotted #a89566}
 tbody tr{background:transparent}
 tbody tr:nth-child(even){background:#faf5e4}
 tbody tr:hover{background:#e8f1fc !important}
@@ -3208,7 +3208,9 @@ async function loadCustomers(){
     const rows=await api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`);
     _customers=rows;
     const active=rows.filter(r=>r.active);
-    let totOut=active.reduce((s,r)=>s+(r.total_outstanding??r.outstanding??r.balance??0),0);
+    // Receivables are amounts customers need to pay us. Credit and zero rows
+    // must not reduce this total, matching the Dashboard Receivables tile.
+    let totOut=active.reduce((s,r)=>s+Math.max(_num(r.total_outstanding??r.outstanding??r.balance),0),0);
     document.getElementById('c-total').textContent=active.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
     document.getElementById('c-with-bal').textContent=active.filter(r=>(r.total_outstanding??r.outstanding??r.balance??0)>0).length;
