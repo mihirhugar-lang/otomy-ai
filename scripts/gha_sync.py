@@ -2552,10 +2552,17 @@ def _balance_overlay():
     if _BALANCE_OVERLAY is None:
         cfg = {}
         try:
-            with open(DATA_DIR / "balance_anchors.json") as f:
+            # The reviewed anchor/reconciliation policy is source-controlled;
+            # R2 data is intentionally a generated working copy and must not
+            # overwrite this financial rule during startup.
+            with open(ROOT / "seed" / "balance_anchors.json") as f:
                 cfg = json.load(f)
         except Exception:
-            cfg = {}
+            try:
+                with open(DATA_DIR / "balance_anchors.json") as f:
+                    cfg = json.load(f)
+            except Exception:
+                cfg = {}
         stmt_rows, stmt_to = [], None
         fn = cfg.get("bank_statement_file")
         if fn:
@@ -2569,6 +2576,7 @@ def _balance_overlay():
         _BALANCE_OVERLAY = {
             "anchors": sorted(cfg.get("anchors", []), key=lambda a: str(a.get("date"))),
             "corrections": cfg.get("mode_corrections", []),
+            "cash_daily_closings": cfg.get("cash_daily_closings", {}),
             "stmt_rows": stmt_rows,
             "stmt_to": stmt_to,
         }
@@ -2953,10 +2961,39 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     def _finalize(rows, opening_balance, closing_balance, channel):
         shown = [dict(row) for row in rows]
         shown.sort(key=_sort_key)
+        daily_cash = overlay.get("cash_daily_closings", {}) if channel == "cash" else {}
         running = round(_num(opening_balance), 2)
-        for row in shown:
-            running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
-            row["balance"] = running
+        reconciled = []
+        index = 0
+        while index < len(shown):
+            day = shown[index].get("date", "")
+            day_rows = []
+            while index < len(shown) and shown[index].get("date", "") == day:
+                day_rows.append(shown[index])
+                index += 1
+            target = daily_cash.get(str(day)[:10])
+            deferred_gap = 0.0
+            if target is not None:
+                gap = round(_num(target) - (running + sum(_num(row.get("in")) - _num(row.get("out")) for row in day_rows)), 2)
+                if abs(gap) > 0.5 and running + gap >= 0:
+                    row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", max(gap, 0), max(-gap, 0))
+                    row["adjustment"] = True
+                    running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
+                    row["balance"] = running
+                    reconciled.append(row)
+                elif abs(gap) > 0.5:
+                    deferred_gap = gap
+            for row in day_rows:
+                running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
+                row["balance"] = running
+                reconciled.append(row)
+            if deferred_gap:
+                row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", 0, max(-deferred_gap, 0))
+                row["adjustment"] = True
+                running = round(_num(target), 2)
+                row["balance"] = running
+                reconciled.append(row)
+        shown = reconciled
         gap = round(_num(closing_balance) - running, 2)
         if abs(gap) > 0.5:
             anchor_date = None
