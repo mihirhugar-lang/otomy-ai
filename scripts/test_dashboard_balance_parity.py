@@ -5,6 +5,33 @@ import gha_sync as engine
 
 
 def main() -> int:
+    canonical = engine.canonical_customer_master_rows([
+        {"id": 2, "name": "Hella Infra Market Ltd", "active": True},
+        {"id": 294, "name": "HELLA  INFRA MARKET LTD", "active": True},
+    ])
+    assert list(canonical) == ["hellainframarketltd"], canonical
+    assert canonical["hellainframarketltd"]["id"] == 2, canonical
+
+    debtors = engine.canonical_debtors_by_name([
+        {"name": "Hella Infra Market Ltd", "outstanding": 605939.0},
+        {"name": "HELLA  INFRA MARKET LTD", "outstanding": 605939.0},
+    ])
+    assert len(debtors) == 1, debtors
+    canonical_balance_rows = engine.build_customer_range_rows(
+        list(canonical.values()), [], [], [], ending_debtors=list(debtors.values()), as_of="2026-08-09",
+    )
+    assert len(canonical_balance_rows) == 1, canonical_balance_rows
+    assert canonical_balance_rows[0]["total_outstanding"] == 605939.0, canonical_balance_rows
+
+    try:
+        engine.canonical_debtors_by_name([
+            {"name": "Hella Infra Market Ltd", "outstanding": 605939.0},
+            {"name": "HELLA  INFRA MARKET LTD", "outstanding": 1.0},
+        ])
+        raise AssertionError("conflicting normalized debtor balances were accepted")
+    except engine.ErpFetchError:
+        pass
+
     customers = [
         {"id": 1, "name": "Historic Customer", "active": True, "outstanding": 900.0},
         # This amount is deliberately a later/current balance. It was the

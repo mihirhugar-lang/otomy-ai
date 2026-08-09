@@ -1131,6 +1131,53 @@ def _norm_name(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+def canonical_customer_master_rows(rows):
+    """Keep one customer-master row per normalized business name.
+
+    Loctell can carry harmless spelling variants of a settled customer (for
+    example, different case or double spaces).  A selected-date debtor balance
+    is keyed by that normalized name, so retaining both master rows would apply
+    the same balance twice.  Preserve the first stable master row; its balance
+    is refreshed from the canonical debtor snapshot below.
+    """
+    canonical = {}
+    for source in rows or []:
+        row = dict(source)
+        name = str(row.get("name") or "").strip()
+        key = _norm_name(name)
+        if not key:
+            continue
+        canonical.setdefault(key, row)
+    return canonical
+
+
+def canonical_debtors_by_name(rows):
+    """Index one exact debtor balance per normalized customer name.
+
+    Equal spelling variants are safe to collapse.  Differing positive balances
+    are an ERP ambiguity, not something the engine may silently add or choose.
+    Refuse to publish until that source inconsistency is resolved.
+    """
+    canonical = {}
+    for source in rows or []:
+        row = dict(source)
+        key = _norm_name(row.get("name"))
+        if not key:
+            continue
+        existing = canonical.get(key)
+        if existing is not None:
+            old = _num(existing.get("outstanding", existing.get("balance", 0.0)))
+            new = _num(row.get("outstanding", row.get("balance", 0.0)))
+            if abs(old - new) > 0.01:
+                raise ErpFetchError(
+                    "conflicting Loctell debtor balances for normalized customer "
+                    f"{key}: {old:.2f} versus {new:.2f}"
+                )
+            continue
+        canonical[key] = row
+    return canonical
+
+
 VENDOR_LEDGER_START = date(2025, 2, 15)  # full itemized vendor history begins here
 
 
@@ -4762,14 +4809,17 @@ def main():
         if s["payment_mode"] != "Credit":
             g["total_receipts"] += _sale_total(s)
 
-    seed_customers = seed_endpoints.get("customers_all", [])
-    debtors_by_name = {d["name"]: d for d in debtors_today}
+    # Keep the master and the Loctell debtor point list canonical by normalized
+    # customer name.  Otherwise a case/space variant receives the same ERP
+    # balance twice and inflates Dashboard/Customer receivables.
+    seed_customers = canonical_customer_master_rows(seed_endpoints.get("customers_all", []))
+    debtors_by_name = canonical_debtors_by_name(debtors_today)
     customers_by_name = {}
     max_customer_id = 0
-    for seed_row in seed_customers:
+    for customer_key, seed_row in seed_customers.items():
         row = dict(seed_row)
         max_customer_id = max(max_customer_id, int(row.get("id") or 0))
-        d = debtors_by_name.pop(row.get("name", ""), None)
+        d = debtors_by_name.pop(customer_key, None)
         if d:
             st = sales_by_cust.get(d["name"], {})
             row.update({
@@ -4785,12 +4835,12 @@ def main():
                 "outstanding": d["outstanding"],
                 "age_45_plus": round(max(d["outstanding"], 0.0), 2),
             })
-        customers_by_name[row.get("name", "")] = row
+        customers_by_name[customer_key] = row
 
-    for name, d in debtors_by_name.items():
+    for customer_key, d in debtors_by_name.items():
         max_customer_id += 1
         st = sales_by_cust.get(d["name"], {})
-        customers_by_name[name] = {
+        customers_by_name[customer_key] = {
             "id": max_customer_id, "name": d["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": 0.0, "active": True,
             "balance":           d["outstanding"],
@@ -4809,10 +4859,11 @@ def main():
 
     for override in load_customer_master_overrides():
         name = str(override.get("name") or "").strip()
-        if not name or name in customers_by_name:
+        customer_key = _norm_name(name)
+        if not customer_key or customer_key in customers_by_name:
             continue
         max_customer_id += 1
-        customers_by_name[name] = {
+        customers_by_name[customer_key] = {
             "id": max_customer_id,
             "name": name,
             "gstin": override.get("gstin") or "",
