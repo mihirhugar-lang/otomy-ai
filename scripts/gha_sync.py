@@ -2086,6 +2086,12 @@ def _merge_archive_rows(existing, incoming, section, *, drop_current_window=True
     return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
 
 def _bank_key(row):
+    # Same-day expense payments with the same amount and rendered description
+    # are distinct unless their stable source expense is the same.  This key
+    # is used before dedupe_bank_rows(), so it must preserve the expense id
+    # here as well (21-Apr farmer payments are the regression case).
+    if str(row.get("source") or "") == "Expense" and row.get("id"):
+        return f"expense|{row['id']}"
     return "|".join(str(row.get(k, "")) for k in ("date", "description", "credit", "debit", "bank_name"))
 
 def derive_bank_transactions(sales, expenses, repayments, existing=None):

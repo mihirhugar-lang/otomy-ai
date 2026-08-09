@@ -135,6 +135,14 @@ class SourceWindowCoverageTests(unittest.TestCase):
         rows = [dict(base, id="expense-518"), dict(base, id="expense-519"), dict(base, id="expense-518")]
         deduped = engine.dedupe_bank_rows(rows)
         self.assertEqual(sorted(row["id"] for row in deduped), ["expense-518", "expense-519"])
+        expenses = [
+            {"id": "518", "date": "2026-04-21", "category": "COMPONTATION / FARMER",
+             "description": "Default Ledger", "amount": 15000.0, "payment_mode": "Bank Transfer"},
+            {"id": "519", "date": "2026-04-21", "category": "COMPONTATION / FARMER",
+             "description": "Default Ledger", "amount": 15000.0, "payment_mode": "Bank Transfer"},
+        ]
+        derived = engine.derive_bank_transactions([], expenses, [], [])
+        self.assertEqual(sorted(row["id"] for row in derived), ["expense-518-2026-04-21-15000.0", "expense-519-2026-04-21-15000.0"])
 
 
 if __name__ == "__main__":
