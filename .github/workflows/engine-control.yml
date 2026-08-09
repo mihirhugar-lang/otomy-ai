@@ -11,10 +11,6 @@ on:
           - paused
           - running
 
-concurrency:
-  group: otomy-common-engine-sync
-  cancel-in-progress: false
-
 jobs:
   set-state:
     runs-on: ubuntu-latest
