@@ -3577,6 +3577,7 @@ def write_snapshot_bundle(
     today,
     yesterday,
     month_start,
+    financial_year_start,
     all_sales,
     all_expenses,
     labour_rows,
@@ -3618,6 +3619,11 @@ def write_snapshot_bundle(
         (last_week_start, last_week_end),
         (month_start, today),
         (last_month_start, last_month_end),
+        # The FYTD dashboard is a canonical current view, not a historical
+        # one-off.  A recent ERP ingest therefore must refresh it too; leaving
+        # this range to full-only runs makes the FYTD dashboard silently freeze
+        # while Today and MTD continue to advance.
+        (financial_year_start, today),
     ]
     if historical_start is not None:
         historical_end = min(yesterday, last_month_end)
@@ -3908,6 +3914,7 @@ def main():
     today       = datetime.now(IST).date()
     yesterday   = today - timedelta(days=1)
     month_start = today.replace(day=1)
+    financial_year_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
     week_start  = today - timedelta(days=today.weekday())
     last_week_start = week_start - timedelta(days=7)
     last_week_end = week_start - timedelta(days=1)
@@ -5054,6 +5061,7 @@ def main():
         today,
         yesterday,
         month_start,
+        financial_year_start,
         all_sales,
         all_expenses,
         labour_rows,
@@ -5099,6 +5107,10 @@ def main():
         (last_week_start, last_week_end),
         (month_start, today),
         (last_month_start, last_month_end),
+        # Keep the FYTD Cash Book current on the normal seven-day sync.  The
+        # rows come from the merged archive, so this is a cheap re-derivation
+        # after the recent Loctell delta rather than a second historical fetch.
+        (financial_year_start, today),
     ]
     if sync_mode == "full":
         historical_end = min(yesterday, last_month_end)

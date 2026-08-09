@@ -133,12 +133,14 @@ def required_preset_ranges() -> dict[str, tuple[dt.date, dt.date]]:
     week_start = today - dt.timedelta(days=today.weekday())
     last_month_end = today.replace(day=1) - dt.timedelta(days=1)
     last_month_start = last_month_end.replace(day=1)
+    financial_year_start = dt.date(today.year if today.month >= 4 else today.year - 1, 4, 1)
     return {
         "today": (today, today),
         "yesterday": (today - dt.timedelta(days=1), today - dt.timedelta(days=1)),
         "thisweek": (week_start, today),
         "lastweek": (week_start - dt.timedelta(days=7), week_start - dt.timedelta(days=1)),
         "MTD": (today.replace(day=1), today),
+        "FYTD": (financial_year_start, today),
         "lastmonth": (last_month_start, last_month_end),
     }
 
@@ -1113,6 +1115,46 @@ def verify_bank_page_presets() -> None:
     print(f"Bank page guard passed for {checked} tabs.")
 
 
+def verify_fytd_cashbook_parity() -> None:
+    """A same-date FYTD book must close exactly where MTD/current closes.
+
+    This is deliberately a pre-publish check of independently addressed
+    snapshot files.  It catches a recent-sync regression where the MTD bundle
+    advances but the Apr-1 FYTD bundle is left over from an earlier run.
+    """
+    ranges = required_preset_ranges()
+    fy_start, today = ranges["FYTD"]
+    mtd_start, _ = ranges["MTD"]
+    _, fytd_control = dashboard_snapshot(fy_start, today)
+    _, mtd_control = dashboard_snapshot(mtd_start, today)
+    fytd_url = f"/api/sync/erp/cashbook?from_date={fy_start}&to_date={today}"
+    mtd_url = f"/api/sync/erp/cashbook?from_date={mtd_start}&to_date={today}"
+    _, fytd_book = api_snapshot(fytd_url)
+    _, mtd_book = api_snapshot(mtd_url)
+
+    if not isinstance(fytd_book, dict) or not isinstance(mtd_book, dict):
+        fail("FYTD/MTD cashbook snapshots must be objects")
+    if fytd_book.get("from") != str(fy_start) or fytd_book.get("to") != str(today):
+        fail(f"FYTD cashbook period is stale: {fytd_book.get('from')} to {fytd_book.get('to')}")
+    if mtd_book.get("to") != str(today):
+        fail(f"MTD cashbook end date is stale: {mtd_book.get('to')}")
+
+    for channel, dashboard_key in (("cash", "cash_balance_office"), ("bank", "bank_balance")):
+        fytd_close = round(number_value((fytd_book.get(channel) or {}).get("closing"), f"FYTD {channel} closing"), 2)
+        mtd_close = round(number_value((mtd_book.get(channel) or {}).get("closing"), f"MTD {channel} closing"), 2)
+        fytd_dashboard = round(number_value((fytd_control.get("summary") or {}).get(dashboard_key), f"FYTD dashboard {dashboard_key}"), 2)
+        mtd_dashboard = round(number_value((mtd_control.get("summary") or {}).get(dashboard_key), f"MTD dashboard {dashboard_key}"), 2)
+        if fytd_close != mtd_close:
+            fail(f"FYTD {channel} closing differs from MTD on {today}: FYTD={fytd_close} MTD={mtd_close}")
+        if fytd_close != fytd_dashboard or mtd_close != mtd_dashboard:
+            fail(
+                f"{channel} cashbook/dashboard closing mismatch on {today}: "
+                f"FYTD book={fytd_close} dashboard={fytd_dashboard}; "
+                f"MTD book={mtd_close} dashboard={mtd_dashboard}"
+            )
+    print(f"FYTD cashbook guard passed: FYTD and MTD close identically on {today}.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Verify Otomy dashboard and bank-page parity guards.")
     parser.add_argument(
@@ -1141,6 +1183,7 @@ def main() -> None:
     verify_no_balance_adjustment_rows()
     verify_all_dashboard_presets()
     verify_bank_page_presets()
+    verify_fytd_cashbook_parity()
     verify_customer_page_presets()
     verify_compliance_snapshot()
     verify_cloud_independence_guard()
