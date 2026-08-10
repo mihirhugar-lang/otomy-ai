@@ -4415,7 +4415,11 @@ def main():
     # So we recompute repayments for every day in the live window [repay_window_start,
     # today] straight from ERP and keep the saved snapshot only for OLDER days. This is
     # the same rule already applied to sales/expenses/cash/bank in _merge_archive_rows.
-    repay_window_start = max(month_start, sync_start)
+    # A full rebuild is specifically the repair path for back-dated Loctell
+    # edits.  Recompute repayments from its requested start, not merely from
+    # the current month; otherwise an edited April-June receipt is silently
+    # inherited from the archive.
+    repay_window_start = sync_start if sync_mode == "full" else max(month_start, sync_start)
 
     window_repayments = None
     if debtors_today_fresh and debtors_yesterday_fresh:
@@ -4433,6 +4437,11 @@ def main():
             window_repayments = None
     else:
         print("  window repayments ERP compute skipped; using saved snapshot because debtor balances are fallback")
+
+    if sync_mode == "full" and window_repayments is None:
+        raise ErpFetchError(
+            "full-history repayment refresh unavailable; refusing to retain stale archived receipts"
+        )
 
     def _repayments_on(rows, day):
         day_s = str(day)
@@ -4532,20 +4541,25 @@ def main():
         if str(row.get("date", ""))[:10] < str(last_month_start)
         and not (gap_start is not None and str(gap_start) <= str(row.get("date", ""))[:10] <= str(gap_end))
     ]
-    repayment_map = {}
-    for row in archive_repayments + anchor_gap_repayments + repayments_last_month + repayments_mtd:
-        key = (
-            row.get("date", ""),
-            row.get("customer_name", ""),
-            row.get("reference", ""),
-            round(_num(row.get("payment_received", row.get("amount"))), 2),
+    if sync_mode == "full":
+        # The full window is authoritative.  Do not let a cached receipt
+        # restore an older amount after Loctell has supplied a corrected one.
+        all_repayments = merge_repayment_rows(window_repayments)
+    else:
+        repayment_map = {}
+        for row in archive_repayments + anchor_gap_repayments + repayments_last_month + repayments_mtd:
+            key = (
+                row.get("date", ""),
+                row.get("customer_name", ""),
+                row.get("reference", ""),
+                round(_num(row.get("payment_received", row.get("amount"))), 2),
+            )
+            repayment_map[key] = row
+        all_repayments = sorted(
+            repayment_map.values(),
+            key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
+            reverse=True,
         )
-        repayment_map[key] = row
-    all_repayments = sorted(
-        repayment_map.values(),
-        key=lambda row: (row.get("date", ""), row.get("customer_name", "")),
-        reverse=True,
-    )
     if window_repayments is not None:
         assert_fresh_source_rows_preserved(
             "Customer repayments", window_repayments, all_repayments, _repayment_key
@@ -4598,8 +4612,12 @@ def main():
     # here: doing so removed the freshly fetched 30/31-Jul rows before the
     # monthly archive was written, even though the engine had fetched them.
     # That made completed ranges (which correctly read the archive) lose sales.
+    # `all_sales` is already the archive with the freshly fetched sync window
+    # replaced.  Historical aging data is supplemental only; merge it first
+    # so it can never overwrite a corrected ticket from the authoritative
+    # source window during a full rebuild.
     archive_sales_for_write = merge_rows_by_archive_key(
-        all_sales, historical_aging_sales, "sales", drop_current_window=False
+        historical_aging_sales, all_sales, "sales"
     )
     print(
         f"  Customer aging source: history {aging_history_start}..{today}; "

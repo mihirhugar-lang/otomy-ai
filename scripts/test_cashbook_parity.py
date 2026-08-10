@@ -144,6 +144,30 @@ class SourceWindowCoverageTests(unittest.TestCase):
         derived = engine.derive_bank_transactions([], expenses, [], [])
         self.assertEqual(sorted(row["id"] for row in derived), ["expense-518-2026-04-21-15000.0", "expense-519-2026-04-21-15000.0"])
 
+    def test_keeps_distinct_same_amount_credit_payments(self):
+        engine = load_engine()
+        base = {
+            "date": "2026-04-06", "credit": 55000.0, "debit": 0.0,
+            "bank_name": "UPI/Bank Credit Payment", "source": "Credit Payment",
+        }
+        rows = [
+            dict(base, id="receipt-101-2026-04-06", description="Credit payment received by bank/UPI - SHS SALEEM"),
+            dict(base, id="receipt-202-2026-04-06", description="Credit payment received by bank/UPI - OTHER"),
+        ]
+        self.assertEqual(len(engine.dedupe_bank_rows(rows)), 2)
+
+    def test_full_window_fresh_ticket_cannot_be_overwritten_by_aging_history(self):
+        engine = load_engine()
+        previous = engine.MERGE_PROTECT_BEFORE_DATE
+        engine.MERGE_PROTECT_BEFORE_DATE = "2026-04-01"
+        try:
+            stale = [{"id": "9643", "ticket_no": "9643", "date": "2026-06-05", "amount": 24325.0, "rate_per_mt": 625.0}]
+            fresh = [{"id": "9643", "ticket_no": "9643", "date": "2026-06-05", "amount": 25298.0, "rate_per_mt": 650.0}]
+            written = engine.merge_rows_by_archive_key(stale, fresh, "sales")
+            self.assertEqual(written, fresh)
+        finally:
+            engine.MERGE_PROTECT_BEFORE_DATE = previous
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
