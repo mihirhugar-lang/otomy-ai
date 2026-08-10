@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import unittest
+from copy import deepcopy
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
@@ -82,7 +83,11 @@ class CashbookParityTests(unittest.TestCase):
             return balances[str(as_of)[:10]]
 
         with patch.object(
-            engine, "_balance_overlay", return_value={"anchors": fixture.get("anchors", []), "corrections": []}
+            engine, "_balance_overlay", return_value={
+                "anchors": fixture.get("anchors", []),
+                "corrections": [],
+                "cash_daily_closings": fixture.get("cash_daily_closings", {}),
+            }
         ), patch.object(
             engine, "_overlay_balance", side_effect=fixture_balance
         ):
@@ -102,6 +107,26 @@ class CashbookParityTests(unittest.TestCase):
     def test_canonical_cashbook_keeps_named_verified_reanchors(self):
         fixture = self.fixture["verified_reanchor"]
         self.assertEqual(self._cloud_book(fixture), fixture["expected"])
+
+    def test_deferred_daily_cash_reconciliation_never_shows_a_false_negative(self):
+        # The 100 cash receipt must be applied before the 180 reconciliation
+        # outflow.  Sorting every adjustment first used to publish -80 here,
+        # even though the verified close was a positive 20.
+        fixture = deepcopy(self.fixture)
+        fixture["range"] = {"from": "2026-07-01", "to": "2026-07-01"}
+        fixture["opening"] = {
+            "as_of": "2026-06-30", "cash_balance_office": 100.0, "bank_balance": 0.0,
+        }
+        fixture["sales"] = [fixture["sales"][0]]
+        fixture["expenses"] = []
+        fixture["repayments"] = []
+        fixture["cash_daily_closings"] = {"2026-07-01": 20.0}
+        fixture["expected"] = {"cash": {"closing": 20.0}, "bank": {"closing": 200.0}}
+        book = self._cloud_book(fixture)
+        cash_rows = book["cash"]["rows"]
+        self.assertFalse(any(row["balance"] < 0 for row in cash_rows))
+        self.assertEqual(cash_rows[-1]["particulars"], "Verified daily cash reconciliation (workbook)")
+        self.assertEqual(cash_rows[-1]["balance"], 20.0)
 
 
 class SourceWindowCoverageTests(unittest.TestCase):
