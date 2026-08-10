@@ -2936,11 +2936,30 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     from_d = from_d if isinstance(from_d, date) else date.fromisoformat(str(from_d))
     to_d = to_d if isinstance(to_d, date) else date.fromisoformat(str(to_d))
 
-    def _customer_key(row):
+    def _customer_id_key(row):
         value = row.get("customer_id", row.get("erp_customer_id"))
         if value is None or str(value).strip() == "":
-            value = row.get("customer_name") or row.get("customer") or row.get("name") or ""
-        return str(value).strip().upper()
+            return None
+        return "id", str(value).strip()
+
+    def _customer_name_key(row):
+        # This is only a cashbook matching key; it does not change the stored
+        # customer name or merge customer-master records.  Fresh ListSale rows
+        # do not carry an ERP customer id, while the matching ledger repayment
+        # does, so exact-name fallback is needed to avoid showing one payment
+        # twice on the same day.
+        value = row.get("customer_name") or row.get("customer") or row.get("name") or ""
+        return "name", " ".join(str(value).split()).upper()
+
+    def _sale_customer_key(row):
+        return _customer_id_key(row) or _customer_name_key(row)
+
+    def _repayment_customer_key(row, spot_rows):
+        date_key = str(row.get("date", ""))[:10]
+        id_key = _customer_id_key(row)
+        if id_key is not None and (id_key, date_key) in spot_rows:
+            return id_key, date_key
+        return _customer_name_key(row), date_key
 
     def _row(day, particulars, party, kind, incoming, outgoing, ticket_no=None, settlement_roundoff=0.0):
         return {
@@ -2971,7 +2990,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     spot_cash, spot_bank = {}, {}
     for sale in sales_in_range:
         s_cash, _s_credit, s_upi = _sale_channels(sale)
-        key = (_customer_key(sale), str(sale.get("date", ""))[:10])
+        key = (_sale_customer_key(sale), str(sale.get("date", ""))[:10])
         if s_cash:
             spot_cash[key] = spot_cash.get(key, 0.0) + s_cash
         if s_upi:
@@ -2998,15 +3017,16 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
         amount = _num(repayment.get("payment_received", repayment.get("amount")))
         if amount <= 0:
             continue
-        key = (_customer_key(repayment), str(repayment.get("date", ""))[:10])
         party = repayment.get("customer_name") or "Customer"
         if _payment_channel(repayment.get("mode") or "Cash") == "cash":
+            key = _repayment_customer_key(repayment, spot_cash)
             overlap = min(amount, spot_cash.get(key, 0.0))
             spot_cash[key] = spot_cash.get(key, 0.0) - overlap
             net = amount - overlap
             if net > 0.5:
                 cash_rows.append(_row(repayment.get("date"), "Customer payment (cash)", party, "receipt", net, 0))
         else:
+            key = _repayment_customer_key(repayment, spot_bank)
             overlap = min(amount, spot_bank.get(key, 0.0))
             spot_bank[key] = spot_bank.get(key, 0.0) - overlap
             net = amount - overlap
