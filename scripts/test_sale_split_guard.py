@@ -10,6 +10,7 @@ from gha_sync import (
     _is_explicit_mixed_tender_split,
     _ledger_archive_start,
     _ledger_payment_channel,
+    _sale_split_key,
     _sale_settlement_roundoff,
     _split_reconciles_sale,
     merge_rows_by_archive_key,
@@ -50,6 +51,16 @@ class SaleSplitGuardTests(unittest.TestCase):
         row[13] = "CASH"
         row[8] = "Rs : 2,85,714 /- mode CARD/UPI - VMIPL (ICICI BANK)"
         self.assertEqual(_ledger_payment_channel(row), "bank")
+
+    def test_split_identity_keeps_reused_ticket_numbers_separate(self):
+        # Loctell reused ticket 10086: SANA RONA's 26-May split must not be
+        # replaced by HONNAPPA's unrelated 30-Jun ticket in a full rebuild.
+        splits = {
+            _sale_split_key("2026-05-26", "10086"): {"cash": 8500.0, "upi": 4350.5},
+            _sale_split_key("2026-06-30", "10086"): {"cash": 0.0, "upi": 0.0},
+        }
+        self.assertEqual(splits[_sale_split_key("2026-05-26", "10086")]["upi"], 4350.5)
+        self.assertEqual(splits[_sale_split_key("2026-06-30", "10086")]["cash"], 0.0)
 
     def test_exposes_small_final_cash_round_off_without_changing_settlement(self):
         self.assertEqual(

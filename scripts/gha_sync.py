@@ -174,6 +174,11 @@ def _is_explicit_mixed_tender_split(split):
     )
 
 
+def _sale_split_key(sale_date, ticket_no):
+    """Stable ListSale key; Loctell ticket numbers repeat on later dates."""
+    return str(sale_date or "")[:10], str(ticket_no or "").strip()
+
+
 def _is_excluded_customer_receipt(row):
     return str((row or {}).get("reference") or "") in EXCLUDED_CUSTOMER_RECEIPT_REFS
 
@@ -782,11 +787,13 @@ def fetch_sales(sess, from_d, to_d):
 
 
 def fetch_sale_splits(sess, from_d, to_d):
-    """{ticket_no: {cash, credit, upi, total, pay_type}} from ERP ListSale.
+    """{(date, ticket_no): {cash, credit, upi, total, pay_type}} from ERP ListSale.
 
     Captures real SPLIT payments (part cash + part UPI) that ListCustomerWiseReport
-    collapses into one payment mode. Best-effort: a per-day failure is logged and
-    skipped, never aborts the sync.
+    collapses into one payment mode.  Ticket numbers are not globally unique
+    (for example, 10086 occurs on 26-May and 30-Jun), so date is part of the
+    identity. Best-effort: a per-day failure is logged and skipped, never aborts
+    the sync.
     """
     splits = {}
     cur = from_d
@@ -815,7 +822,7 @@ def fetch_sale_splits(sess, from_d, to_d):
                     row = cells[i:i + REC]
                     if not re.fullmatch(r"\d+", row[3]):
                         break  # footer / total row -> end of data
-                    splits[row[3]] = {
+                    splits[_sale_split_key(cur, row[3])] = {
                         "total": _num(row[14]), "pay_type": row[15],
                         "cash": round(_num(row[16]), 2), "credit": round(_num(row[17]), 2), "upi": round(_num(row[18]), 2),
                         "mdp": round(_num(row[21]), 3),  # real "MDP Ton" column from ListSale
@@ -4375,7 +4382,7 @@ def main():
         _n = 0
         _rejected = 0
         for _s in fresh_sales:
-            _sp = _splits.get(str(_s.get("ticket_no") or ""))
+            _sp = _splits.get(_sale_split_key(_s.get("date"), _s.get("ticket_no")))
             if _sp is not None and "mdp" in _sp:
                 _s["mdp_ton"] = _sp["mdp"]  # real MDP Ton (differs from sale/net tonnage)
             if _sp and (_split_reconciles_sale(_s, _sp) or _is_explicit_mixed_tender_split(_sp)):
