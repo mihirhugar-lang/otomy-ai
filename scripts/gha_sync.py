@@ -1839,8 +1839,11 @@ def _bank_dedupe_key(row):
     # farmer payments).
     if source == "Expense" and row.get("id"):
         return ("expense", str(row["id"]))
-    if source == "Credit Payment":
-        return ("credit-payment", date_value, credit, debit, str(row.get("bank_name") or ""))
+    if source == "Credit Payment" and row.get("id"):
+        # Repayments are aggregated per customer/day/channel.  Different
+        # customers can legitimately pay the same amount on the same date;
+        # collapsing only by date and amount drops a real bank credit.
+        return ("credit-payment", str(row["id"]))
     return (
         "bank",
         source,
