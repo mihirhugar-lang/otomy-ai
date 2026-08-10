@@ -1,0 +1,10 @@
+[
+  {
+    "id": "manual-hdfc-current",
+    "name": "HDFC Current Account",
+    "bank_name": "HDFC Bank",
+    "current_balance": 250000.0,
+    "active": true,
+    "source": "Reviewed localhost manual BankAccount balance; no account number is published."
+  }
+]

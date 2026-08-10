@@ -38,6 +38,7 @@ ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
 VENDOR_MASTER_PATH = Path(__file__).resolve().parent.parent / "seed" / "vendor_master.json"
+BOOK_BALANCE_ACCOUNTS_PATH = ROOT / "seed" / "book_balance_accounts.json"
 BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
 MERGE_PROTECT_BEFORE_DATE = None
@@ -444,6 +445,16 @@ def load_local_seed():
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def load_book_balance_accounts():
+    """Manual BankAccount balances that exist locally but not in Loctell."""
+    try:
+        with open(BOOK_BALANCE_ACCOUNTS_PATH) as f:
+            rows = json.load(f)
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
 
 def load_customer_master_overrides():
     try:
@@ -3850,7 +3861,7 @@ def write_snapshot_bundle(
     seed_customer_ledgers = local_seed.get("customer_ledgers", {}) if isinstance(local_seed, dict) else {}
     seed_vendor_ledgers = local_seed.get("vendor_ledgers", {}) if isinstance(local_seed, dict) else {}
     seed_bank_statements = local_seed.get("bank_statements", {}) if isinstance(local_seed, dict) else {}
-    bank_accounts = seed_endpoints.get("bank_accounts") or [
+    bank_accounts = seed_endpoints.get("bank_accounts") or load_book_balance_accounts() or [
         {
             "id": 1,
             "name": "Operating Bank",
@@ -4130,7 +4141,10 @@ def main():
     seed_config = dict(seed_endpoints.get("exports_config", {}))
     if not seed_config.get("operating_balance_opening") and archive_manifest.get("operating_balance_opening"):
         seed_config["operating_balance_opening"] = archive_manifest["operating_balance_opening"]
-    seed_bank_accounts = seed_endpoints.get("bank_accounts", [])
+    # Reuse the same effective account list that is published at
+    # /api/bank/accounts.  Previously the fallback/manual account was visible
+    # but these two Dashboard book fields still summed an empty seed list.
+    seed_bank_accounts = bank_accounts
 
     bank_balance_book = round(
         sum(_num(row.get("current_balance")) for row in seed_bank_accounts if row.get("active", True)),

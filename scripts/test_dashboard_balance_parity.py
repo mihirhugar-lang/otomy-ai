@@ -6,6 +6,9 @@ from datetime import date
 
 
 def main() -> int:
+    book_accounts = engine.load_book_balance_accounts()
+    assert len(book_accounts) == 1 and book_accounts[0]["current_balance"] == 250000.0, book_accounts
+
     canonical = engine.canonical_customer_master_rows([
         {"id": 2, "name": "Hella Infra Market Ltd", "active": True},
         {"id": 294, "name": "HELLA  INFRA MARKET LTD", "active": True},
