@@ -4506,6 +4506,15 @@ def main():
             month_start - timedelta(days=1),
             today,
         )
+    # A full-history refresh supplies `window_repayments` from April onward.
+    # The MTD control must still expose only this calendar month's rows; using
+    # the full window here made the Bank-page guard compare FY repayments to
+    # an August-only bank snapshot.
+    if sync_mode == "full" and window_repayments is not None:
+        repayments_mtd = [
+            dict(row) for row in window_repayments
+            if str(month_start) <= str(row.get("date", ""))[:10] <= str(today)
+        ]
     repayments_mtd = require_repayments("mtd", repayments_mtd)
 
     repayments_last_month = saved_last_month
