@@ -1,0 +1,84 @@
+name: Inspect Otomy dashboard snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: "Inclusive start date (YYYY-MM-DD)"
+        required: true
+        default: "2026-08-01"
+      to_date:
+        description: "Inclusive end date (YYYY-MM-DD)"
+        required: true
+        default: "2026-08-10"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Read dashboard snapshot from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          FROM_DATE: ${{ inputs.from_date }}
+          TO_DATE: ${{ inputs.to_date }}
+        run: |
+          url="/api/dashboard/control?from_date=$FROM_DATE&to_date=$TO_DATE"
+          key="$(URL="$url" python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.environ["URL"].encode()).decode().rstrip("="))')"
+          snapshot="$RUNNER_TEMP/dashboard.json"
+          aws s3 cp "s3://otomy-data/snapshot/api/$key.json" "$snapshot" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          python3 - "$snapshot" <<'PY'
+          import json
+          import sys
+
+          data = json.load(open(sys.argv[1]))
+          num = lambda v: float(v or 0)
+          norm = lambda v: str(v or "-").strip().upper()
+          sales = data.get("customer_sales") or []
+          repayments = [dict(row) for row in (data.get("customer_repayments") or [])]
+          spot_by_customer = {}
+          paid_by_customer = {}
+          for row in sales:
+              key = norm(row.get("customer_name"))
+              spot_by_customer[key] = spot_by_customer.get(key, 0) + num(row.get("amount")) - num(row.get("credit_sale_amount"))
+          for row in repayments:
+              key = norm(row.get("customer_name"))
+              paid_by_customer[key] = paid_by_customer.get(key, 0) + num(row.get("payment_received", row.get("amount")))
+          overlap = {key: min(max(spot_by_customer.get(key, 0), 0), amount) for key, amount in paid_by_customer.items()}
+          grouped = {}
+          for index, row in enumerate(repayments):
+              row["_index"] = index
+              grouped.setdefault(norm(row.get("customer_name")), []).append(row)
+          repayment_bank_display = 0.0
+          for key, rows in grouped.items():
+              remaining = overlap.get(key, 0.0)
+              rows.sort(key=lambda row: tuple(str(row.get(field) or "") for field in (
+                  "date", "reference", "mode", "payment_received", "amount", "bank_received", "cash_received", "id", "_index")))
+              for row in rows:
+                  paid = num(row.get("payment_received", row.get("amount")))
+                  kept = max(paid - min(max(remaining, 0), paid), 0)
+                  remaining = round(remaining - min(max(remaining, 0), paid), 2)
+                  bank, cash = num(row.get("bank_received")), num(row.get("cash_received"))
+                  channels = bank + cash
+                  if channels <= 0:
+                      bank = 0.0 if str(row.get("mode") or "").upper() == "CASH" else paid
+                      cash = paid - bank
+                      channels = paid
+                  repayment_bank_display += round(kept * bank / channels, 2) if kept and channels else 0.0
+          totals = data.get("customer_sales_totals") or {}
+          spot_bank = num(totals.get("bank_received"))
+          print("## Dashboard snapshot inspection")
+          print()
+          print(f"Range: {data.get('period', {}).get('from')} to {data.get('period', {}).get('to')}")
+          print(f"Spot bank/UPI: {spot_bank:.2f}")
+          print(f"Credit repayment bank/UPI (raw): {num(data.get('customer_repayments_bank_total')):.2f}")
+          print(f"Credit repayment bank/UPI (displayed): {repayment_bank_display:.2f}")
+          print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
+          print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
+          PY
