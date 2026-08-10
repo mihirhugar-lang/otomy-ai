@@ -31,7 +31,8 @@ except ModuleNotFoundError:
         build_tally_xml as build_compliance_tally_xml,
     )
 
-DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", ROOT / "data"))
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
@@ -243,6 +244,7 @@ def cleanup_residual_balance_artifacts():
                 named_anchor = particulars in {
                     "Verified balance adjustment (physical cash count)",
                     "Verified balance adjustment (bank statement)",
+                    "Verified daily cash reconciliation (workbook)",
                 }
                 if isinstance(item, dict) and (
                     particulars == "Verified balance adjustment (residual)"
@@ -1812,6 +1814,24 @@ def write(filename, data):
         json.dump(data, f, default=str, indent=2)
     print(f"  {filename}")
 
+
+def stage_balance_overlay_config():
+    """Mirror the reviewed anchor policy into the generated R2 bundle.
+
+    The source-controlled seed is the only financial-rule authority.  R2 holds
+    a byte-for-byte working copy so the live bundle cannot look editable while
+    being ignored by the common engine.
+    """
+    global _BALANCE_OVERLAY
+    source = ROOT / "seed" / "balance_anchors.json"
+    target = DATA_DIR / "balance_anchors.json"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    content = source.read_bytes()
+    if not target.exists() or target.read_bytes() != content:
+        target.write_bytes(content)
+        print("  balance_anchors.json (mirrored reviewed seed)")
+    _BALANCE_OVERLAY = None
+
 def _bank_amount_key(row):
     return (
         str(row.get("date", ""))[:10],
@@ -2959,7 +2979,12 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     close_bank, close_cash = _balance(to_d)
 
     def _sort_key(row):
-        return (row.get("date", ""), 0 if row.get("kind") == "adjustment" else 1, -_num(row.get("in")))
+        # A normal daily reconciliation belongs before that day's movements;
+        # a deferred reconciliation/physical anchor belongs after them.  The
+        # old generic adjustment-first sort could show an impossible negative
+        # intermediate cash balance even when the verified daily close was
+        # positive.
+        return (row.get("date", ""), row.get("_cashbook_order", 1), -_num(row.get("in")))
 
     def _finalize(rows, opening_balance, closing_balance, channel):
         shown = [dict(row) for row in rows]
@@ -2975,12 +3000,23 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
                 day_rows.append(shown[index])
                 index += 1
             target = daily_cash.get(str(day)[:10])
+            # A physical-count anchor is more authoritative than the workbook
+            # running chain on the same day.  Use it directly rather than
+            # publishing two contradictory daily closes.
+            if channel == "cash":
+                anchor = next(
+                    (a for a in overlay.get("anchors", []) if str(a.get("date") or "")[:10] == str(day)[:10]),
+                    None,
+                )
+                if anchor and anchor.get("cash") is not None:
+                    target = _num(anchor.get("cash"))
             deferred_gap = 0.0
             if target is not None:
                 gap = round(_num(target) - (running + sum(_num(row.get("in")) - _num(row.get("out")) for row in day_rows)), 2)
                 if abs(gap) > 0.5 and running + gap >= 0:
                     row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", max(gap, 0), max(-gap, 0))
                     row["adjustment"] = True
+                    row["_cashbook_order"] = 0
                     running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
                     row["balance"] = running
                     reconciled.append(row)
@@ -2993,6 +3029,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
             if deferred_gap:
                 row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", 0, max(-deferred_gap, 0))
                 row["adjustment"] = True
+                row["_cashbook_order"] = 2
                 running = round(_num(target), 2)
                 row["balance"] = running
                 reconciled.append(row)
@@ -3018,6 +3055,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
                 -gap if gap < 0 else 0,
             )
             adjustment["adjustment"] = True
+            adjustment["_cashbook_order"] = 2
             shown.append(adjustment)
             shown.sort(key=_sort_key)
             running = round(_num(opening_balance), 2)
@@ -3030,6 +3068,8 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
                     f"opening={_num(opening_balance):.2f}, expected_closing={_num(closing_balance):.2f}, "
                     f"gap_after_anchor={_num(closing_balance) - running:.2f}"
                 )
+        for row in shown:
+            row.pop("_cashbook_order", None)
         return {
             "opening": round(_num(opening_balance), 2),
             "rows": shown,
@@ -3999,6 +4039,9 @@ def write_snapshot_bundle(
 
 def main():
     print(f"[{datetime.now().isoformat(timespec='seconds')}] GHA ERP sync starting...")
+    # Establish the reviewed anchor policy before any range/window calculation
+    # asks the overlay for its latest verified balance anchor.
+    stage_balance_overlay_config()
     sess = erp_auth()
     print("  Authenticated with loctell.com")
 
