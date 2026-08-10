@@ -33,11 +33,17 @@ jobs:
           snapshot="$RUNNER_TEMP/dashboard.json"
           aws s3 cp "s3://otomy-data/snapshot/api/$key.json" "$snapshot" \
             --endpoint-url "$R2_ENDPOINT" --only-show-errors
-          python3 - "$snapshot" <<'PY'
+          cashbook_url="/api/sync/erp/cashbook?from_date=$FROM_DATE&to_date=$TO_DATE"
+          cashbook_key="$(URL="$cashbook_url" python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.environ["URL"].encode()).decode().rstrip("="))')"
+          cashbook="$RUNNER_TEMP/cashbook.json"
+          aws s3 cp "s3://otomy-data/snapshot/api/$cashbook_key.json" "$cashbook" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          python3 - "$snapshot" "$cashbook" <<'PY'
           import json
           import sys
 
           data = json.load(open(sys.argv[1]))
+          cashbook = json.load(open(sys.argv[2]))
           num = lambda v: float(v or 0)
           norm = lambda v: str(v or "-").strip().upper()
           sales = data.get("customer_sales") or []
@@ -81,4 +87,17 @@ jobs:
           print(f"Credit repayment bank/UPI (displayed): {repayment_bank_display:.2f}")
           print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
           print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
+          print()
+          print("## Canonical book inspection")
+          for channel in ("cash", "bank"):
+              side = cashbook.get(channel) or {}
+              rows = side.get("rows") or []
+              balances = [num(row.get("balance")) for row in rows]
+              negative = [row for row in rows if num(row.get("balance")) < -0.01]
+              minimum = min(balances) if balances else num(side.get("opening"))
+              print(
+                  f"{channel.title()}: opening={num(side.get('opening')):.2f} "
+                  f"closing={num(side.get('closing')):.2f} rows={len(rows)} "
+                  f"minimum={minimum:.2f} negative_rows={len(negative)}"
+              )
           PY
