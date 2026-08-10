@@ -127,6 +127,9 @@ jobs:
       - name: Verify the generated common bundle
         if: steps.initial_control.outputs.enabled == 'true'
         run: |
+          # A full source pull can cross midnight in India. Validate the
+          # generated bundle's own as-of date, not the runner's later clock.
+          export OTOMY_VERIFY_AS_OF="$(python3 -c 'import json; print(json.load(open("data/ctrl_today.json"))["period"]["to"])')"
           if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" = "vendor" ]; then
             # This lane deliberately changes only vendor objects.  Validate the
             # common code invariants plus the vendor bundle itself, without
