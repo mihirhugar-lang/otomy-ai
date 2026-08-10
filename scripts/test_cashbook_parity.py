@@ -128,6 +128,29 @@ class CashbookParityTests(unittest.TestCase):
         self.assertEqual(cash_rows[-1]["particulars"], "Verified daily cash reconciliation (workbook)")
         self.assertEqual(cash_rows[-1]["balance"], 20.0)
 
+    def test_repayment_with_erp_id_nets_fresh_sale_by_name_when_sale_has_no_id(self):
+        # Fresh ListSale data has a customer name but no ERP id.  The matching
+        # customer-ledger repayment has the id, so it must fall back to the
+        # same-day name rather than being displayed as a second cash receipt.
+        fixture = {
+            "range": {"from": "2026-07-02", "to": "2026-07-02"},
+            "opening": {"as_of": "2026-07-01", "cash_balance_office": 0.0, "bank_balance": 0.0},
+            "sales": [{
+                "date": "2026-07-02", "customer_name": "SANA RONA", "ticket_no": "10086",
+                "amount": 100.0, "transport_charge": 0.0,
+                "cash_amount": 100.0, "credit_amount": 0.0, "upi_amount": 0.0,
+            }],
+            "expenses": [],
+            "repayments": [{
+                "date": "2026-07-02", "customer_name": "SANA RONA", "erp_customer_id": 99,
+                "mode": "Cash", "payment_received": 100.0, "amount": 0.0,
+            }],
+            "expected": {"cash": {"closing": 100.0}, "bank": {"closing": 0.0}},
+        }
+        book = self._cloud_book(fixture)
+        self.assertFalse(any(row["kind"] == "receipt" for row in book["cash"]["rows"]))
+        self.assertEqual(book["cash"]["closing"], 100.0)
+
 
 class SourceWindowCoverageTests(unittest.TestCase):
     def test_accepts_every_fresh_source_row_in_the_merged_result(self):
