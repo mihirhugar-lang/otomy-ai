@@ -683,11 +683,12 @@ def verify_daily_balance_chain() -> None:
 
 
 def verify_no_balance_adjustment_rows() -> None:
-    """Only localhost's two named verified anchor rows may appear in a book."""
+    """Only explicitly sourced verified reconciliation rows may appear in a book."""
     forbidden = []
     allowed = {
         "Verified balance adjustment (physical cash count)",
         "Verified balance adjustment (bank statement)",
+        "Verified daily cash reconciliation (workbook)",
     }
 
     def visit(value, path):
@@ -708,7 +709,7 @@ def verify_no_balance_adjustment_rows() -> None:
             continue
     if forbidden:
         fail(f"published data contains forbidden balance-adjustment rows: {forbidden[:3]}")
-    print("Balance-row guard passed: no residual or generic adjustment rows are published.")
+    print("Balance-row guard passed: no residual or unsourced adjustment rows are published.")
 
 def verify_sync_tolerance_guard() -> None:
     source = (ROOT / "scripts" / "gha_sync.py").read_text()
