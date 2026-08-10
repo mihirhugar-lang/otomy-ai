@@ -1211,20 +1211,23 @@ def _norm_name(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
-def canonical_customer_master_rows(rows):
-    """Keep one customer-master row per normalized business name.
+def _customer_master_key(name):
+    """Display-master identity: keep meaningful internal spacing intact."""
+    return str(name or "").strip().casefold()
 
-    Loctell can carry harmless spelling variants of a settled customer (for
-    example, different case or double spaces).  A selected-date debtor balance
-    is keyed by that normalized name, so retaining both master rows would apply
-    the same balance twice.  Preserve the first stable master row; its balance
-    is refreshed from the canonical debtor snapshot below.
+
+def canonical_customer_master_rows(rows):
+    """Keep one customer-master row per display identity.
+
+    Balances are normalized separately against the Loctell debtor snapshot.
+    Do not erase a real master simply because it has different internal
+    spacing: the Customers page must represent the source master faithfully.
     """
     canonical = {}
     for source in rows or []:
         row = dict(source)
         name = str(row.get("name") or "").strip()
-        key = _norm_name(name)
+        key = _customer_master_key(name)
         if not key:
             continue
         canonical.setdefault(key, row)
@@ -3674,14 +3677,21 @@ def build_customer_range_rows(
         days=30,
     ) if as_of else {}
     rows = []
+    consumed_end_balance_keys = set()
     for customer in customers_full or []:
         row = dict(customer)
         name = str(row.get("name") or "").strip()
         metric = metrics.get(name, {})
-        outstanding = outstanding_by_name.get(
-            _norm_name(name),
-            0.0 if use_exact_end_balance else _num(row.get("outstanding", row.get("balance", 0.0))),
-        )
+        balance_key = _norm_name(name)
+        if use_exact_end_balance and balance_key in consumed_end_balance_keys:
+            outstanding = 0.0
+        else:
+            outstanding = outstanding_by_name.get(
+                balance_key,
+                0.0 if use_exact_end_balance else _num(row.get("outstanding", row.get("balance", 0.0))),
+            )
+            if use_exact_end_balance and balance_key in outstanding_by_name:
+                consumed_end_balance_keys.add(balance_key)
         row.update({
             "balance": round(outstanding, 2),
             "outstanding": round(outstanding, 2),
@@ -5059,9 +5069,9 @@ def main():
     write("expenses_all.json", sorted(all_expenses, key=lambda r: r["date"], reverse=True))
 
     # ── customers ─────────────────────────────────────────────────────────────
-    # Keep the master and the Loctell debtor point list canonical by normalized
-    # customer name.  Otherwise a case/space variant receives the same ERP
-    # balance twice and inflates Dashboard/Customer receivables.
+    # Preserve all display-master rows while consuming each normalized Loctell
+    # debtor balance once.  This retains spacing-sensitive customer names
+    # without duplicating the ERP receivable.
     seed_customers = canonical_customer_master_rows(seed_endpoints.get("customers_all", []))
     debtors_by_name = canonical_debtors_by_name(debtors_today)
     customers_by_name = {}
@@ -5069,7 +5079,7 @@ def main():
     for customer_key, seed_row in seed_customers.items():
         row = dict(seed_row)
         max_customer_id = max(max_customer_id, int(row.get("id") or 0))
-        d = debtors_by_name.pop(customer_key, None)
+        d = debtors_by_name.pop(_norm_name(row.get("name")), None)
         if d:
             row.update({
                 "balance": d["outstanding"],
@@ -5089,8 +5099,9 @@ def main():
             })
         customers_by_name[customer_key] = row
 
-    for customer_key, d in debtors_by_name.items():
+    for _debtor_key, d in debtors_by_name.items():
         max_customer_id += 1
+        customer_key = _customer_master_key(d["name"])
         customers_by_name[customer_key] = {
             "id": max_customer_id, "name": d["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": 0.0, "active": True,
@@ -5110,7 +5121,7 @@ def main():
 
     for override in load_customer_master_overrides():
         name = str(override.get("name") or "").strip()
-        customer_key = _norm_name(name)
+        customer_key = _customer_master_key(name)
         if not customer_key or customer_key in customers_by_name:
             continue
         max_customer_id += 1
