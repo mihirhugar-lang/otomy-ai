@@ -1710,6 +1710,17 @@ def build_control(sales, expenses, from_d, to_d,
         if d["outstanding"] > 0:
             receivables.append({"name": d["name"], "balance": d["outstanding"]})
             total_receivable += d["outstanding"]
+    # This tile is a normal customer receivable, not a special hard-coded
+    # balance.  Derive it from the same selected-date debtor list as the
+    # receivables total so it heals with every Loctell correction.
+    kumar_balance = next(
+        (
+            _num(row.get("outstanding", row.get("balance", 0.0)))
+            for row in debtors or []
+            if str(row.get("name") or "").strip().upper() == "KUMAR SIR"
+        ),
+        0.0,
+    )
 
     # payables from creditors
     payables       = []
@@ -1762,7 +1773,7 @@ def build_control(sales, expenses, from_d, to_d,
             "bank_balance_book":       round(bank_balance_book, 2),
             "cash_balance_office_book": round(cash_balance_office_book, 2),
             "operating_balance_from":  str(from_d),
-            "kumar_balance":           0.0,
+            "kumar_balance":           round(kumar_balance, 2),
             "credit_payment_received": rp_pay_total,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
