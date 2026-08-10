@@ -5059,14 +5059,6 @@ def main():
     write("expenses_all.json", sorted(all_expenses, key=lambda r: r["date"], reverse=True))
 
     # ── customers ─────────────────────────────────────────────────────────────
-    sales_by_cust = {}
-    for s in all_sales:
-        c = s["customer_name"]
-        g = sales_by_cust.setdefault(c, {"total_sales": 0.0, "total_receipts": 0.0})
-        g["total_sales"] += _sale_total(s)
-        if s["payment_mode"] != "Credit":
-            g["total_receipts"] += _sale_total(s)
-
     # Keep the master and the Loctell debtor point list canonical by normalized
     # customer name.  Otherwise a case/space variant receives the same ERP
     # balance twice and inflates Dashboard/Customer receivables.
@@ -5079,11 +5071,13 @@ def main():
         max_customer_id = max(max_customer_id, int(row.get("id") or 0))
         d = debtors_by_name.pop(customer_key, None)
         if d:
-            st = sales_by_cust.get(d["name"], {})
             row.update({
                 "balance": d["outstanding"],
-                "total_sales": round(st.get("total_sales", row.get("total_sales", d["billed"])), 2),
-                "total_receipts": round(st.get("total_receipts", row.get("total_receipts", d["received"])), 2),
+                # These columns are lifetime ERP debtor balances, not the
+                # selected FY window.  Range sales stay in the dedicated
+                # range_* fields returned by build_customer_view.
+                "total_sales": round(d["billed"], 2),
+                "total_receipts": round(d["received"], 2),
                 "manual_receipts": row.get("manual_receipts", 0.0),
                 "erp_received": round(d["received"], 2),
                 "received": round(d["received"], 2),
@@ -5097,13 +5091,12 @@ def main():
 
     for customer_key, d in debtors_by_name.items():
         max_customer_id += 1
-        st = sales_by_cust.get(d["name"], {})
         customers_by_name[customer_key] = {
             "id": max_customer_id, "name": d["name"], "gstin": "", "phone": "", "address": "",
             "opening_balance": 0.0, "active": True,
             "balance":           d["outstanding"],
-            "total_sales":       round(st.get("total_sales",    d["billed"]),   2),
-            "total_receipts":    round(st.get("total_receipts", d["received"]), 2),
+            "total_sales":       round(d["billed"],   2),
+            "total_receipts":    round(d["received"], 2),
             "manual_receipts":   0.0,
             "erp_received":      round(d["received"], 2),
             "received":          round(d["received"], 2),
