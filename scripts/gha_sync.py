@@ -143,6 +143,37 @@ def _payment_channel(raw):
     return "cash" if "CASH" in (raw or "").upper() else "bank"
 
 
+def _ledger_payment_channel(cells):
+    """Classify a customer-ledger payment from its complete ERP row.
+
+    The mode column is usually sufficient, but Loctell can label it ``CASH``
+    while its transaction narrative explicitly says ``CARD/UPI - VMIPL
+    (ICICI)``.  The money is then real bank money, not cash in office.  A
+    specific electronic-payment reference takes precedence over the generic
+    mode; otherwise retain the established mode-column behaviour.
+    """
+    text = " ".join(str(value or "") for value in (cells or [])).upper()
+    if re.search(r"\b(?:CARD\s*/\s*UPI|UPI|NEFT|RTGS|IMPS|ICICI)\b", text):
+        return "bank"
+    mode = cells[13] if len(cells or []) > 13 else ""
+    return _payment_channel(mode)
+
+
+def _is_explicit_mixed_tender_split(split):
+    """Whether ListSale explicitly identifies a real cash + non-cash tender.
+
+    These physical channel amounts remain authoritative even when Loctell's
+    invoice total has a larger-than-usual settlement round-off.  Restrict this
+    exception to a named SPLIT tender so stale partial splits cannot replace a
+    normal cash, UPI, or credit ticket.
+    """
+    if not isinstance(split, dict) or "SPLIT" not in str(split.get("pay_type") or "").upper():
+        return False
+    return _num(split.get("cash")) > 0 and (
+        _num(split.get("credit")) > 0 or _num(split.get("upi")) > 0
+    )
+
+
 def _is_excluded_customer_receipt(row):
     return str((row or {}).get("reference") or "") in EXCLUDED_CUSTOMER_RECEIPT_REFS
 
@@ -1494,7 +1525,7 @@ def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debt
             if debit  > 0: total_debit += debit
             if credit > 0:
                 total_credit += credit
-                credit_by_channel[_payment_channel(mode)] += credit
+                credit_by_channel[_ledger_payment_channel(cols)] += credit
                 raw_modes.append(mode or "Payment")
         if total_credit <= 0:
             return []
@@ -4347,7 +4378,7 @@ def main():
             _sp = _splits.get(str(_s.get("ticket_no") or ""))
             if _sp is not None and "mdp" in _sp:
                 _s["mdp_ton"] = _sp["mdp"]  # real MDP Ton (differs from sale/net tonnage)
-            if _sp and _split_reconciles_sale(_s, _sp):
+            if _sp and (_split_reconciles_sale(_s, _sp) or _is_explicit_mixed_tender_split(_sp)):
                 _s["cash_amount"] = _sp["cash"]; _s["credit_amount"] = _sp["credit"]; _s["upi_amount"] = _sp["upi"]
                 _n += 1
             elif _sp and (_num(_sp.get("cash")) + _num(_sp.get("credit")) + _num(_sp.get("upi"))) > 0:

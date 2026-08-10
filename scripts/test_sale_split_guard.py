@@ -7,7 +7,9 @@ from datetime import date
 import gha_sync
 from gha_sync import (
     _channels_for_payment_mode,
+    _is_explicit_mixed_tender_split,
     _ledger_archive_start,
+    _ledger_payment_channel,
     _sale_settlement_roundoff,
     _split_reconciles_sale,
     merge_rows_by_archive_key,
@@ -32,6 +34,22 @@ class SaleSplitGuardTests(unittest.TestCase):
             {"amount": 3173.0, "transport_charge": 0.0},
             {"cash": 3170.0, "credit": 0.0, "upi": 0.0},
         ))
+
+    def test_keeps_explicit_splitvmi_cash_and_upi_despite_round_off(self):
+        # Ticket 9058: invoice ₹3,563, physical tender ₹2,500 cash +
+        # ₹1,057.75 UPI.  The ₹5.25 ERP settlement difference must not turn
+        # the whole ticket into a bank receipt.
+        split = {"pay_type": "SPLITVMI Account", "cash": 2500.0, "credit": 0.0, "upi": 1057.75}
+        self.assertFalse(_split_reconciles_sale(
+            {"amount": 3562.0, "transport_charge": 1.0}, split
+        ))
+        self.assertTrue(_is_explicit_mixed_tender_split(split))
+
+    def test_ledger_electronic_narrative_beats_generic_cash_mode(self):
+        row = [""] * 14
+        row[13] = "CASH"
+        row[8] = "Rs : 2,85,714 /- mode CARD/UPI - VMIPL (ICICI BANK)"
+        self.assertEqual(_ledger_payment_channel(row), "bank")
 
     def test_exposes_small_final_cash_round_off_without_changing_settlement(self):
         self.assertEqual(
