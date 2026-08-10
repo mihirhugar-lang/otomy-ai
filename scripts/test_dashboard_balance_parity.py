@@ -2,6 +2,7 @@
 """Deterministic guard for selected-date customer/vendor dashboard balances."""
 
 import gha_sync as engine
+from datetime import date
 
 
 def main() -> int:
@@ -56,6 +57,12 @@ def main() -> int:
     )
     payable = round(sum(max(engine._num(row["payable"]), 0.0) for row in vendors), 2)
     assert payable == 80.0, vendors
+
+    control = engine.build_control(
+        [], [], date(2026, 8, 10), date(2026, 8, 10),
+        debtors=[{"name": "Kumar Sir", "outstanding": 39710.0}], creditors=[],
+    )
+    assert control["summary"]["kumar_balance"] == 39710.0, control["summary"]
     print("dashboard customer/vendor selected-date balance fixture passed")
     return 0
 
