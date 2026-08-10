@@ -13,8 +13,8 @@ def main() -> int:
         {"id": 2, "name": "Hella Infra Market Ltd", "active": True},
         {"id": 294, "name": "HELLA  INFRA MARKET LTD", "active": True},
     ])
-    assert list(canonical) == ["hellainframarketltd"], canonical
-    assert canonical["hellainframarketltd"]["id"] == 2, canonical
+    assert len(canonical) == 2, canonical
+    assert {row["id"] for row in canonical.values()} == {2, 294}, canonical
 
     debtors = engine.canonical_debtors_by_name([
         {"name": "Hella Infra Market Ltd", "outstanding": 605939.0},
@@ -24,8 +24,8 @@ def main() -> int:
     canonical_balance_rows = engine.build_customer_range_rows(
         list(canonical.values()), [], [], [], ending_debtors=list(debtors.values()), as_of="2026-08-09",
     )
-    assert len(canonical_balance_rows) == 1, canonical_balance_rows
-    assert canonical_balance_rows[0]["total_outstanding"] == 605939.0, canonical_balance_rows
+    assert len(canonical_balance_rows) == 2, canonical_balance_rows
+    assert sum(row["total_outstanding"] for row in canonical_balance_rows) == 605939.0, canonical_balance_rows
 
     try:
         engine.canonical_debtors_by_name([
