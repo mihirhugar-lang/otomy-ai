@@ -94,10 +94,19 @@ jobs:
               rows = side.get("rows") or []
               balances = [num(row.get("balance")) for row in rows]
               negative = [row for row in rows if num(row.get("balance")) < -0.01]
+              kinds = {}
+              for row in rows:
+                  kind = str(row.get("kind") or "unknown")
+                  kinds[kind] = kinds.get(kind, 0) + 1
+              adjustment_net = sum(
+                  num(row.get("in")) - num(row.get("out"))
+                  for row in rows if row.get("adjustment")
+              )
               minimum = min(balances) if balances else num(side.get("opening"))
               print(
                   f"{channel.title()}: opening={num(side.get('opening')):.2f} "
                   f"closing={num(side.get('closing')):.2f} rows={len(rows)} "
-                  f"minimum={minimum:.2f} negative_rows={len(negative)}"
+                  f"minimum={minimum:.2f} negative_rows={len(negative)} "
+                  f"adjustment_net={adjustment_net:.2f} kinds={kinds}"
               )
           PY
