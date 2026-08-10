@@ -3707,6 +3707,16 @@ def write_snapshot_bundle(
         # while Today and MTD continue to advance.
         (financial_year_start, today),
     ]
+    # Completed FY months are selectable dashboard periods too.  Without
+    # explicit snapshots April falls through to a different client archive
+    # path while May onward may happen to exist from prior runs.
+    completed_month = financial_year_start
+    while completed_month < month_start:
+        completed_end = (completed_month.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        completed_range = (completed_month, completed_end)
+        if completed_range not in ranges:
+            ranges.append(completed_range)
+        completed_month = completed_end + timedelta(days=1)
     if historical_start is not None:
         historical_end = min(yesterday, last_month_end)
         ranges.extend([
