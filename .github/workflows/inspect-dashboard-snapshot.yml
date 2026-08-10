@@ -87,6 +87,13 @@ jobs:
           print(f"Credit repayment bank/UPI (displayed): {repayment_bank_display:.2f}")
           print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
           print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
+          repayment_modes = {}
+          for row in repayments:
+              mode = str(row.get("mode") or "unknown")
+              bucket = repayment_modes.setdefault(mode, [0, 0.0])
+              bucket[0] += 1
+              bucket[1] += num(row.get("payment_received", row.get("amount")))
+          print(f"Repayment source modes: {repayment_modes}")
           print()
           print("## Canonical book inspection")
           for channel in ("cash", "bank"):
@@ -102,11 +109,12 @@ jobs:
                   num(row.get("in")) - num(row.get("out"))
                   for row in rows if row.get("adjustment")
               )
+              receipt_total = sum(num(row.get("in")) for row in rows if row.get("kind") == "receipt")
               minimum = min(balances) if balances else num(side.get("opening"))
               print(
                   f"{channel.title()}: opening={num(side.get('opening')):.2f} "
                   f"closing={num(side.get('closing')):.2f} rows={len(rows)} "
                   f"minimum={minimum:.2f} negative_rows={len(negative)} "
-                  f"adjustment_net={adjustment_net:.2f} kinds={kinds}"
+                  f"adjustment_net={adjustment_net:.2f} receipt_total={receipt_total:.2f} kinds={kinds}"
               )
           PY
