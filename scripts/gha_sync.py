@@ -4141,10 +4141,10 @@ def main():
     seed_config = dict(seed_endpoints.get("exports_config", {}))
     if not seed_config.get("operating_balance_opening") and archive_manifest.get("operating_balance_opening"):
         seed_config["operating_balance_opening"] = archive_manifest["operating_balance_opening"]
-    # Reuse the same effective account list that is published at
-    # /api/bank/accounts.  Previously the fallback/manual account was visible
-    # but these two Dashboard book fields still summed an empty seed list.
-    seed_bank_accounts = bank_accounts
+    # Reuse the same reviewed/manual fallback used by the published account
+    # endpoint.  Previously these Dashboard fields summed only an empty local
+    # seed list even though the fallback account itself was available.
+    seed_bank_accounts = seed_endpoints.get("bank_accounts") or load_book_balance_accounts()
 
     bank_balance_book = round(
         sum(_num(row.get("current_balance")) for row in seed_bank_accounts if row.get("active", True)),
