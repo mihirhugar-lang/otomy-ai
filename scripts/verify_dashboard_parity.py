@@ -685,7 +685,7 @@ def verify_daily_balance_chain() -> None:
 def verify_no_balance_adjustment_rows() -> None:
     """Only explicitly sourced verified reconciliation rows may appear in a book."""
     forbidden = []
-    post_june_workbook_rows = []
+    workbook_rows = []
     allowed = {
         "Verified balance adjustment (physical cash count)",
         "Verified balance adjustment (bank statement)",
@@ -699,9 +699,8 @@ def verify_no_balance_adjustment_rows() -> None:
                 forbidden.append(path)
             if (
                 particulars == "Verified daily cash reconciliation (workbook)"
-                and str(value.get("date") or "")[:10] >= "2026-06-01"
             ):
-                post_june_workbook_rows.append(path)
+                workbook_rows.append(path)
             for key, child in value.items():
                 visit(child, f"{path}.{key}")
         elif isinstance(value, list):
@@ -715,10 +714,10 @@ def verify_no_balance_adjustment_rows() -> None:
             continue
     if forbidden:
         fail(f"published data contains forbidden balance-adjustment rows: {forbidden[:3]}")
-    if post_june_workbook_rows:
+    if workbook_rows:
         fail(
-            "published data contains workbook cash reconciliations on/after "
-            f"2026-06-01: {post_june_workbook_rows[:3]}"
+            "published data contains workbook cash reconciliations: "
+            f"{workbook_rows[:3]}"
         )
     print("Balance-row guard passed: no residual or unsourced adjustment rows are published.")
 

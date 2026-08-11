@@ -42,10 +42,8 @@ VENDOR_MASTER_PATH = Path(__file__).resolve().parent.parent / "seed" / "vendor_m
 BOOK_BALANCE_ACCOUNTS_PATH = ROOT / "seed" / "book_balance_accounts.json"
 BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
-# The workbook was a temporary reconstruction aid only.  From 1 June onward
-# Loctell movements and the verified physical anchors are authoritative; no
-# workbook-derived row may be published for that period.
-WORKBOOK_RECONCILIATION_END = "2026-05-31"
+# The workbook is retained only as audit evidence.  It is never a financial
+# ledger source: cash books use Loctell movements and named physical anchors.
 MERGE_PROTECT_BEFORE_DATE = None
 COMMON_ENGINE_NAME = "loctell-common-engine"
 COMMON_ENGINE_VERSION = "2026-08-02.2-compliance-range-v1"
@@ -290,11 +288,10 @@ def cleanup_residual_balance_artifacts():
             changed = False
             for item in value:
                 particulars = str(item.get("particulars") or "") if isinstance(item, dict) else ""
-                workbook_row = particulars == "Verified daily cash reconciliation (workbook)"
                 named_anchor = particulars in {
                     "Verified balance adjustment (physical cash count)",
                     "Verified balance adjustment (bank statement)",
-                } or (workbook_row and str(item.get("date") or "")[:10] <= WORKBOOK_RECONCILIATION_END)
+                }
                 if isinstance(item, dict) and (
                     particulars == "Verified balance adjustment (residual)"
                     or (item.get("kind") == "adjustment" and not named_anchor)
@@ -3164,7 +3161,6 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
         shown.sort(key=_sort_key)
         # Workbook closings are evidence, not financial transactions.  Never
         # generate a "Verified daily cash reconciliation (workbook)" row.
-        daily_cash = {}
         running = round(_num(opening_balance), 2)
         reconciled = []
         index = 0
