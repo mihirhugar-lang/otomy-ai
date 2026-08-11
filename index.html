@@ -1187,13 +1187,6 @@ function _isDirectorPayment(...values){
   if(when!=null&&String(when)<'2026-06-01')return text.includes('SHARE');
   return true;
 }
-function _isDirectorDrawing(...values){
-  // A capital DRAWING to a director ("... SIR SHARE") — funded from the director's own cash, not
-  // company office cash, so it must NOT reduce Cash-In-Office (still counted in P&L). Bank drawings
-  // are unaffected (they leave the bank and show in the statement).
-  const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
-  return text.includes('SHARE')&&(text.includes('PRASHANT')||text.includes('KUMAR'));
-}
 function _receiptNoteAmount(notes,key){
   const m=String(notes||'').match(new RegExp(`${key}=([\\d.]+)`));
   return m?Number(m[1]):null;
@@ -1325,10 +1318,10 @@ async function _archiveOperatingBalances(toDate=today()){
     });
     _rowsInRange(months,'expenses',from,to).forEach(e=>{
       const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
-      // Apr–May only: skip director cash DRAWS (loctell misses the funding cash) so the un-anchored
-      // window stays positive. June onward is anchored to physical counts, so draws are kept.
+      // A company-office cash payment is a real cash outflow, including a
+      // director-share drawing. Classification changes P&L only.
       if(ch==='cash'){
-        if(inCash(e.date)&&!(_isDirectorDrawing(e.category,e.description,e.notes)&&String(e.date)<'2026-06-01'))cash-=_num(e.amount);
+        if(inCash(e.date))cash-=_num(e.amount);
       }else if(inBank(e.date))bank-=_num(e.amount);
     });
   }
