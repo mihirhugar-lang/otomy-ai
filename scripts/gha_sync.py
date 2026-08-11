@@ -410,10 +410,23 @@ def _split_reconciles_sale(sale, split, tolerance=5.0):
 # NOT company expenses a director merely fronted (notes like "KUMAR SIR PAID ..."). From
 # June 2026 onward the prior name-anywhere rule is kept unchanged (already reconciled).
 _DIRECTOR_SHARE_ONLY_BEFORE = "2026-06-01"
+# Payments to these personal accounts are Prashant's director drawings.  Keep
+# this deliberately exact: a generic "Sidd"/"N J" rule could misclassify a
+# normal supplier or employee payment.
+_PRASHANT_DIRECTOR_SHARE_PAYEES = (
+    "N J SHUSHRUTHA",
+    "NJ SHUSHRUTHA",
+    "SIDD MALLIKARJUN",
+    "SID MALLIKARJUN",
+)
 
 
 def _is_director_payment(*values, when=None):
     text = " ".join(str(value or "") for value in values).upper()
+    # The owner has confirmed these are Prashant director-share payments,
+    # irrespective of payment channel or the historical pre-June wording.
+    if any(payee in text for payee in _PRASHANT_DIRECTOR_SHARE_PAYEES):
+        return True
     # Director 1/2 are directors, not shareholders — their spend is a normal expense,
     # never a shareholder drawing (even if a note names Kumar/Prashant). Mirrors
     # dashboard.py:_is_director_payment and index.html:_isDirectorPayment.

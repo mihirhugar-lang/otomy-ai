@@ -1176,6 +1176,10 @@ function _isDirectorPayment(...values){
   let when=null;
   if(values.length&&values[values.length-1]&&typeof values[values.length-1]==='object'){when=values.pop().when;}
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
+  // Owner-confirmed personal accounts for Prashant's director share. Keep this
+  // list exact so an ordinary Sidd/N J supplier is never misclassified.
+  const prashantDirectorSharePayees=['N J SHUSHRUTHA','NJ SHUSHRUTHA','SIDD MALLIKARJUN','SID MALLIKARJUN'];
+  if(prashantDirectorSharePayees.some(name=>text.includes(name)))return true;
   if(String(values[0]||'').toUpperCase().includes('DIRECTOR'))return false;
   if(!(text.includes('PRASHANT')||text.includes('KUMAR')))return false;
   // Before June 2026: only genuine drawings ("... SIR SHARE") are director payments;
