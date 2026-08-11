@@ -1630,6 +1630,20 @@ def build_control(sales, expenses, from_d, to_d,
         )
     )
     operating_total_exp = total_exp - director_expense_total
+    # Only ERP expense rows have a recorded cash/bank mode.  Do not fabricate
+    # a channel for legacy labour/parts rows that remain in total expenses.
+    operating_expense_cash = 0.0
+    operating_expense_bank = 0.0
+    for expense in expenses:
+        if _is_director_payment(
+            expense.get("category"), expense.get("description"), expense.get("payment_mode"),
+            expense.get("notes"), when=expense.get("date"),
+        ):
+            continue
+        if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
+            operating_expense_cash += _num(expense.get("amount"))
+        else:
+            operating_expense_bank += _num(expense.get("amount"))
     profit = total_sales - operating_total_exp
 
     # material mix
@@ -1816,6 +1830,8 @@ def build_control(sales, expenses, from_d, to_d,
             "cash_collected":   round(cash_collected, 2),
             "credit_sales":     round(credit_sales, 2),
             "expenses":         round(operating_total_exp, 2),
+            "operating_expense_cash": round(operating_expense_cash, 2),
+            "operating_expense_bank": round(operating_expense_bank, 2),
             "expenses_before_director_adjustment": round(total_exp, 2),
             "profit":           round(profit, 2),
             "margin_pct":       round(profit / total_sales * 100, 1) if total_sales else 0.0,
