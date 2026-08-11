@@ -3373,6 +3373,45 @@ def vendor_payable_due_aging(entries, payable, as_of):
     return result
 
 
+def vendor_payable_age_buckets(entries, payable, as_of):
+    """Exclusive payable ageing, matching localhost customer-balance logic.
+
+    A purchase creates a supplier bill and a payment clears the oldest bill.
+    Once the authoritative Loctell payable is known, the unpaid remainder is
+    therefore the newest bills first.  Allocating that closing balance from
+    newest to oldest is equivalent to FIFO settlement while retaining the ERP
+    balance as the single source of truth.
+    """
+    target = round(max(_num(payable), 0.0), 2)
+    result = {"age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0, "age_45_plus": 0.0}
+    if target <= 0:
+        return result
+    as_of_date = date.fromisoformat(str(as_of))
+    bills = []
+    for index, entry in enumerate(entries or []):
+        entry_date = str(entry.get("date") or "")[:10]
+        if not entry_date or entry_date > str(as_of):
+            continue
+        if entry.get("type") != "purchase" and entry.get("vch_type") != "Purchase":
+            continue
+        amount = round(_num(entry.get("credit") or entry.get("amount")), 2)
+        if amount > 0:
+            bills.append((entry_date, index, amount))
+    remaining = target
+    for entry_date, _index, amount in sorted(bills, reverse=True):
+        if remaining <= 0:
+            break
+        unpaid = min(remaining, amount)
+        age = max((as_of_date - date.fromisoformat(entry_date)).days, 0)
+        bucket = "age_0_15" if age <= 15 else "age_16_30" if age <= 30 else "age_31_45" if age <= 45 else "age_45_plus"
+        result[bucket] = round(result[bucket] + unpaid, 2)
+        remaining = round(remaining - unpaid, 2)
+    # A balance older than the imported ledger is explicitly old debt.
+    if remaining > 0:
+        result["age_45_plus"] = round(result["age_45_plus"] + remaining, 2)
+    return {key: round(value, 2) for key, value in result.items()}
+
+
 def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
     # Loctell can return the same supplier more than once in a balance payload.
     # Preserve the existing endpoint convention: the final canonical row wins;
@@ -3396,6 +3435,7 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
             "total_purchases": round(sum(_num(entry.get("credit")) for entry in entries), 2),
             "total_payments": round(sum(_num(entry.get("debit")) for entry in entries), 2),
             **vendor_payable_due_aging(entries, payable, as_of),
+            **vendor_payable_age_buckets(entries, payable, as_of),
         })
         rows.append(row)
     return sorted(rows, key=lambda row: str(row.get("name") or "").upper())
@@ -5283,6 +5323,10 @@ def main():
             "payable_due_45_plus": row.get("payable_due_45_plus", 0.0),
             "payable_due_60_plus": row.get("payable_due_60_plus", 0.0),
             "payable_prior_ledger": row.get("payable_prior_ledger", 0.0),
+            "age_0_15": row.get("age_0_15", 0.0),
+            "age_16_30": row.get("age_16_30", 0.0),
+            "age_31_45": row.get("age_31_45", 0.0),
+            "age_45_plus": row.get("age_45_plus", 0.0),
         }
         for row in vendors_full
         if row.get("active", True) and _num(row.get("payable")) > 0

@@ -24,6 +24,16 @@ def main() -> int:
     assert prior["payable_prior_ledger"] == 30.0, prior
     assert prior["payable_due_60_plus"] == 80.0, prior
 
+    # The visible exclusive ageing bands are the reciprocal of customer
+    # balance ageing: FIFO payments leave the newest supplier bills unpaid.
+    buckets = engine.vendor_payable_age_buckets(entries, 150.0, "2026-06-01")
+    assert buckets == {
+        "age_0_15": 0.0,
+        "age_16_30": 0.0,
+        "age_31_45": 100.0,
+        "age_45_plus": 50.0,
+    }, buckets
+
     # A successfully-read but empty ERP ledger is still authoritative. It must
     # not be converted into the old local payment-only source, and its closing
     # balance must retain the current Loctell payable.
