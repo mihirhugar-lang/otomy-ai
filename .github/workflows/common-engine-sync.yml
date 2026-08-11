@@ -20,6 +20,10 @@ on:
         description: "Full rebuild start date (YYYY-MM-DD)"
         required: false
         default: "2026-04-01"
+      repair_to:
+        description: "Optional protected repair end date; publish only this historical window (YYYY-MM-DD)"
+        required: false
+        default: ""
 
 concurrency:
   group: otomy-common-engine-sync
@@ -83,6 +87,10 @@ jobs:
           AWS_DEFAULT_REGION: auto
         run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exclude "recovery/*" --exact-timestamps --only-show-errors
 
+      - name: Save R2 baseline for a protected historical repair
+        if: steps.initial_control.outputs.enabled == 'true'
+        run: cp -a data "$RUNNER_TEMP/otomy-r2-baseline"
+
       - name: Save previous publish manifest
         if: steps.initial_control.outputs.enabled == 'true'
         run: |
@@ -112,6 +120,7 @@ jobs:
           ERP_PASS: ${{ secrets.ERP_PASS }}
           OTOMY_SYNC_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
           OTOMY_FULL_FROM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.full_from || '2026-04-01' }}
+          OTOMY_REPAIR_TO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.repair_to || '' }}
           OTOMY_RECENT_DAYS: "7"
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
@@ -123,6 +132,23 @@ jobs:
           else
             python3 scripts/gha_sync.py
           fi
+
+      - name: Restrict protected historical repair publish scope
+        if: steps.initial_control.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.repair_to != ''
+        env:
+          OTOMY_REQUESTED_MODE: ${{ github.event.inputs.sync_mode }}
+          OTOMY_REPAIR_FROM: ${{ github.event.inputs.full_from }}
+          OTOMY_REPAIR_TO: ${{ github.event.inputs.repair_to }}
+        run: |
+          if [ "$OTOMY_REQUESTED_MODE" != "full" ]; then
+            echo "repair_to requires sync_mode=full" >&2
+            exit 1
+          fi
+          python3 scripts/restrict_repair_scope.py \
+            --root data \
+            --baseline "$RUNNER_TEMP/otomy-r2-baseline" \
+            --from-date "$OTOMY_REPAIR_FROM" \
+            --to-date "$OTOMY_REPAIR_TO"
 
       - name: Verify the generated common bundle
         if: steps.initial_control.outputs.enabled == 'true'
