@@ -42,6 +42,10 @@ VENDOR_MASTER_PATH = Path(__file__).resolve().parent.parent / "seed" / "vendor_m
 BOOK_BALANCE_ACCOUNTS_PATH = ROOT / "seed" / "book_balance_accounts.json"
 BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
+# The workbook was a temporary reconstruction aid only.  From 1 June onward
+# Loctell movements and the verified physical anchors are authoritative; no
+# workbook-derived row may be published for that period.
+WORKBOOK_RECONCILIATION_END = "2026-05-31"
 MERGE_PROTECT_BEFORE_DATE = None
 COMMON_ENGINE_NAME = "loctell-common-engine"
 COMMON_ENGINE_VERSION = "2026-08-02.2-compliance-range-v1"
@@ -286,11 +290,11 @@ def cleanup_residual_balance_artifacts():
             changed = False
             for item in value:
                 particulars = str(item.get("particulars") or "") if isinstance(item, dict) else ""
+                workbook_row = particulars == "Verified daily cash reconciliation (workbook)"
                 named_anchor = particulars in {
                     "Verified balance adjustment (physical cash count)",
                     "Verified balance adjustment (bank statement)",
-                    "Verified daily cash reconciliation (workbook)",
-                }
+                } or (workbook_row and str(item.get("date") or "")[:10] <= WORKBOOK_RECONCILIATION_END)
                 if isinstance(item, dict) and (
                     particulars == "Verified balance adjustment (residual)"
                     or (item.get("kind") == "adjustment" and not named_anchor)
@@ -2744,7 +2748,11 @@ def _balance_overlay():
         _BALANCE_OVERLAY = {
             "anchors": sorted(cfg.get("anchors", []), key=lambda a: str(a.get("date"))),
             "corrections": cfg.get("mode_corrections", []),
-            "cash_daily_closings": cfg.get("cash_daily_closings", {}),
+            # Retain the source file as historical evidence, but never turn
+            # its reconstructed daily balances into ledger movements.  The
+            # cash book must come from Loctell movements plus named physical
+            # balance anchors only.
+            "cash_daily_closings": {},
             "stmt_rows": stmt_rows,
             "stmt_to": stmt_to,
         }
@@ -3154,7 +3162,9 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
     def _finalize(rows, opening_balance, closing_balance, channel):
         shown = [dict(row) for row in rows]
         shown.sort(key=_sort_key)
-        daily_cash = overlay.get("cash_daily_closings", {}) if channel == "cash" else {}
+        # Workbook closings are evidence, not financial transactions.  Never
+        # generate a "Verified daily cash reconciliation (workbook)" row.
+        daily_cash = {}
         running = round(_num(opening_balance), 2)
         reconciled = []
         index = 0
@@ -3164,10 +3174,11 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
             while index < len(shown) and shown[index].get("date", "") == day:
                 day_rows.append(shown[index])
                 index += 1
-            target = daily_cash.get(str(day)[:10])
-            # A physical-count anchor is more authoritative than the workbook
-            # running chain on the same day.  Use it directly rather than
-            # publishing two contradictory daily closes.
+            target = None
+            target_particulars = None
+            # A same-day physical count is independent evidence.  If one is
+            # needed to reconcile the book, publish it with its true source
+            # label rather than disguising it as a workbook movement.
             if channel == "cash":
                 anchor = next(
                     (a for a in overlay.get("anchors", []) if str(a.get("date") or "")[:10] == str(day)[:10]),
@@ -3175,11 +3186,12 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
                 )
                 if anchor and anchor.get("cash") is not None:
                     target = _num(anchor.get("cash"))
+                    target_particulars = "Verified balance adjustment (physical cash count)"
             deferred_gap = 0.0
             if target is not None:
                 gap = round(_num(target) - (running + sum(_num(row.get("in")) - _num(row.get("out")) for row in day_rows)), 2)
                 if abs(gap) > 0.5 and running + gap >= 0:
-                    row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", max(gap, 0), max(-gap, 0))
+                    row = _row(day, target_particulars, "", "adjustment", max(gap, 0), max(-gap, 0))
                     row["adjustment"] = True
                     row["_cashbook_order"] = 0
                     running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
@@ -3192,7 +3204,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
                 row["balance"] = running
                 reconciled.append(row)
             if deferred_gap:
-                row = _row(day, "Verified daily cash reconciliation (workbook)", "", "adjustment", 0, max(-deferred_gap, 0))
+                row = _row(day, target_particulars, "", "adjustment", 0, max(-deferred_gap, 0))
                 row["adjustment"] = True
                 row["_cashbook_order"] = 2
                 running = round(_num(target), 2)

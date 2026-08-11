@@ -108,25 +108,41 @@ class CashbookParityTests(unittest.TestCase):
         fixture = self.fixture["verified_reanchor"]
         self.assertEqual(self._cloud_book(fixture), fixture["expected"])
 
-    def test_deferred_daily_cash_reconciliation_never_shows_a_false_negative(self):
-        # The 100 cash receipt must be applied before the 180 reconciliation
-        # outflow.  Sorting every adjustment first used to publish -80 here,
-        # even though the verified close was a positive 20.
+    def test_workbook_closing_never_generates_a_cashbook_row(self):
+        # Workbook figures are retained as evidence only.  They must never
+        # appear as a cash-book movement, including in older historical views.
         fixture = deepcopy(self.fixture)
-        fixture["range"] = {"from": "2026-07-01", "to": "2026-07-01"}
+        fixture["range"] = {"from": "2026-05-31", "to": "2026-05-31"}
         fixture["opening"] = {
-            "as_of": "2026-06-30", "cash_balance_office": 100.0, "bank_balance": 0.0,
+            "as_of": "2026-05-30", "cash_balance_office": 100.0, "bank_balance": 0.0,
         }
         fixture["sales"] = [fixture["sales"][0]]
         fixture["expenses"] = []
         fixture["repayments"] = []
-        fixture["cash_daily_closings"] = {"2026-07-01": 20.0}
-        fixture["expected"] = {"cash": {"closing": 20.0}, "bank": {"closing": 200.0}}
+        fixture["cash_daily_closings"] = {"2026-05-31": 20.0}
         book = self._cloud_book(fixture)
         cash_rows = book["cash"]["rows"]
         self.assertFalse(any(row["balance"] < 0 for row in cash_rows))
-        self.assertEqual(cash_rows[-1]["particulars"], "Verified daily cash reconciliation (workbook)")
-        self.assertEqual(cash_rows[-1]["balance"], 20.0)
+        self.assertFalse(any(
+            row["particulars"] == "Verified daily cash reconciliation (workbook)"
+            for row in cash_rows
+        ))
+
+    def test_june_workbook_closing_is_ignored(self):
+        fixture = deepcopy(self.fixture)
+        fixture["range"] = {"from": "2026-06-01", "to": "2026-06-01"}
+        fixture["opening"] = {
+            "as_of": "2026-05-31", "cash_balance_office": 100.0, "bank_balance": 0.0,
+        }
+        fixture["sales"] = [fixture["sales"][0]]
+        fixture["expenses"] = []
+        fixture["repayments"] = []
+        fixture["cash_daily_closings"] = {"2026-06-01": 20.0}
+        book = self._cloud_book(fixture)
+        self.assertFalse(any(
+            row["particulars"] == "Verified daily cash reconciliation (workbook)"
+            for row in book["cash"]["rows"]
+        ))
 
     def test_repayment_with_erp_id_nets_fresh_sale_by_name_when_sale_has_no_id(self):
         # Fresh ListSale data has a customer name but no ERP id.  The matching
