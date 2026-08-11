@@ -1178,7 +1178,7 @@ function _isDirectorPayment(...values){
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
   // Owner-confirmed personal accounts for Prashant's director share. Keep this
   // list exact so an ordinary Sidd/N J supplier is never misclassified.
-  const prashantDirectorSharePayees=['N J SHUSHRUTHA','NJ SHUSHRUTHA','SIDD MALLIKARJUN','SID MALLIKARJUN'];
+  const prashantDirectorSharePayees=['N J SHUSHRUTHA','NJ SHUSHRUTHA','SHRISIDDAMALLIKARJUNAAPEXBANK','SIDD MALLIKARJUN','SID MALLIKARJUN'];
   if(prashantDirectorSharePayees.some(name=>text.includes(name)))return true;
   if(String(values[0]||'').toUpperCase().includes('DIRECTOR'))return false;
   if(!(text.includes('PRASHANT')||text.includes('KUMAR')))return false;
