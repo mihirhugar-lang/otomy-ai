@@ -85,10 +85,29 @@ def _allowed(relative: str, start: date, end: date, fy_start: date) -> bool:
             return True
         return any(name == f"{cursor:%Y-%m}.json" for cursor in _months(start, end))
     if relative.startswith("snapshot/api/"):
-        return _allow_snapshot(Path(relative), start, end, fy_start)
+        if _allow_snapshot(Path(relative), start, end, fy_start):
+            return True
+        url = _snapshot_url(Path(relative))
+        # These are current ERP master views, not July/August movement data.
+        # They must accompany a regenerated FY compliance aggregate so its
+        # customer/vendor references are internally consistent.
+        return url in {
+            "/api/customers/",
+            "/api/customers/?active_only=false",
+            "/api/customers/outstanding",
+            "/api/vendors/",
+            "/api/vendors/?active_only=false",
+            "/api/vendors/payables",
+        }
     # The client-side archive calculator needs the same reviewed anchor policy
     # as the repaired cashbook; it does not replace any July/August movement.
-    return relative == "balance_anchors.json"
+    return relative in {
+        "balance_anchors.json",
+        "customers.json",
+        "customers_outstanding.json",
+        "vendors.json",
+        "vendors_payables.json",
+    }
 
 
 def _months(start: date, end: date):
