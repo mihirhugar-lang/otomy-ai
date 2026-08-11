@@ -1634,13 +1634,20 @@ def build_control(sales, expenses, from_d, to_d,
     # a channel for legacy labour/parts rows that remain in total expenses.
     operating_expense_cash = 0.0
     operating_expense_bank = 0.0
+    # The dashboard tiles must use the same reviewed corrections as the
+    # cashbook and balance overlay.  Otherwise an ERP row corrected from cash
+    # to bank appears in the right book but in the wrong dashboard tile.
+    mode_corrections = _balance_overlay().get("corrections", [])
     for expense in expenses:
         if _is_director_payment(
             expense.get("category"), expense.get("description"), expense.get("payment_mode"),
             expense.get("notes"), when=expense.get("date"),
         ):
             continue
-        if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
+        channel = _overlay_mode(mode_corrections, expense) or _payment_channel(
+            expense.get("payment_mode") or "Cash"
+        )
+        if channel == "cash":
             operating_expense_cash += _num(expense.get("amount"))
         else:
             operating_expense_bank += _num(expense.get("amount"))
