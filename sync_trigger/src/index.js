@@ -12,7 +12,11 @@ function indiaClock(now = new Date()) {
     hourCycle: "h23",
   }).formatToParts(now);
   const value = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
-  return { hour: value("hour"), minute: value("minute") };
+  const weekday = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+  }).format(now);
+  return { hour: value("hour"), minute: value("minute"), weekday };
 }
 
 function shouldDispatchRecent(now = new Date()) {
@@ -20,6 +24,13 @@ function shouldDispatchRecent(now = new Date()) {
   // Daytime (07:00–22:45 IST) stays at 15-minute freshness. Overnight uses
   // only the top-of-hour slot, so GitHub/R2 does no extra sync work at :15–:45.
   return !(hour >= 23 || hour < 7) || minute === 0;
+}
+
+function isWeeklyFiftyDaySlot(now = new Date()) {
+  const { weekday, hour, minute } = indiaClock(now);
+  // Sunday 00:30 IST follows the normal 00:00 overnight sync.  The shared
+  // GitHub concurrency lock serializes it safely if that run is still active.
+  return weekday === "Sun" && hour === 0 && minute === 30;
 }
 
 async function readEngineState(env) {
@@ -44,7 +55,7 @@ function dispatchUrl() {
   return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/actions/workflows/${GITHUB_WORKFLOW}/dispatches`;
 }
 
-async function dispatchCommonEngine(env, mode) {
+async function dispatchCommonEngine(env, mode, recentDays = 7) {
   if (!env.GITHUB_ACTIONS_DISPATCH_TOKEN) {
     throw new Error("GITHUB_ACTIONS_DISPATCH_TOKEN is not configured");
   }
@@ -63,6 +74,7 @@ async function dispatchCommonEngine(env, mode) {
       inputs: {
         sync_mode: mode,
         full_from: "2026-04-01",
+        recent_days: String(recentDays),
       },
     }),
   });
@@ -75,6 +87,16 @@ async function dispatchCommonEngine(env, mode) {
 
 export default {
   async scheduled(controller, env, _ctx) {
+    if (isWeeklyFiftyDaySlot()) {
+      const state = await readEngineState(env);
+      if (state.state === "paused") {
+        console.log(`Common engine is paused; skipping weekly 50-day dispatch for ${controller.cron}`);
+        return;
+      }
+      console.log(`Dispatching Otomy common engine (recent 50-day) for weekly cron ${controller.cron}`);
+      await dispatchCommonEngine(env, "recent", 50);
+      return;
+    }
     if (!shouldDispatchRecent()) {
       console.log(`Overnight hourly policy: skipping ${controller.cron} dispatch`);
       return;
@@ -85,7 +107,7 @@ export default {
       return;
     }
     console.log(`Dispatching Otomy common engine (recent) for cron ${controller.cron}`);
-    await dispatchCommonEngine(env, "recent");
+    await dispatchCommonEngine(env, "recent", 7);
   },
 
   async fetch(request, env) {

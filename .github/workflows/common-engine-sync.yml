@@ -20,6 +20,10 @@ on:
         description: "Full rebuild start date (YYYY-MM-DD)"
         required: false
         default: "2026-04-01"
+      recent_days:
+        description: "Recent delta lookback days (1-60; normal sync is 7, weekly repair is 50)"
+        required: false
+        default: "7"
       repair_to:
         description: "Optional protected repair end date; publish only this historical window (YYYY-MM-DD)"
         required: false
@@ -121,12 +125,19 @@ jobs:
           OTOMY_SYNC_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
           OTOMY_FULL_FROM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.full_from || '2026-04-01' }}
           OTOMY_REPAIR_TO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.repair_to || '' }}
-          OTOMY_RECENT_DAYS: "7"
+          OTOMY_RECENT_DAYS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.recent_days || '7' }}
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
           OTOMY_DEBTOR_WORKERS: "4"
           OTOMY_BALANCE_WORKERS: "4"
         run: |
+          case "$OTOMY_RECENT_DAYS" in
+            ''|*[!0-9]*) echo "OTOMY_RECENT_DAYS must be an integer" >&2; exit 1 ;;
+          esac
+          if [ "$OTOMY_RECENT_DAYS" -lt 1 ] || [ "$OTOMY_RECENT_DAYS" -gt 60 ]; then
+            echo "OTOMY_RECENT_DAYS must be between 1 and 60" >&2
+            exit 1
+          fi
           if [ "$OTOMY_SYNC_MODE" = "vendor" ]; then
             python3 scripts/vendor_only_refresh.py --from-date "$OTOMY_FULL_FROM"
           else
