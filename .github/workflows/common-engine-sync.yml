@@ -287,10 +287,16 @@ jobs:
             aws s3 sync "$RUNNER_TEMP/otomy-publish-delta" "s3://otomy-data" \
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
             if [ -s "$RUNNER_TEMP/otomy-deleted-objects.json" ] && [ "$(jq '.Objects | length' "$RUNNER_TEMP/otomy-deleted-objects.json")" -gt 0 ]; then
-              aws s3api delete-objects \
-                --bucket otomy-data \
-                --delete "file://$RUNNER_TEMP/otomy-deleted-objects.json" \
-                --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+              delete_batches_dir="$(mktemp -d)"
+              python3 scripts/delete_object_batches.py \
+                --source "$RUNNER_TEMP/otomy-deleted-objects.json" \
+                --output-dir "$delete_batches_dir"
+              for delete_batch in "$delete_batches_dir"/*.json; do
+                aws s3api delete-objects \
+                  --bucket otomy-data \
+                  --delete "file://$delete_batch" \
+                  --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+              done
             fi
           fi
           # Publish the manifest last. It is the release/readiness marker for
