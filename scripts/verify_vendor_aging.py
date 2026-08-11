@@ -34,6 +34,9 @@ def _check_rows(rows, expected_names, label):
             raise AssertionError(f"{label}: invalid payable aging for {row.get('name')}")
         if not all(due[index] >= due[index + 1] for index in range(len(due) - 1)):
             raise AssertionError(f"{label}: non-cumulative payable aging for {row.get('name')}")
+        bands = [round(engine._num(row.get(field)), 2) for field in ("age_0_15", "age_16_30", "age_31_45", "age_45_plus")]
+        if any(value < 0 for value in bands) or round(sum(bands), 2) != payable:
+            raise AssertionError(f"{label}: exclusive payable bands do not tie to payable for {row.get('name')}")
 
 
 def _check_payables(rows, payables, label):
