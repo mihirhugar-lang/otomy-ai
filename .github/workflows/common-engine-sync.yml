@@ -149,6 +149,10 @@ jobs:
             --baseline "$RUNNER_TEMP/otomy-r2-baseline" \
             --from-date "$OTOMY_REPAIR_FROM" \
             --to-date "$OTOMY_REPAIR_TO"
+          # The FY-wide compliance aggregate is derived from every archive
+          # month.  Rebuild it after restoring protected July/August months so
+          # it exactly represents the scoped final bundle.
+          python3 scripts/rebuild_fy_compliance_snapshots.py --root data
 
       - name: Verify the generated common bundle
         if: steps.initial_control.outputs.enabled == 'true'
