@@ -8,6 +8,7 @@ import base64, json, re, html as htmllib, os, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
@@ -60,6 +61,13 @@ EXCLUDED_CUSTOMER_RECEIPT_REFS = {
 EXCLUDED_CUSTOMER_RECEIPT_BANK_IDS = {
     "receipt-170238-2026-07-02",
 }
+
+# A GitHub runner starts from the previous R2 bundle.  Record the files this
+# run deliberately regenerates so obsolete *derived range* snapshots can be
+# removed after all reconciliation readers have finished.  The archive,
+# anchors, customer/vendor ledgers, and canonical Cash/Bank books are never
+# covered by this retention pass.
+_WRITTEN_SNAPSHOT_FILES: set[str] = set()
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -2417,8 +2425,51 @@ def snapshot_key(url):
 
 def write_snapshot(url, data):
     SNAPSHOT_API_DIR.mkdir(parents=True, exist_ok=True)
-    with open(SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json", "w") as f:
+    filename = f"{snapshot_key(url)}.json"
+    with open(SNAPSHOT_API_DIR / filename, "w") as f:
         json.dump(data, f, default=str, separators=(",", ":"))
+    _WRITTEN_SNAPSHOT_FILES.add(filename)
+
+
+def _snapshot_url_from_path(path: Path) -> Optional[str]:
+    """Decode a static API filename back to its canonical request URL."""
+    try:
+        encoded = path.stem
+        encoded += "=" * (-len(encoded) % 4)
+        return base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
+    except Exception:
+        return None
+
+
+def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
+    """Drop stale non-book range-cache files imported from an older R2 run.
+
+    The browser can fall back to the monthly archive for these routes.  Cash
+    book objects are explicitly retained: their displayed balances are only
+    supplied by the canonical server-generated book, never browser arithmetic.
+    This runs at the end of a normal engine build, after previous snapshots may
+    have been used to reconcile customer ledgers.
+    """
+    removed_count = removed_bytes = 0
+    for path in SNAPSHOT_API_DIR.glob("*.json"):
+        if path.name in _WRITTEN_SNAPSHOT_FILES:
+            continue
+        url = _snapshot_url_from_path(path)
+        if not url:
+            continue
+        parts = urlsplit(url)
+        query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        if "from_date" not in query or "to_date" not in query:
+            continue
+        if parts.path == "/api/sync/erp/cashbook":
+            continue
+        try:
+            removed_bytes += path.stat().st_size
+            path.unlink()
+            removed_count += 1
+        except FileNotFoundError:
+            pass
+    return removed_count, removed_bytes
 
 
 def write_compliance_snapshots(dataset, from_date, to_date):
@@ -5406,6 +5457,13 @@ def main():
                 all_repayments,
                 opening,
             ),
+        )
+    pruned_count, pruned_bytes = prune_obsolete_derived_range_snapshots()
+    if pruned_count:
+        print(
+            "  R2 snapshot retention: removed "
+            f"{pruned_count} obsolete derived range files "
+            f"({pruned_bytes / (1024 * 1024):.1f} MiB); canonical Cash/Bank books retained"
         )
     cleanup_excluded_customer_receipt_artifacts()
     cleanup_residual_balance_artifacts()
