@@ -439,14 +439,6 @@ def _is_director_payment(*values, when=None):
     if when is not None and str(when) < _DIRECTOR_SHARE_ONLY_BEFORE:
         return "SHARE" in text
     return True
-
-def _is_director_drawing(*values):
-    # A capital DRAWING to a director ("... SIR SHARE") — funded from the director's own cash, not
-    # company office cash, so it must NOT reduce Cash-In-Office (still counted in P&L). Bank drawings
-    # are unaffected (they leave the bank and show in the statement).
-    text = " ".join(str(value or "") for value in values).upper()
-    return "SHARE" in text and ("PRASHANT" in text or "KUMAR" in text)
-
 def _mode_bucket(raw):
     value = (raw or "").strip()
     upper = value.upper()
@@ -2848,10 +2840,9 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
                 continue
             ch = _overlay_mode(corrs, e) or _payment_channel(e.get("payment_mode") or "Cash")
             if ch == "cash":
-                # Apr–May only (un-anchored window missing the directors' funding cash): skip director
-                # cash DRAWS so it doesn't go negative. June onward is anchored (draws kept).
-                if not (_is_director_drawing(e.get("category"), e.get("description"), e.get("notes")) and d < _DIRECTOR_SHARE_ONLY_BEFORE):
-                    cash -= _num(e.get("amount"))
+                # Cash paid from the company office is a real cash outflow, including
+                # director-share drawings. Classification changes P&L only.
+                cash -= _num(e.get("amount"))
             elif cutoff is None or d > cutoff:
                 bank -= _num(e.get("amount"))
     return round(bank, 2), round(cash, 2)
