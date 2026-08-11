@@ -3130,14 +3130,6 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
         amount = _num(expense.get("amount"))
         if amount <= 0:
             continue
-        if (
-            channel == "cash"
-            and str(expense.get("date") or "")[:10] < _DIRECTOR_SHARE_ONLY_BEFORE
-            and _is_director_drawing(expense.get("category"), expense.get("description"), expense.get("notes"))
-        ):
-            # Same classification as localhost: retain the P&L expense but
-            # do not turn pre-June shareholder draws into office-cash rows.
-            continue
         label = (expense.get("category") or expense.get("description") or "Expense").strip()
         party = (expense.get("description") or expense.get("notes") or "").strip()
         target = cash_rows if channel == "cash" else bank_rows
