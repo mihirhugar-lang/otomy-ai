@@ -63,6 +63,20 @@ class RecoveryPlanTests(unittest.TestCase):
         self.assertEqual(recovery["backup_keys"], ["delete.json", MANIFEST_NAME, "replace.json"])
         self.assertEqual(recovery["remove_on_restore"], ["new.json"])
 
+    def test_retention_expired_cache_deletion_is_not_copied_to_recovery(self) -> None:
+        _, previous = self._manifest(
+            "previous-retention", {"cashbook.json": "canonical", "stale-cache.json": "cache"}, run_id="old"
+        )
+        _, current = self._manifest("current-retention", {"cashbook.json": "canonical"}, run_id="new")
+        recovery = build_recovery_plan(
+            previous, current,
+            {"publish_mode": "delta", "changed_count": 0, "deleted_count": 1},
+            recovery_id="retention", retention_expired_deletions={"stale-cache.json"},
+        )
+        validate_recovery_plan(recovery)
+        self.assertEqual(recovery["backup_keys"], [MANIFEST_NAME])
+        self.assertEqual(recovery["retention_expired_deletions"], ["stale-cache.json"])
+
     def test_full_recovery_preserves_all_prior_objects(self) -> None:
         _, previous = self._manifest("previous-full", {"a.json": "one", "b.json": "two"}, run_id="old-run")
         _, current = self._manifest("current-full", {"a.json": "changed"}, run_id="new-run")

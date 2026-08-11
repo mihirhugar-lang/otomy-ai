@@ -83,6 +83,7 @@ def build_recovery_plan(
     *,
     recovery_id: str,
     created_at: str | None = None,
+    retention_expired_deletions: set[str] | None = None,
 ) -> dict[str, Any]:
     """Return the immutable description of the pre-publish recovery pack."""
     if not recovery_id or "/" in recovery_id or ".." in recovery_id:
@@ -109,14 +110,20 @@ def build_recovery_plan(
     if (len(changed), len(deleted)) != (changed_count, deleted_count):
         raise ValueError("publish plan no longer matches the manifests used for recovery")
 
+    expired = set(retention_expired_deletions or set())
+    if not expired <= deleted:
+        raise ValueError("retention-expired recovery keys are not deleted by this publish plan")
+
     if mode == "full":
+        if expired:
+            raise ValueError("a full publish cannot omit recovery objects")
         backup_keys = set(previous_files)
         remove_on_restore: set[str] = set()
     else:
         # Existing changed files need their former content restored; deleted
         # files also exist in the old bundle.  Brand-new files are removed on
         # rollback because no former object exists for them.
-        backup_keys = (changed & set(previous_files)) | deleted
+        backup_keys = (changed & set(previous_files)) | (deleted - expired)
         remove_on_restore = changed - set(previous_files)
 
     backup_keys.add(MANIFEST_NAME)
@@ -130,6 +137,11 @@ def build_recovery_plan(
         "current": _summary(current),
         "backup_keys": sorted(backup_keys),
         "remove_on_restore": sorted(remove_on_restore),
+        # These are stale, archive-reconstructible range caches removed by the
+        # engine's explicit retention policy.  A rollback restores every
+        # financial/canonical object; it intentionally does not resurrect
+        # cache bloat that the current browser can reconstruct from archive.
+        "retention_expired_deletions": sorted(expired),
     }
 
 
@@ -147,18 +159,20 @@ def validate_recovery_plan(plan: dict[str, Any]) -> None:
         raise ValueError("recovery plan has an invalid id")
     backup_keys = plan.get("backup_keys")
     remove_on_restore = plan.get("remove_on_restore")
+    retention_expired = plan.get("retention_expired_deletions", [])
     if not isinstance(backup_keys, list) or MANIFEST_NAME not in backup_keys:
         raise ValueError("recovery plan does not back up the previous manifest")
-    if not isinstance(remove_on_restore, list):
+    if not isinstance(remove_on_restore, list) or not isinstance(retention_expired, list):
         raise ValueError("recovery plan has no restore-removal list")
     if any(
         not isinstance(key, str)
         or not _valid_key(key)
         or (key != MANIFEST_NAME and key.startswith(INTERNAL_PREFIXES))
-        for key in backup_keys + remove_on_restore
+        for key in backup_keys + remove_on_restore + retention_expired
     ):
         raise ValueError("recovery plan contains an unsafe object key")
-    if len(backup_keys) != len(set(backup_keys)) or len(remove_on_restore) != len(set(remove_on_restore)):
+    if (len(backup_keys) != len(set(backup_keys)) or len(remove_on_restore) != len(set(remove_on_restore))
+            or len(retention_expired) != len(set(retention_expired))):
         raise ValueError("recovery plan contains duplicate object keys")
 
 
@@ -173,6 +187,8 @@ def main() -> int:
     create.add_argument("--metadata", type=Path, required=True)
     create.add_argument("--backup-list", type=Path, required=True)
     create.add_argument("--remove-list", type=Path, required=True)
+    create.add_argument("--retention-expired", type=Path, required=False,
+                        help="newline-delimited stale cache keys that may be removed without recovery copy")
     validate = command.add_parser("validate", help="validate recovery metadata before restore")
     validate.add_argument("--metadata", type=Path, required=True)
     args = parser.parse_args()
@@ -185,7 +201,13 @@ def main() -> int:
     previous = load_manifest(args.previous)
     current = load_manifest(args.current, required=True)
     publish_plan = _read_json(args.publish_plan)
-    recovery = build_recovery_plan(previous, current, publish_plan, recovery_id=args.recovery_id)
+    expired = set()
+    if args.retention_expired and args.retention_expired.exists():
+        expired = {line.strip() for line in args.retention_expired.read_text(encoding="utf-8").splitlines() if line.strip()}
+    recovery = build_recovery_plan(
+        previous, current, publish_plan, recovery_id=args.recovery_id,
+        retention_expired_deletions=expired,
+    )
     validate_recovery_plan(recovery)
     _write_json(args.metadata, recovery)
     args.backup_list.parent.mkdir(parents=True, exist_ok=True)

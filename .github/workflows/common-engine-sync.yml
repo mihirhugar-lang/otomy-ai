@@ -217,7 +217,8 @@ jobs:
             --recovery-id "$recovery_id" \
             --metadata "$recovery_meta" \
             --backup-list "$recovery_backup_list" \
-            --remove-list "$recovery_remove_list"
+            --remove-list "$recovery_remove_list" \
+            --retention-expired "data/control/retention_expired_snapshot_keys.txt"
           if [ "$(jq -r '.available' "$recovery_meta")" != "true" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "No prior verified bundle exists yet; bootstrap publish has no rollback target."

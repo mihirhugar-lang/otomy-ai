@@ -2451,6 +2451,7 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
     have been used to reconcile customer ledgers.
     """
     removed_count = removed_bytes = 0
+    removed_keys = []
     for path in SNAPSHOT_API_DIR.glob("*.json"):
         if path.name in _WRITTEN_SNAPSHOT_FILES:
             continue
@@ -2467,8 +2468,15 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
             removed_bytes += path.stat().st_size
             path.unlink()
             removed_count += 1
+            # This key is an archive-reconstructible browser cache, not
+            # financial source data nor a canonical Cash/Bank book.  Recovery
+            # therefore need not copy thousands of such stale cache files.
+            removed_keys.append(path.relative_to(SNAPSHOT_API_DIR.parent.parent).as_posix())
         except FileNotFoundError:
             pass
+    retention_list = SNAPSHOT_API_DIR.parent.parent / "control" / "retention_expired_snapshot_keys.txt"
+    retention_list.parent.mkdir(parents=True, exist_ok=True)
+    retention_list.write_text("".join(f"{key}\n" for key in sorted(removed_keys)), encoding="utf-8")
     return removed_count, removed_bytes
 
 
