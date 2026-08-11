@@ -628,8 +628,8 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="kpi green"><div class="kpi-label">Spot Bank</div><div class="kpi-value" id="d-spot-bank">—</div></div>
   <div class="kpi navy"><div class="kpi-label">Credit Cash In</div><div class="kpi-value" id="d-credit-cash-in">—</div></div>
   <div class="kpi navy"><div class="kpi-label">Credit Bank In</div><div class="kpi-value" id="d-credit-bank-in">—</div></div>
-  <div class="kpi purple"><div class="kpi-label">Credit Sale</div><div class="kpi-value" id="d-credit-sale">—</div></div>
-  <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value" id="d-exp">—</div></div>
+  <div class="kpi red"><div class="kpi-label">Expenses Cash</div><div class="kpi-value" id="d-exp-cash">—</div></div>
+  <div class="kpi navy"><div class="kpi-label">Expenses Bank</div><div class="kpi-value" id="d-exp-bank">—</div></div>
   <div class="kpi blue"><div class="kpi-label">Profit / Tonne</div><div class="kpi-value" id="d-profit-mt">—</div></div>
 </div>
   <div id="dash-print-area">
@@ -2937,8 +2937,11 @@ document.getElementById('d-spot-cash').textContent=fmtINR(_spotCash);
 document.getElementById('d-spot-bank').textContent=fmtINR(_spotBank);
 document.getElementById('d-credit-cash-in').textContent=fmtINR(_creditCashIn);
 document.getElementById('d-credit-bank-in').textContent=fmtINR(_creditBankIn);
-document.getElementById('d-credit-sale').textContent=fmtINR(_rc.credit);
-document.getElementById('d-exp').textContent=fmtINR(s.expenses);
+const _operatingExpenseRows=(data.expense_rows||[]).filter(row=>row.is_operating_expense!==false);
+const _expenseCash=Number(s.operating_expense_cash ?? _operatingExpenseRows.filter(row=>_payChannel(row.payment_mode||'Cash')==='cash').reduce((sum,row)=>sum+_num(row.amount),0))||0;
+const _expenseBank=Number(s.operating_expense_bank ?? _operatingExpenseRows.filter(row=>_payChannel(row.payment_mode||'Cash')!=='cash').reduce((sum,row)=>sum+_num(row.amount),0))||0;
+document.getElementById('d-exp-cash').textContent=fmtINR(_expenseCash);
+document.getElementById('d-exp-bank').textContent=fmtINR(_expenseBank);
   document.getElementById('d-profit-mt').textContent=fmtINR2(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
 
