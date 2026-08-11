@@ -31,6 +31,10 @@ def _payables(rows):
             "payable_due_45_plus": round(engine._num(row.get("payable_due_45_plus")), 2),
             "payable_due_60_plus": round(engine._num(row.get("payable_due_60_plus")), 2),
             "payable_prior_ledger": round(engine._num(row.get("payable_prior_ledger")), 2),
+            "age_0_15": round(engine._num(row.get("age_0_15")), 2),
+            "age_16_30": round(engine._num(row.get("age_16_30")), 2),
+            "age_31_45": round(engine._num(row.get("age_31_45")), 2),
+            "age_45_plus": round(engine._num(row.get("age_45_plus")), 2),
         })
     return sorted(out, key=lambda row: (-row["payable"], str(row["name"])))
 
@@ -39,6 +43,23 @@ def _write_json(name, value):
     engine.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(engine.DATA_DIR / name, "w") as handle:
         engine.json.dump(value, handle, separators=(",", ":"))
+
+
+def _require_dashboard_payable_parity(payables):
+    """Refuse a vendor-only publish that would disagree with the Payables tile."""
+    control_path = engine.DATA_DIR / "ctrl_today.json"
+    try:
+        control = engine.json.loads(control_path.read_text())
+        dashboard_payable = round(engine._num((control.get("summary") or {}).get("payables")), 2)
+    except (OSError, ValueError, TypeError) as exc:
+        raise RuntimeError("dashboard Payables tile is unavailable; refusing vendor-only publish") from exc
+    vendor_payable = round(sum(engine._num(row.get("payable")) for row in payables), 2)
+    if abs(vendor_payable - dashboard_payable) > 0.01:
+        raise RuntimeError(
+            "vendor payable total does not match dashboard Payables tile: "
+            f"vendors={vendor_payable:.2f} dashboard={dashboard_payable:.2f}"
+        )
+    print(f"Vendor/dashboard payable parity: ₹{vendor_payable:,.2f}")
 
 
 def main() -> int:
@@ -100,6 +121,7 @@ def main() -> int:
 
     current_rows = engine.vendor_rows_as_of(current_master, current_creditors, vendor_ledgers, str(end))
     current_payables = _payables(current_rows)
+    _require_dashboard_payable_parity(current_payables)
     _write_json("vendors.json", current_rows)
     _write_json("vendors_payables.json", current_payables)
     engine.write_snapshot("/api/vendors/", current_rows)
