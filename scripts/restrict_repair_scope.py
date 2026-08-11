@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import shutil
 from datetime import date, timedelta
 from pathlib import Path
@@ -38,7 +39,7 @@ def _in_window(value: str, start: date, end: date) -> bool:
     return parsed is not None and start <= parsed <= end
 
 
-def _allow_snapshot(path: Path, start: date, end: date, fy_start: date) -> bool:
+def _allow_snapshot(path: Path, start: date, end: date, fy_start: date, current_month_start: date) -> bool:
     url = _snapshot_url(path)
     if not url:
         return False
@@ -55,6 +56,14 @@ def _allow_snapshot(path: Path, start: date, end: date, fy_start: date) -> bool:
         # FYTD is a composite of protected July/August rows plus repaired
         # April-June rows. Publishing this one aggregate is intentional.
         if from_d == fy_start and to_d > end:
+            return True
+        # A repair can change the opening carried into the live month even
+        # when later raw archive rows are protected.  Regenerate only the
+        # current-month derived snapshots from the fresh Loctell source so a
+        # current MTD close cannot disagree with the rebuilt FYTD close.
+        # Completed July snapshots and all July/August archive rows remain
+        # restored byte-for-byte from the R2 baseline.
+        if from_d >= current_month_start:
             return True
         return False
     if as_of:
@@ -78,14 +87,14 @@ def _allow_snapshot(path: Path, start: date, end: date, fy_start: date) -> bool:
     )) and f"from_date={fy_start}" in parsed.query
 
 
-def _allowed(relative: str, start: date, end: date, fy_start: date) -> bool:
+def _allowed(relative: str, start: date, end: date, fy_start: date, current_month_start: date) -> bool:
     if relative.startswith("archive/"):
         name = Path(relative).name
         if name == "manifest.json":
             return True
         return any(name == f"{cursor:%Y-%m}.json" for cursor in _months(start, end))
     if relative.startswith("snapshot/api/"):
-        if _allow_snapshot(Path(relative), start, end, fy_start):
+        if _allow_snapshot(Path(relative), start, end, fy_start, current_month_start):
             return True
         url = _snapshot_url(Path(relative))
         # These are current ERP master views, not July/August movement data.
@@ -138,10 +147,15 @@ def main() -> int:
     if end < start:
         raise ValueError("repair end must not precede repair start")
     fy_start = date(start.year if start.month >= 4 else start.year - 1, 4, 1)
+    try:
+        as_of = date.fromisoformat(json.loads((root / "ctrl_today.json").read_text())["period"]["to"])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("generated ctrl_today.json must provide the repair bundle as-of date")
+    current_month_start = as_of.replace(day=1)
 
     restored = removed = kept = 0
     for relative in sorted(_files(root) | _files(baseline)):
-        if _allowed(relative, start, end, fy_start):
+        if _allowed(relative, start, end, fy_start, current_month_start):
             kept += 1
             continue
         destination, source = root / relative, baseline / relative
