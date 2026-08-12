@@ -355,6 +355,10 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 #print-area.dashboard-print .cash-grid .kpi{min-width:0!important;min-height:0!important;height:100%!important;padding:10px 12px!important;overflow:hidden!important}
 #print-area.dashboard-print .cash-grid .kpi-label{font-size:10px!important;line-height:1.16!important;letter-spacing:.15px!important;margin:0 0 5px!important;white-space:normal!important;overflow-wrap:anywhere!important}
 #print-area.dashboard-print .cash-grid .kpi-value{font-size:19px!important;line-height:1.08!important;letter-spacing:-.2px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
+/* The dashboard PDF captures the actual rendered dashboard.  Hide controls
+   that only trigger actions, while keeping every visible business block and
+   its screen styling unchanged. */
+#section-dashboard.dashboard-pdf-capture .no-print{display:none!important}
 @media print{
   @page{size:A4 portrait;margin:5mm}
   html,body{background:#fff!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;display:block!important;overflow:visible!important}
@@ -2335,6 +2339,78 @@ function runPrint(title, content, className=''){
   setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
+// Dashboard PDFs are a rendered copy of the dashboard itself.  Do not rebuild a
+// second "report" from summary data: that inevitably drifts in layout, labels,
+// tile order, and responsive sizing from the screen Mihir is looking at.
+async function printDashboardVisualPdf(){
+  if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
+  const dash=document.getElementById('section-dashboard');
+  if(!dash)throw new Error('Dashboard is not ready');
+  const d=document.getElementById('dash-date')?.value||'';
+  const f=document.getElementById('dash-from')?.value||d;
+  const t=document.getElementById('dash-to')?.value||d;
+  await _ensureDashboardPrintBooks(f,t);
+
+  // Preserve the visible dashboard layout exactly, but expand its scroll boxes
+  // for the exported copy so a long book/table never loses rows in the PDF.
+  const restore=[];
+  dash.classList.add('dashboard-pdf-capture');
+  dash.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(el=>{
+    restore.push([el,el.getAttribute('style')]);
+    el.style.setProperty('height','auto','important');
+    el.style.setProperty('max-height','none','important');
+    el.style.setProperty('overflow','visible','important');
+  });
+  try{
+    if(document.fonts?.ready)await document.fonts.ready;
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const rect=dash.getBoundingClientRect();
+    const canvas=await window.html2canvas(dash,{
+      backgroundColor:'#f8fafc',scale:2,useCORS:true,logging:false,
+      scrollX:0,scrollY:-window.scrollY,windowWidth:Math.ceil(rect.width),windowHeight:Math.ceil(rect.height)
+    });
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+    const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight();
+    const margin=12,usableW=pageW-margin*2,usableH=pageH-margin*2;
+    const targetSlice=Math.max(1,Math.floor(canvas.width*(usableH/usableW)));
+    const scale=canvas.width/Math.max(rect.width,1);
+    // Prefer a real dashboard card or table-row boundary for each page split.
+    const bounds=[...dash.querySelectorAll('.section-header,#dash-profit-bar,.kpi-row,.control-hero,.print-section,tr')]
+      .map(el=>{const b=el.getBoundingClientRect();return {top:Math.round((b.top-rect.top)*scale),bottom:Math.round((b.bottom-rect.top)*scale)};})
+      .filter(b=>b.top>=0&&b.bottom>b.top&&b.top<canvas.height)
+      .sort((a,b)=>a.top-b.top);
+    const minSlice=Math.min(220,Math.floor(targetSlice*.25));
+    for(let y=0,page=0;y<canvas.height;page++){
+      const target=Math.min(y+targetSlice,canvas.height);
+      let end=target;
+      const crossing=bounds.filter(b=>b.top<target&&b.bottom>target&&b.top-y>=minSlice);
+      if(crossing.length){
+        const before=Math.min(...crossing.map(b=>b.top));
+        if(before-y>=minSlice)end=before;
+      }
+      const h=Math.max(1,end-y),slice=document.createElement('canvas');
+      slice.width=canvas.width;slice.height=h;
+      const ctx=slice.getContext('2d');ctx.fillStyle='#f8fafc';ctx.fillRect(0,0,slice.width,slice.height);
+      ctx.drawImage(canvas,0,y,canvas.width,h,0,0,slice.width,h);
+      if(page)pdf.addPage('a4','landscape');
+      pdf.addImage(slice.toDataURL('image/jpeg',0.96),'JPEG',margin,margin,usableW,h*(usableW/canvas.width),undefined,'FAST');
+      y=end;
+    }
+    const stamp=(f&&t)?`${f}_to_${t}`:(d||'dashboard');
+    const file=new File([pdf.output('blob')],`CrusherOps_Dashboard_${stamp}.pdf`,{type:'application/pdf'});
+    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+      try{await navigator.share({title:'CrusherOps Dashboard',files:[file]});return;}
+      catch(error){if(error?.name==='AbortError')return;}
+    }
+    const url=URL.createObjectURL(file),popup=window.open(url,'_blank');
+    if(!popup){const link=document.createElement('a');link.href=url;link.download=file.name;document.body.appendChild(link);link.click();link.remove();}
+    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
+  }finally{
+    restore.forEach(([el,style])=>{if(style===null)el.removeAttribute('style');else el.setAttribute('style',style);});
+    dash.classList.remove('dashboard-pdf-capture');
+  }
+}
 function pdfClean(value){
   return String(value??'')
     .replace(/₹/g,'Rs ')
@@ -2715,7 +2791,7 @@ function _dashboardBookCopy(id){
   });
   return copy.outerHTML;
 }
-async function printDashboardConsolidated(){
+async function _printDashboardConsolidatedLegacy(){
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
@@ -2766,6 +2842,9 @@ async function printDashboardConsolidated(){
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
+// Kept as a compatibility action for the existing button, but it now exports
+// the same real dashboard as the normal Dashboard Print / PDF action.
+async function printDashboardConsolidated(){return printDashboard();}
 async function _ensureDashboardPrintBooks(from,to){
   // The dashboard books load asynchronously from the same selected range. Do
   // not snapshot a half-rendered Control Room into a PDF: wait until both
@@ -2774,6 +2853,10 @@ async function _ensureDashboardPrintBooks(from,to){
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
 async function printDashboard(doPrint=true){
+  if(doPrint){
+    try{return await printDashboardVisualPdf();}
+    catch(e){flash(e.message||'Could not create dashboard PDF',false);return;}
+  }
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
