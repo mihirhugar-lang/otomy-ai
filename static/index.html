@@ -431,7 +431,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .card{padding:6px 7px!important;border-radius:6px!important;box-shadow:none!important;border:1px solid #d8dee8!important}
   #print-area.dashboard-print .control-panel{padding:8px!important;border-radius:8px!important;box-shadow:none!important;overflow:visible!important}
   #print-area.dashboard-print .control-title{display:none!important}
-  #print-area.dashboard-print .control-grid{grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
+  /* Owner Control Room has sixteen tiles. Keep its on-screen four-column
+     structure in the PDF so it remains exactly four rows, never a stray fifth. */
+  #print-area.dashboard-print .control-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important}
   #print-area.dashboard-print .control-metric{padding:6px 7px!important;border-radius:6px!important;min-height:40px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;overflow:visible!important}
   #print-area.dashboard-print .control-metric span{font-size:7.5px!important;line-height:1.1!important;margin:0 0 2px!important;white-space:normal!important}
   #print-area.dashboard-print .control-metric strong{font-size:11px!important;line-height:1.15!important;margin:0!important;white-space:normal!important}
