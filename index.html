@@ -269,7 +269,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .topbar-title{font-size:16px;line-height:1.2}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
-  .engine-status{font-size:9px;padding:3px 5px;max-width:none;min-width:0}
+  .engine-status{font-size:9.5px;padding:3px 5px;max-width:none;min-width:0}
   .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
@@ -324,6 +324,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .mini-list li{font-size:12px}
   #flash{left:10px;right:10px;top:60px;min-width:0}
 }
+/* The Engine badge already carries the verified date/time. On a phone, hide
+   the duplicate topbar date so the entire Dashboard + Engine stamp is visible. */
+@media(max-width:600px){.topbar-date{display:none}}
 @media(max-width:420px){
   .content{padding:12px 8px 22px}
   .topbar-date{display:none}
@@ -1977,14 +1980,17 @@ async function loadEngineStatus(){
     const engine=engineResponse.ok?await engineResponse.json():{};
     const paused=state.state==='paused';
     const generated=engine.generated_at?String(engine.generated_at).replace('T',' ').replace(/([+]).*$/,''):'last verified data unknown';
+    const compactGenerated=engine.generated_at
+      ? new Date(engine.generated_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','')
+      : 'checking';
     el.className=`engine-status ${paused?'paused':'running'}`;
-    el.textContent='Engine';
+    el.textContent=`Engine · ${compactGenerated}`;
     el.title=paused
       ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
       : `Last verified sync: ${generated}`;
   }catch(e){
     el.className='engine-status unknown';
-    el.textContent='Engine';
+    el.textContent='Engine · unavailable';
     el.title='Could not read the common-engine status marker';
   }
 }
