@@ -89,6 +89,10 @@ OWNER_CONTROL_TILE_ORDER = (
     "Expenses / Boulder Input",
     "Profit / Tonne",
     "Credit Repayment",
+    "Cash Profit ₹/T",
+    "Credit Locked ₹/T",
+    "Credit Sold ₹/T",
+    "Credit Repaid ₹/T",
 )
 
 REQUIRED_CUSTOMER_RANGE_FIELDS = (
