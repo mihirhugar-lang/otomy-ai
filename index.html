@@ -337,6 +337,14 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 
 /* ── PRINT ── */
 #print-area{display:none}
+/* Mobile PDF generation renders #print-area with html2canvas, which uses screen
+   CSS rather than @media print.  The dashboard summary must therefore define
+   its fixed eight-card print layout here as well: auto-fit would place card 8
+   on a second row at the renderer's 1120px canvas width. */
+#print-area.dashboard-print .kpi-row{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;margin:0 0 5px!important}
+#print-area.dashboard-print .kpi{min-width:0!important;min-height:42px!important;padding:5px 4px!important;border-radius:6px!important;overflow:hidden!important}
+#print-area.dashboard-print .kpi-label{font-size:6.2px!important;line-height:1.12!important;letter-spacing:0!important;margin:0 0 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important}
+#print-area.dashboard-print .kpi-value{font-size:9.5px!important;line-height:1.1!important;letter-spacing:-.35px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
 @media print{
   @page{size:A4 portrait;margin:5mm}
   html,body{background:#fff!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;display:block!important;overflow:visible!important}
@@ -419,8 +427,10 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .control-metric strong{font-size:11px!important;line-height:1.15!important;margin:0!important;white-space:normal!important}
   #print-area.dashboard-print .cash-grid{gap:5px!important;grid-auto-rows:48px!important}
   #print-area.dashboard-print .cash-grid .kpi{min-height:0!important}
-  #print-area.dashboard-print .kpi-value{font-size:13px!important}
-  #print-area.dashboard-print .kpi-label{font-size:8px!important}
+  /* Cash Position remains two-up in the print body; do not override the
+     compact eight-card dashboard-summary typography above. */
+  #print-area.dashboard-print .cash-grid .kpi-value{font-size:13px!important}
+  #print-area.dashboard-print .cash-grid .kpi-label{font-size:8px!important}
   #print-area.dashboard-print .money-list{grid-template-columns:1fr 1fr!important;break-inside:auto!important;page-break-inside:auto!important}
   #print-area.dashboard-print .mini-list{gap:5px!important}
   #print-area.dashboard-print .mini-list li{font-size:10px!important;padding-bottom:4px!important}
