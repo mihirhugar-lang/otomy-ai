@@ -1942,7 +1942,10 @@ async function checkForFreshSync(force=false){
       // Static-site stamp = "data|code". Only a CODE change needs a full page reload (to load the
       // new app build); a DATA-only change is refreshed silently in place, so the user stays on the
       // page they're browsing instead of being thrown back to the Dashboard.
-      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|')[1]!==String(stamp).split('|')[1];
+      // The stamp contains three data components followed by the code stamp.
+      // Compare its final component: comparing index 1 accidentally treated a
+      // data refresh as a code deploy and missed real frontend deployments.
+      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|').at(-1)!==String(stamp).split('|').at(-1);
       _lastSeenSyncStamp=stamp;
       _rememberStaticSyncStamp(stamp);
       if(codeChanged && _reloadStaticPageForSync(stamp))return;
@@ -3098,8 +3101,8 @@ async function renderControlRoom(data){
         </div>
       </div>
     </div>
-    <div class="card print-section">
-      <h3>Credit Repayment</h3>
+    <div class="card print-section" id="dash-credit-repayment-card">
+      <h3>Credit Repayment <button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Credit Repayment','dash-credit-repayment-card')">Print / PDF</button></h3>
       <div class="report-table-wrap">
         <table class="report-table payment-table">
           <thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Bank / UPI Received</th><th>Cash Received</th><th>Total Received</th><th>Sale Adjusted</th><th>Credit Repayment</th><th>Balance To Pay</th></tr></thead>
@@ -3108,8 +3111,8 @@ async function renderControlRoom(data){
         </table>
       </div>
     </div>
-    <div class="card print-section">
-      <h3>Customer Wise Sales</h3>
+    <div class="card print-section" id="dash-customer-sales-card">
+      <h3>Customer Wise Sales <button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Customer Wise Sales','dash-customer-sales-card')">Print / PDF</button></h3>
       <div class="report-table-wrap">
         <table class="report-table customer-sales-table">
           <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>MDP/Tonne</th><th>Price (₹/MT)</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Total Paid</th><th>Credit Sale</th></tr></thead>
@@ -3119,8 +3122,8 @@ async function renderControlRoom(data){
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
     </div>
-    <div class="card print-section">
-      <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3>
+    <div class="card print-section" id="dash-expenses-card">
+      <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Expenses (Cash &amp; Bank)','dash-expenses-card')">Print / PDF</button></h3>
       <div class="tbl-wrap" style="max-height:520px;overflow:auto">
         <table class="cashbook-table">
           <thead><tr><th>Date</th><th>Particulars</th><th>Party</th><th>Mode</th><th style="text-align:right">Cash</th><th style="text-align:right">Bank / UPI</th></tr></thead>
@@ -3131,8 +3134,8 @@ async function renderControlRoom(data){
       </div>
       <div class="metric-note">Director share / drawings (Prashant &amp; Kumar) are excluded — capital withdrawals, not company expenses. Ties to Operating Expenses.</div>
     </div>
-    <div class="card print-section"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
-    <div class="card print-section"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section" id="dash-bank-book-card"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Bank Book','dash-bank-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section" id="dash-cash-book-card"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Cash Book','dash-cash-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
   `;
   await renderDashboardCashBooks(data.period.from,data.period.to);
 }
