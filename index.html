@@ -51,11 +51,11 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 /* ── Main ── */
 .main{margin-left:238px;flex:1;display:flex;flex-direction:column;min-height:100vh}
 .topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(14px);padding:12px 26px;border-bottom:1px solid rgba(228,231,236,.75);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 10px 30px rgba(17,24,39,.05)}
-.topbar-title-stack{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.topbar-title-stack{display:flex;align-items:center;gap:8px;min-width:0}
 .topbar-title{font-size:17px;font-weight:900;color:#1f2937}
 .topbar-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
 .topbar-date{font-size:12px;color:#777}
-.engine-status{display:flex;align-items:center;gap:5px;border:1px solid #cfd8dc;border-radius:999px;padding:5px 9px;background:#f8fafc;color:#475569;font-size:11px;font-weight:800;line-height:1.25;white-space:normal;width:fit-content;max-width:100%;overflow:visible;text-overflow:clip}
+.engine-status{display:flex;align-items:center;gap:5px;border:1px solid #cfd8dc;border-radius:999px;padding:5px 9px;background:#f8fafc;color:#475569;font-size:11px;font-weight:800;line-height:1.25;white-space:nowrap;width:fit-content;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .engine-status::before{content:'';width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:0 0 auto}
 .engine-status.running{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.engine-status.running::before{background:#16a34a}
 .engine-status.paused{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.engine-status.paused::before{background:#ea580c}
@@ -265,11 +265,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .nav-item .icon{font-size:17px;width:22px}
   .main{margin-left:0;width:100%;min-width:0}
   .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
-  .topbar-title-stack{flex:1;min-width:0}
+  .topbar-title-stack{flex:1;min-width:0;gap:6px}
   .topbar-title{font-size:16px;line-height:1.2}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
-  .engine-status{font-size:10px;padding:4px 7px;max-width:100%}
+  .engine-status{font-size:10px;padding:4px 7px;max-width:calc(100vw - 218px);min-width:0}
   .install-btn{padding:8px 10px;font-size:11px}
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
