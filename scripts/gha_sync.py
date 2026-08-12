@@ -1823,6 +1823,27 @@ def build_control(sales, expenses, from_d, to_d,
     rp_bank_total   = round(sum(r["bank_received"]     for r in rp), 2)
     rp_cash_total   = round(sum(r["cash_received"]     for r in rp), 2)
 
+    # Credit-liquidity KPIs are available only for the clean Loctell period.
+    # They use the ticket tender split and gross customer cash received, never
+    # cashbook overlays or reconciliation adjustments.  A positive net-credit
+    # figure is profit/cash that remains with customers at period end.
+    credit_liquidity_available = from_d >= date(2026, 6, 1) and total_qty > 0
+    credit_sale_total = round(sum(row["credit_sale_amount"] for row in csr), 2)
+    credit_recovery_total = rp_pay_total
+    net_credit_change = round(credit_sale_total - credit_recovery_total, 2)
+    if credit_liquidity_available:
+        credit_sale_per_tonne = round(credit_sale_total / total_qty, 2)
+        credit_recovery_per_tonne = round(credit_recovery_total / total_qty, 2)
+        credit_locked_per_tonne = round(net_credit_change / total_qty, 2)
+        cash_converted_profit_per_tonne = round(
+            (profit - net_credit_change) / total_qty, 2
+        )
+    else:
+        credit_sale_per_tonne = None
+        credit_recovery_per_tonne = None
+        credit_locked_per_tonne = None
+        cash_converted_profit_per_tonne = None
+
     # alerts
     alerts = []
     if profit < 0:
@@ -1863,6 +1884,14 @@ def build_control(sales, expenses, from_d, to_d,
             "operating_balance_from":  str(from_d),
             "kumar_balance":           round(kumar_balance, 2),
             "credit_payment_received": rp_pay_total,
+            "credit_liquidity_available": credit_liquidity_available,
+            "credit_sale_for_liquidity": credit_sale_total,
+            "credit_recovery_for_liquidity": credit_recovery_total,
+            "net_credit_change_for_liquidity": net_credit_change,
+            "credit_sale_per_tonne": credit_sale_per_tonne,
+            "credit_recovery_per_tonne": credit_recovery_per_tonne,
+            "credit_locked_per_tonne": credit_locked_per_tonne,
+            "cash_converted_profit_per_tonne": cash_converted_profit_per_tonne,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
             "selected_period_profit_director_adjusted": round(profit, 2),
