@@ -102,7 +102,7 @@ def main() -> int:
     )
     missing_ledgers = [
         row["name"] for row in current_master
-        if engine._norm_name(row.get("name")) not in ledgers_full
+        if engine._vendor_identity(row) not in ledgers_full
     ]
     if missing_ledgers:
         raise RuntimeError(
