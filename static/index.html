@@ -937,7 +937,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <div class="preset-dates"><select id="ledger-month" onchange="loadLedgerView()"></select></div>
       <button class="print-btn" onclick="printDailyBook()">Print / PDF</button>
     </div>
-    <div class="ledger-summary-heading">Total / Period</div>
+    <div class="ledger-summary-heading">Total / Month</div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
     <div id="ledger-average-panel"><div class="ledger-average-heading">Average / Day</div><div id="ledger-average-summary" class="kpi-row"></div></div>
@@ -3676,40 +3676,40 @@ function renderLedgerView(data){
   const tProfit=_num(t.sale_amount)-_num(t.expenses);
   const _aProfit=_sum('sale_amount')-_sum('expenses');
   document.getElementById('ledger-summary').innerHTML=`
-    <div class="kpi green"><div class="kpi-label">Spot Sale Cash</div><div class="kpi-value">${fmtINR(t.spot_sale_cash||0)}</div></div>
-    <div class="kpi green"><div class="kpi-label">Spot Sale Bank</div><div class="kpi-value">${fmtINR(t.spot_sale_bank||0)}</div></div>
-    <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
-    <div class="kpi green"><div class="kpi-label">Credit Repayment Cash</div><div class="kpi-value">${fmtINR(t.credit_repayment_cash||0)}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Credit Repayment Bank</div><div class="kpi-value">${fmtINR(t.credit_repayment_bank||0)}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Stock in Plant</div><div class="kpi-value">${fmtNum(_stockInPlant(t),2)} MT</div></div>
-    <div class="kpi red"><div class="kpi-label">Expense Cash</div><div class="kpi-value">${fmtINR(_expenseCash(t))}</div></div>
-    <div class="kpi red"><div class="kpi-label">Expense Bank</div><div class="kpi-value">${fmtINR(_expenseBank(t))}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Boulders Input</div><div class="kpi-value">${fmtNum(t.boulder_input_mt||0,2)}</div></div>
     <div class="kpi purple"><div class="kpi-label">Sale Tonne</div><div class="kpi-value">${fmtNum(t.qty_mt||0,2)}</div></div>
-    <div class="kpi"><div class="kpi-label">Cash in Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
-    <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Spot Sale Bank</div><div class="kpi-value">${fmtINR(t.spot_sale_bank||0)}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Repay Bank</div><div class="kpi-value">${fmtINR(t.credit_repayment_bank||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Expense Bank</div><div class="kpi-value">${fmtINR(_expenseBank(t))}</div></div>
     <div class="kpi red"><div class="kpi-label">Expense / MT</div><div class="kpi-value">${per(_num(t.expenses),_num(t.qty_mt))}</div></div>
-    <div class="kpi red"><div class="kpi-label">Expense / BI</div><div class="kpi-value">${per(_num(t.expenses),_num(t.boulder_input_mt))}</div></div>
+    <div class="kpi"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(t.bank_balance||0)}</div></div>
     <div class="kpi green"><div class="kpi-label">Profit / MT</div><div class="kpi-value">${per(tProfit,_num(t.qty_mt))}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Credit Sales</div><div class="kpi-value">${fmtINR(t.credit_sale_amount||0)}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Boulders Input</div><div class="kpi-value">${fmtNum(t.boulder_input_mt||0,2)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Spot Sale Cash</div><div class="kpi-value">${fmtINR(t.spot_sale_cash||0)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Repay Cash</div><div class="kpi-value">${fmtINR(t.credit_repayment_cash||0)}</div></div>
+    <div class="kpi red"><div class="kpi-label">Expense Cash</div><div class="kpi-value">${fmtINR(_expenseCash(t))}</div></div>
+    <div class="kpi red"><div class="kpi-label">Expense / BI</div><div class="kpi-value">${per(_num(t.expenses),_num(t.boulder_input_mt))}</div></div>
+    <div class="kpi"><div class="kpi-label">Cash in Office</div><div class="kpi-value">${fmtINR(t.cash_balance_office||0)}</div></div>
     <div class="kpi green"><div class="kpi-label">Profit / BI</div><div class="kpi-value">${per(tProfit,_num(t.boulder_input_mt))}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Stock in Plant</div><div class="kpi-value">${fmtNum(_stockInPlant(t),2)} MT</div></div>
   `;
   document.getElementById('ledger-average-summary').innerHTML=`
-    <div class="kpi green"><div class="kpi-label">Avg Spot Sale Cash</div><div class="kpi-value">${fmtINR(_avg('spot_sale_cash'))}</div></div>
-    <div class="kpi green"><div class="kpi-label">Avg Spot Sale Bank</div><div class="kpi-value">${fmtINR(_avg('spot_sale_bank'))}</div></div>
-    <div class="kpi blue"><div class="kpi-label">Avg Credit Sales</div><div class="kpi-value">${fmtINR(_avg('credit_sale_amount'))}</div></div>
-    <div class="kpi green"><div class="kpi-label">Avg Repayment Cash</div><div class="kpi-value">${fmtINR(_avg('credit_repayment_cash'))}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Avg Repayment Bank</div><div class="kpi-value">${fmtINR(_avg('credit_repayment_bank'))}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Avg Stock in Plant</div><div class="kpi-value">${fmtNum(_avgOf(_stockInPlant),2)} MT</div></div>
-    <div class="kpi red"><div class="kpi-label">Avg Expense Cash</div><div class="kpi-value">${fmtINR(_avgOf(_expenseCash))}</div></div>
-    <div class="kpi red"><div class="kpi-label">Avg Expense Bank</div><div class="kpi-value">${fmtINR(_avgOf(_expenseBank))}</div></div>
-    <div class="kpi purple"><div class="kpi-label">Avg Boulders Input</div><div class="kpi-value">${fmtNum(_avg('boulder_input_mt'),2)}</div></div>
     <div class="kpi purple"><div class="kpi-label">Avg Sale Tonne</div><div class="kpi-value">${fmtNum(_avg('qty_mt'),2)}</div></div>
-    <div class="kpi"><div class="kpi-label">Avg Cash in Office</div><div class="kpi-value">${fmtINR(_avg('cash_balance_office'))}</div></div>
-    <div class="kpi navy"><div class="kpi-label">Avg Bank Balance</div><div class="kpi-value">${fmtINR(_avg('bank_balance'))}</div></div>
+    <div class="kpi green"><div class="kpi-label">Avg Spot Sale Bank</div><div class="kpi-value">${fmtINR(_avg('spot_sale_bank'))}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Avg Repay Bank</div><div class="kpi-value">${fmtINR(_avg('credit_repayment_bank'))}</div></div>
+    <div class="kpi red"><div class="kpi-label">Avg Expense Bank</div><div class="kpi-value">${fmtINR(_avgOf(_expenseBank))}</div></div>
     <div class="kpi red"><div class="kpi-label">Avg Expense / MT</div><div class="kpi-value">${per(_sum('expenses'),_sum('qty_mt'))}</div></div>
-    <div class="kpi red"><div class="kpi-label">Avg Expense / BI</div><div class="kpi-value">${per(_sum('expenses'),_sum('boulder_input_mt'))}</div></div>
+    <div class="kpi navy"><div class="kpi-label">Avg Bank Balance</div><div class="kpi-value">${fmtINR(_avg('bank_balance'))}</div></div>
     <div class="kpi green"><div class="kpi-label">Avg Profit / MT</div><div class="kpi-value">${per(_aProfit,_sum('qty_mt'))}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Avg Credit Sales</div><div class="kpi-value">${fmtINR(_avg('credit_sale_amount'))}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Avg Boulders Input</div><div class="kpi-value">${fmtNum(_avg('boulder_input_mt'),2)}</div></div>
+    <div class="kpi green"><div class="kpi-label">Avg Spot Sale Cash</div><div class="kpi-value">${fmtINR(_avg('spot_sale_cash'))}</div></div>
+    <div class="kpi green"><div class="kpi-label">Avg Repay Cash</div><div class="kpi-value">${fmtINR(_avg('credit_repayment_cash'))}</div></div>
+    <div class="kpi red"><div class="kpi-label">Avg Expense Cash</div><div class="kpi-value">${fmtINR(_avgOf(_expenseCash))}</div></div>
+    <div class="kpi red"><div class="kpi-label">Avg Expense / BI</div><div class="kpi-value">${per(_sum('expenses'),_sum('boulder_input_mt'))}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg Cash in Office</div><div class="kpi-value">${fmtINR(_avg('cash_balance_office'))}</div></div>
     <div class="kpi green"><div class="kpi-label">Avg Profit / BI</div><div class="kpi-value">${per(_aProfit,_sum('boulder_input_mt'))}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Avg Stock in Plant</div><div class="kpi-value">${fmtNum(_avgOf(_stockInPlant),2)} MT</div></div>
   `;
   let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Repay Cash</th><th>Repay Bank</th><th>Exp Cash</th><th>Exp Bank</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Sale Tonne</th><th>Stock in Plant</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
   rows.forEach(r=>{
