@@ -3776,6 +3776,11 @@ function renderLedgerView(data){
     <td><strong>${per(tProfit,_num(t.boulder_input_mt))}</strong></td>
   </tr></tfoot></table>`;
   document.getElementById('ledger-tbl').innerHTML=html;
+  // Keep the Total footer immediately above Average / Day without changing
+  // either calculation or the column order.
+  const ledgerFoot=document.querySelector('#ledger-tbl tfoot');
+  const ledgerAverage=ledgerFoot?.querySelector('.ledger-avg-row');
+  if(ledgerAverage)ledgerFoot.append(ledgerAverage);
 }
 
 // ── Operations ─────────────────────────────────────────────────────────────
