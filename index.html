@@ -588,10 +588,13 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .preset-dates input{color:#c2610c !important;font-weight:700}
 .preset-dates label{color:#c2610c !important;font-weight:700}
 .topbar-date{color:#c2610c !important;font-weight:700}
+/* ── Director Insights: visual-only analytical board ── */
+.insights-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}.insights-head h2{margin-bottom:4px}.insights-head p{margin:0;color:var(--muted);font:600 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insights-note{background:linear-gradient(90deg,#f0f7ff,#fff9ed);border:1px solid #d8e6f4;border-left:4px solid #2563a6;border-radius:12px;padding:10px 13px;margin:0 0 15px;color:#31506d;font:600 12px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insights-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.insight-card{background:linear-gradient(155deg,#fff,#fffdf8);border:1px solid #e6e8ed;border-top:4px solid #355f9d;border-radius:18px;padding:14px;box-shadow:0 9px 22px rgba(20,36,62,.06);min-width:0;overflow:hidden}.insight-card:nth-child(3n+2){border-top-color:#be7a11}.insight-card:nth-child(3n){border-top-color:#2f7d57}.insight-card h3{font-size:14px;color:#172a46;margin:0 0 3px}.insight-card p{font:600 11px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#788594;margin:0 0 9px;min-height:30px}.insight-chart{height:218px;position:relative}.insight-chart svg{display:block;width:100%;height:100%;overflow:visible}.insight-legend{display:flex;flex-wrap:wrap;gap:8px 12px;margin:0 0 5px;font:700 10px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#5d6876}.insight-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}.insight-empty{height:100%;display:grid;place-items:center;color:#98a2b3;font:700 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insight-axis{stroke:#e7ebf0;stroke-width:1}.insight-label{font:700 9px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#7b8794}.insight-bar-label{font:700 10px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#526070}.insight-tip{cursor:crosshair}.insight-tip:hover{opacity:.72}@media(max-width:760px){.insights-grid{grid-template-columns:1fr;gap:11px}.insight-card{padding:12px;border-radius:15px}.insight-chart{height:198px}.insights-head{align-items:center}.insights-head p{font-size:10px}.insights-note{font-size:11px}.insights-head .print-btn{padding:7px 9px;font-size:10px}}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
 <script src="/static/vendor/jspdf-2.5.1.umd.min.js"></script>
+<script src="/static/insights.js"></script>
 </head>
 <body>
 
@@ -602,6 +605,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="sidebar-logo">⛏ <span>CrusherOps</span></div>
   <div class="nav-section">Main</div>
   <div class="nav-item active" onclick="nav('dashboard')"><span class="icon">⊡</span><span>Dashboard</span></div>
+  <div class="nav-item" onclick="nav('insights')"><span class="icon">◔</span><span>Insights</span></div>
   <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Daily Book</span></div>
   <div class="nav-section">Financials</div>
   <div class="nav-item" onclick="nav('sales')"><span class="icon">₹</span><span>Sales</span></div>
@@ -668,6 +672,25 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div id="dash-print-area">
     <div id="control-room"></div>
   </div>
+</div>
+
+<!-- INSIGHTS -->
+<div class="section" id="section-insights">
+  <div class="page-header insights-head"><div><h2>Director Analytics</h2><p>FYTD visual intelligence · 1 April onwards · hover or tap a chart for detail</p></div><button class="print-btn no-print" onclick="loadInsights()">Refresh Charts</button></div>
+  <div class="preset-bar no-print">
+    <span class="preset-label">Period:</span>
+    <button class="pbtn" onclick="preset('insights','today',this)">Today</button>
+    <button class="pbtn" onclick="preset('insights','yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="preset('insights','week',this)">This Week</button>
+    <button class="pbtn" onclick="preset('insights','lastweek',this)">Last Week</button>
+    <button class="pbtn" onclick="preset('insights','mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="preset('insights','lastmonth',this)">Last Month</button>
+    <button class="pbtn act" onclick="preset('insights','fytd',this)">This FY</button>
+    <button class="pbtn" onclick="preset('insights','lastfy',this)">Last FY</button>
+    <div class="preset-dates"><label>From:</label><input type="date" id="insights-from" onchange="clearPresetBtns('insights')"><label>To:</label><input type="date" id="insights-to" onchange="clearPresetBtns('insights')"><button class="pbtn" onclick="loadInsights()">Go</button></div>
+  </div>
+  <div class="insights-note">All charts are read-only views of the verified Daily Book, Dashboard, customer and credit histories. No balance adjustment is created by this page.</div>
+  <div class="insights-grid" id="insights-grid"><div class="empty">Open Insights to build the visual analysis.</div></div>
 </div>
 
 <!-- SALES -->
@@ -2059,7 +2082,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Daily Book',gst:'GST',auditca:'AUDIT CA'};
+const TITLES={dashboard:'Dashboard',insights:'Director Analytics',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Daily Book',gst:'GST',auditca:'AUDIT CA'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -2092,6 +2115,7 @@ function nav(name){
   document.getElementById('page-title').textContent=TITLES[name]||name;
   toggleMobileNav(false);
   if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
+  if(name==='insights'){const[f,t]=calcPreset('fytd');document.getElementById('insights-from').value=f;document.getElementById('insights-to').value=t;loadInsights();}
   if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
   if(name==='exptonne'){resetRangeToToday('exptonne');loadExpTonne();}
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
@@ -2113,6 +2137,7 @@ function subTab(id,el){
 // ── Preset logic ───────────────────────────────────────────────────────────
 const PRESET_CFG={
   dashboard:{from:'dash-from',to:'dash-to',reload:()=>loadDash()},
+  insights:{from:'insights-from',to:'insights-to',reload:()=>loadInsights()},
   sales:{from:'s-from',to:'s-to',reload:()=>loadSales()},
   expenses:{from:'e-from',to:'e-to',reload:()=>loadExpenses()},
   exptonne:{from:'t-from',to:'t-to',reload:()=>loadExpTonne()},
