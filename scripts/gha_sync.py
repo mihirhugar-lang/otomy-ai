@@ -1203,6 +1203,7 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
                 rows.append({
                     "date": str(paid_on),
                     "vendor_name": creditor["name"],
+                    "erp_supplier_id": str(supplier_id),
                     "amount": amount,
                     "mode": _mode_bucket(payment_type),
                     "reference": f"ERP-SUP-{supplier_id}-{paid_on.isoformat()}-{sequence}-{int(round(amount))}"[:100],
@@ -1222,6 +1223,15 @@ def fetch_vendor_payments(sess, creditors, from_d, to_d):
 
 def _norm_name(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _vendor_identity(row):
+    """Stable supplier identity; display names are not unique in Loctell."""
+    row = row or {}
+    supplier_id = str(row.get("erp_supplier_id") or row.get("supplier_id") or "").strip()
+    if supplier_id:
+        return f"erp:{supplier_id}"
+    return f"name:{_norm_name(row.get('name'))}"
 
 
 def _customer_master_key(name):
@@ -1278,8 +1288,9 @@ VENDOR_LEDGER_START = date(2025, 2, 15)  # full itemized vendor history begins h
 
 
 def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
-    """Full itemized supplier ledgers (every bill + payment) for a Tally-style view, keyed by
-    normalised vendor name. Tally supplier convention: Purchase=Credit (raises payable),
+    """Full itemized supplier ledgers keyed by Loctell supplier ID.
+
+    Tally supplier convention: Purchase=Credit (raises payable),
     Payment=Debit (lowers payable).
 
     The ordinary common-engine path is deliberately resilient: a failed supplier
@@ -1296,7 +1307,7 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
         sid = creditor.get("erp_supplier_id")
         name = creditor.get("name", "")
         if not sid:
-            return (name, [])
+            return (creditor, [], None)
         entries = []
         try:
             data = json.loads(_clone_sess(sess).get(
@@ -1324,13 +1335,14 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
                                     "debit": round(payment, 2), "credit": 0.0})
         except Exception as e:
             print(f"  supplier ledger fetch error ({name}); using lightweight fallback: {e}")
-            return (name, [], str(e))
-        return (name, entries, None)
+            return (creditor, [], str(e))
+        return (creditor, entries, None)
 
     result = {}
     failures = []
     with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
-        for name, entries, error in pool.map(_one, creditors):
+        for creditor, entries, error in pool.map(_one, creditors):
+            name = creditor.get("name", "")
             if error:
                 failures.append(f"{name}: {error}")
                 continue
@@ -1338,9 +1350,9 @@ def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
                 # An empty but successfully-read ledger is still canonical ERP
                 # data.  Preserve the key so callers do not mistake it for a
                 # failed fetch and fall back to an old local calculation.
-                result[_norm_name(name)] = entries
+                result[_vendor_identity(creditor)] = entries
             elif entries:
-                result[_norm_name(name)] = entries
+                result[_vendor_identity(creditor)] = entries
     if failures and strict:
         raise ErpFetchError(
             "supplier ledger fetch failed; refusing a partial vendor bundle: "
@@ -3308,15 +3320,17 @@ def empty_ledger(name, closing=0.0):
 
 def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
     full_ledgers = full_ledgers or {}
+    payments_by_identity = {}
     payments_by_name = {}
     for payment in vendor_payments:
+        payments_by_identity.setdefault(_vendor_identity(payment), []).append(payment)
         payments_by_name.setdefault(payment.get("vendor_name", ""), []).append(payment)
 
     ledgers = {}
     for vendor in vendors_full:
         name = vendor.get("name", "")
         payable = round(_num(vendor.get("payable")), 2)
-        full_entries = full_ledgers.get(_norm_name(name))
+        full_entries = full_ledgers.get(_vendor_identity(vendor))
         if full_entries is not None:
             # Tally view from the full loctell ledger: Purchase=Credit, Payment=Debit, running=payable.
             entries_sorted = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "purchase" else 1))
@@ -3341,7 +3355,12 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
             continue
 
         # Fallback: lightweight payments-only ledger (Tally convention: Payment=Debit).
-        payments = payments_by_name.get(name, [])
+        payments = payments_by_identity.get(_vendor_identity(vendor), [])
+        # Older snapshot rows did not retain a supplier ID.  A name fallback
+        # is safe only for an actually ID-less master, never for two suppliers
+        # that happen to share a display name.
+        if not payments and not str(vendor.get("erp_supplier_id") or "").strip():
+            payments = payments_by_name.get(name, [])
         total_payments = round(sum(_num(row.get("amount")) for row in payments), 2)
         opening = round(payable + total_payments, 2)
         entries = []
@@ -3453,12 +3472,10 @@ def vendor_payable_age_buckets(entries, payable, as_of):
 
 
 def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
-    # Loctell can return the same supplier more than once in a balance payload.
-    # Preserve the existing endpoint convention: the final canonical row wins;
-    # do not add duplicates together and invent a payable that Loctell did not
-    # report.
+    # Loctell can have separate supplier masters whose names differ only by
+    # case or punctuation.  Supplier ID, not the display label, owns balance.
     balances = {
-        _norm_name(row.get("name")): _num(row.get("payable", row.get("balance", 0.0)))
+        _vendor_identity(row): _num(row.get("payable", row.get("balance", 0.0)))
         for row in balance_rows or []
         if str(row.get("name") or "").strip()
     }
@@ -3466,7 +3483,7 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
     for source in master_rows:
         row = dict(source)
         name = str(row.get("name") or "").strip()
-        payable = round(balances.get(_norm_name(name), 0.0), 2)
+        payable = round(balances.get(_vendor_identity(row), 0.0), 2)
         ledger = vendor_ledgers.get(str(row.get("id"))) or {}
         entries = [entry for entry in (ledger.get("entries") or []) if str(entry.get("date") or "")[:10] <= str(as_of)]
         row.update({
@@ -3482,36 +3499,53 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
 
 
 def canonical_vendor_master(seed_rows, creditors):
-    """Merge the checked-in full master with legacy seed metadata and ERP rows.
+    """Merge the checked-in full master with ERP rows by supplier ID.
 
     The explicit master makes a zero-balance supplier visible.  Creditors are
     still merged so a supplier newly created in Loctell is never hidden while
     waiting for a deliberate master-file update.
     """
-    by_name = {}
+    # A legacy name-only row is an approximation from before supplier IDs were
+    # retained.  If Loctell now reports that name, its distinct ID-backed rows
+    # replace the approximation rather than being merged into one supplier.
+    current_names = {
+        _norm_name(row.get("name"))
+        for row in creditors or []
+        if str(row.get("name") or "").strip() and str(row.get("erp_supplier_id") or "").strip()
+    }
+    by_identity = {}
     max_id = 0
     for source in list(load_vendor_master()) + list(seed_rows or []):
         row = dict(source or {})
         name = str(row.get("name") or "").strip()
         if not name:
             continue
-        key = _norm_name(name)
-        current = by_name.get(key, {})
+        if (not str(row.get("erp_supplier_id") or "").strip()
+                and _norm_name(name) in current_names):
+            continue
+        key = _vendor_identity(row)
+        current = by_identity.get(key, {})
         merged = {**current, **row, "name": name, "active": row.get("active", current.get("active", True))}
-        by_name[key] = merged
+        by_identity[key] = merged
         max_id = max(max_id, int(merged.get("id") or 0))
     for creditor in creditors or []:
         name = str(creditor.get("name") or "").strip()
-        if not name:
+        supplier_id = str(creditor.get("erp_supplier_id") or "").strip()
+        if not name or not supplier_id:
             continue
-        key = _norm_name(name)
-        if key not in by_name:
+        key = _vendor_identity(creditor)
+        current = by_identity.get(key)
+        if current is None:
             max_id += 1
-            by_name[key] = {
+            current = {
                 "id": max_id, "name": name, "gstin": "", "phone": "", "address": "",
                 "opening_balance": 0.0, "notes": "", "active": True,
             }
-    return sorted(by_name.values(), key=lambda row: str(row.get("name") or "").upper())
+        by_identity[key] = {
+            **current, "name": name, "erp_supplier_id": supplier_id,
+            "active": current.get("active", True),
+        }
+    return sorted(by_identity.values(), key=lambda row: (str(row.get("name") or "").upper(), _vendor_identity(row)))
 
 
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
