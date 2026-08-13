@@ -683,18 +683,36 @@ def archive_receipts_to_repayments(receipts):
 # ─── auth ────────────────────────────────────────────────────────────────────
 
 def erp_auth():
-    sess = requests.Session()
-    sess.headers.update({"User-Agent": "Mozilla/5.0"})
     cred = base64.b64encode(f"{ERP_ORG};{ERP_USER}:{ERP_PASS}".encode()).decode()
-    sess.get(f"{ERP_BASE}/restserver/rest/users/login?web=true",
-             headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
-             timeout=25, verify=True)
-    sess.post(f"{ERP_BASE}/home/MainLogin",
-              data={"loginUsername": ERP_USER, "loginPassword": ERP_PASS,
-                    "loginOrgName": ERP_ORG, "pType": "attendance"},
-              headers={"Content-Type": "application/x-www-form-urlencoded"},
-              timeout=25, verify=True)
-    return sess
+    last_error = None
+    # A Loctell login has two network requests.  Retrying only later data
+    # fetches is ineffective when its authentication endpoint is temporarily
+    # slow, and a new session avoids carrying a half-created login state.
+    for attempt in range(1, ERP_FETCH_RETRIES + 1):
+        sess = requests.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0"})
+        try:
+            response = sess.get(
+                f"{ERP_BASE}/restserver/rest/users/login?web=true",
+                headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
+                timeout=25, verify=True,
+            )
+            response.raise_for_status()
+            response = sess.post(
+                f"{ERP_BASE}/home/MainLogin",
+                data={"loginUsername": ERP_USER, "loginPassword": ERP_PASS,
+                      "loginOrgName": ERP_ORG, "pType": "attendance"},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=25, verify=True,
+            )
+            response.raise_for_status()
+            return sess
+        except Exception as e:
+            last_error = e
+            if attempt < ERP_FETCH_RETRIES:
+                print(f"  Loctell login retry {attempt}/{ERP_FETCH_RETRIES} after {type(e).__name__}: {e}")
+                time.sleep(ERP_RETRY_DELAY_SECONDS * attempt)
+    raise ErpFetchError(f"Loctell login failed after {ERP_FETCH_RETRIES} attempt(s): {last_error}") from last_error
 
 def _clone_sess(sess):
     """Return a new session with the same cookies — safe to use in a thread."""
