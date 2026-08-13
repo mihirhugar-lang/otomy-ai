@@ -30,11 +30,18 @@ def _check_rows(rows, expected_names, label):
     for row in rows:
         payable = round(engine._num(row.get("payable")), 2)
         due = [round(engine._num(row.get(f"payable_due_{days}_plus")), 2) for days in (15, 30, 45, 60)]
-        if payable < 0 or any(value < 0 or value > payable for value in due):
+        bands = [round(engine._num(row.get(field)), 2) for field in ("age_0_15", "age_16_30", "age_31_45", "age_45_plus")]
+        # A negative payable is an ERP supplier advance, not an invalid debt.
+        # It has no payable-age bands; treating it as an error prevents the
+        # vendor refresh from ever publishing real advance suppliers.
+        if payable < 0:
+            if any(due) or any(bands):
+                raise AssertionError(f"{label}: advance supplier has payable aging for {row.get('name')}")
+            continue
+        if any(value < 0 or value > payable for value in due):
             raise AssertionError(f"{label}: invalid payable aging for {row.get('name')}")
         if not all(due[index] >= due[index + 1] for index in range(len(due) - 1)):
             raise AssertionError(f"{label}: non-cumulative payable aging for {row.get('name')}")
-        bands = [round(engine._num(row.get(field)), 2) for field in ("age_0_15", "age_16_30", "age_31_45", "age_45_plus")]
         if any(value < 0 for value in bands) or round(sum(bands), 2) != payable:
             raise AssertionError(f"{label}: exclusive payable bands do not tie to payable for {row.get('name')}")
 

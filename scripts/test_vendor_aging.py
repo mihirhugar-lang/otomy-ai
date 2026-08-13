@@ -71,6 +71,11 @@ def main() -> int:
     advances = {row["erp_supplier_id"]: row["payable"] for row in rows}
     assert advances["8237_1"] == -4000.0 and advances["13655_2"] == 0.0, advances
     assert advances["8238_1"] == -20000.0 and advances["13656_2"] == 0.0, advances
+    advance_row = next(row for row in rows if row["erp_supplier_id"] == "8238_1")
+    assert all(advance_row[field] == 0.0 for field in (
+        "payable_due_15_plus", "payable_due_30_plus", "payable_due_45_plus", "payable_due_60_plus",
+        "age_0_15", "age_16_30", "age_31_45", "age_45_plus",
+    )), advance_row
     print("vendor FIFO aging fixture passed")
     return 0
 
