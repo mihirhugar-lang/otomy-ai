@@ -99,6 +99,7 @@ def main() -> int:
         ["2", "soling manju", "<a href='/home/updateSupplier?id=8238'>Edit</a>"],
     ]})
     assert engine.parse_supplier_master_page(supplier_json, {"8237_1", "8238_1"}) == supplier_master
+    assert engine._supplier_master_page_links("<a href='/home/listSuppliers?page=2'>2</a>") == ["/home/listSuppliers?page=2"]
     print("vendor FIFO aging fixture passed")
     return 0
 
