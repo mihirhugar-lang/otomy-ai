@@ -79,28 +79,29 @@ def main() -> int:
         "age_0_15", "age_16_30", "age_31_45", "age_45_plus",
     )), advance_row
 
-    # The Supplier List owns the display spelling; Supplier Balance contributes
-    # only balance and the source supplier ID.  Numeric list IDs map to the
-    # corresponding balance IDs with their Loctell suffix.
-    supplier_page = """
-      <table><tr><th>S.No</th><th>Supplier</th><th>Action</th></tr>
-      <tr><td>1</td><td>dhaneswari</td><td><a href='/home/updateSupplier?id=8237'>Edit</a></td></tr>
-      <tr><td>2</td><td>soling manju</td><td><a href='/home/updateSupplier?id=8238'>Edit</a></td></tr></table>
-    """
-    supplier_master = engine.parse_supplier_master_page(supplier_page, {"8237_1", "8238_1"})
+    # The normal Loctell Supplier List owns display spelling; the Balance
+    # report contributes only balance and ledger identity.  A master numeric
+    # ID maps to the corresponding balance ID suffix without accepting a
+    # Crusher-specific supplier list as a second source.
+    source_creditors = [
+        {"name": "old dhaneswari", "erp_supplier_id": "8237_1"},
+        {"name": "old soling", "erp_supplier_id": "8238_1"},
+    ]
+    supplier_master = engine.supplier_master_rows_from_org_list([
+        {"id": 8237, "name": "dhaneswari"},
+        {"id": 8238, "name": "soling manju"},
+    ], source_creditors)
     assert supplier_master == [
         {"name": "dhaneswari", "erp_supplier_id": "8237_1", "active": True},
         {"name": "soling manju", "erp_supplier_id": "8238_1", "active": True},
     ], supplier_master
-    source_master = engine.canonical_vendor_master([], creditors[:1], source_master=supplier_master[:1])
+    source_master = engine.canonical_vendor_master([], source_creditors[:1], source_master=supplier_master[:1])
     assert source_master[0]["name"] == "dhaneswari" and source_master[0]["erp_supplier_id"] == "8237_1", source_master
-    supplier_json = json.dumps({"data": [
-        ["1", "dhaneswari", "<a href='/home/updateSupplier?id=8237'>Edit</a>"],
-        ["2", "soling manju", "<a href='/home/updateSupplier?id=8238'>Edit</a>"],
-    ]})
-    assert engine.parse_supplier_master_page(supplier_json, {"8237_1", "8238_1"}) == supplier_master
-    assert engine._supplier_master_page_links("<a href='/home/listSuppliers?page=2'>2</a>") == ["/home/listSuppliers?page=2"]
-    assert engine._supplier_id_from_master_markup("<button onclick='updateSupplier(8237)'>Edit</button>", {"8237_1"}) == "8237_1"
+    try:
+        engine.supplier_master_rows_from_org_list([{"id": 8237, "name": "dhaneswari"}], source_creditors)
+        assert False, "partial normal supplier master must fail closed"
+    except engine.ErpFetchError:
+        pass
     print("vendor FIFO aging fixture passed")
     return 0
 
