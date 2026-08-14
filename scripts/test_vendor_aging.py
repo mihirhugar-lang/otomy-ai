@@ -90,6 +90,22 @@ def main() -> int:
     }, master
     balance_master = engine.canonical_vendor_master([], creditors, source_master=creditors)
     assert all(row.get("id") for row in balance_master), balance_master
+
+    # Dated Vendor-page snapshots must keep the Supplier Balance ledger-link
+    # ID.  Names alone cannot match an ID-backed master (and would display a
+    # false ₹0 payable after the next normal sync).
+    dated_rows = engine.vendor_rows_as_of(
+        balance_master,
+        [{
+            "name": row["name"], "payable": row["payable"],
+            "erp_supplier_id": row["erp_supplier_id"],
+        } for row in creditors],
+        {}, "2026-08-13",
+    )
+    assert {row["erp_supplier_id"]: row["payable"] for row in dated_rows} == {
+        "8237_1": -4000.0, "13655_2": 0.0,
+        "8238_1": -20000.0, "13656_2": 0.0,
+    }, dated_rows
     print("vendor FIFO aging fixture passed")
     return 0
 
