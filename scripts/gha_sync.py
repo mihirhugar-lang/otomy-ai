@@ -4117,7 +4117,15 @@ def write_snapshot_bundle(
 
     def creditors_as_of(as_of):
         rows = balance_snapshots.get(str(as_of), {}).get("creditors") or []
-        return [{"name": row.get("name"), "payable": row.get("payable", row.get("balance", 0.0))} for row in rows]
+        # Supplier Balance may contain same-name masters.  The vendor page is
+        # keyed by its Loctell supplier-ledger ID, so retain that ID when a
+        # dated snapshot is rebuilt.  Dropping it makes every ID-backed vendor
+        # miss its balance and appear as ₹0 in the dated Vendor-page view.
+        return [{
+            "name": row.get("name"),
+            "payable": row.get("payable", row.get("balance", 0.0)),
+            "erp_supplier_id": row.get("erp_supplier_id"),
+        } for row in rows]
 
     def archive_balance_rows(balance, rows_key, amount_key):
         """Use archived end balances only when a fresh ERP point snapshot is unavailable."""
