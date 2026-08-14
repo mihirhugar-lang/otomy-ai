@@ -82,7 +82,8 @@ def main() -> int:
         balances_by_day[str(day)] = engine.fetch_creditors(session, day)
         day += timedelta(days=1)
     current_creditors = balances_by_day[str(end)]
-    vendor_master = engine.canonical_vendor_master([], current_creditors)
+    supplier_master = engine.fetch_supplier_master(session, current_creditors)
+    vendor_master = engine.canonical_vendor_master([], current_creditors, source_master=supplier_master)
     missing_supplier_ids = [
         row["name"] for row in vendor_master
         if not str(row.get("erp_supplier_id") or "").strip()
