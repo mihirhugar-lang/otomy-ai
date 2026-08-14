@@ -340,6 +340,23 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 
 /* ── PRINT ── */
 #print-area{display:none}
+/* Shared report print canvas. It mirrors dashboard cards, but keeps wider
+   report KPIs readable in four columns on browser and mobile PDF output. */
+#print-area.report-print{background:#fffdf8;color:#111827;font-family:Georgia,'Times New Roman',serif}
+#print-area.report-print .section{display:block!important}
+#print-area.report-print .page-header{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:12px!important;margin:0 0 7px!important;padding-bottom:5px!important;border-bottom:2px solid #d97706!important}
+#print-area.report-print .page-header h2{margin:0!important;color:#1a237e!important;font-size:17px!important}
+#print-area.report-print .page-header p{margin:3px 0 0!important;font-size:9px!important;line-height:1.25!important;color:#475569!important}
+#print-area.report-print .kpi-row{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:5px!important;margin:0 0 6px!important}
+#print-area.report-print .kpi{min-width:0!important;min-height:46px!important;padding:6px!important;border-radius:7px!important;overflow:hidden!important;box-shadow:none!important}
+#print-area.report-print .kpi-label{font-size:7px!important;line-height:1.15!important;letter-spacing:0!important;margin:0 0 3px!important;white-space:normal!important;overflow-wrap:anywhere!important}
+#print-area.report-print .kpi-value{font-size:12px!important;line-height:1.1!important;letter-spacing:-.2px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
+#print-area.report-print .card{margin:0 0 6px!important;padding:7px 8px!important;border:1px solid #d8dee8!important;border-radius:7px!important;box-shadow:none!important}
+#print-area.report-print .card h3{font-size:11px!important;margin:0 0 4px!important;padding-bottom:3px!important;border-bottom:1px solid #e2e8f0!important}
+#print-area.report-print .tbl-wrap,#print-area.report-print .report-table-wrap{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important}
+#print-area.report-print .insights-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+#print-area.report-print .insight-card{min-width:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+#print-area.report-print svg{max-width:100%!important;height:auto!important}
 /* Mobile PDF generation renders #print-area with html2canvas, which uses screen
    CSS rather than @media print.  The dashboard summary must therefore define
    its fixed eight-card print layout here as well: auto-fit would place card 8
@@ -676,7 +693,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 <!-- INSIGHTS -->
 <div class="section" id="section-insights">
-  <div class="page-header insights-head"><div><h2>Director Analytics</h2><p>FYTD visual intelligence · 1 April onwards · hover or tap a chart for detail</p></div><button class="print-btn no-print" onclick="loadInsights()">Refresh Charts</button></div>
+  <div class="page-header insights-head"><div><h2>Director Analytics</h2><p>FYTD visual intelligence · 1 April onwards · hover or tap a chart for detail</p></div><div class="no-print" style="display:flex;gap:8px"><button class="print-btn" onclick="printPageReport('Director Analytics','section-insights')">Print / PDF</button><button class="print-btn" onclick="loadInsights()">Refresh Charts</button></div></div>
   <div class="preset-bar no-print">
     <span class="preset-label">Period:</span>
     <button class="pbtn" onclick="preset('insights','today',this)">Today</button>
@@ -742,7 +759,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
         <label>To:</label><input type="date" id="t-to" onchange="clearPresetBtns('exptonne')"> <label>Day:</label><input type="date" id="t-day" onchange="setDay('exptonne',this.value)">
         <button class="pbtn" onclick="loadExpTonne()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Expenses per Tonne','ept-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printPageReport('Expenses per Tonne','section-exptonne')">Print / PDF</button>
     </div>
     <div class="kpi-row">
       <div class="kpi red"><div class="kpi-label">Real Expenses</div><div class="kpi-value" id="ept-total-exp">—</div><div class="kpi-sub">excl. Kumar / Prashant</div></div>
@@ -771,7 +788,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')"> <label>Day:</label><input type="date" id="c-day" onchange="setDay('customers',this.value)">
     </div>
-    <button class="print-btn" onclick="printSection('Customers — Outstanding Balances','cust-tbl')">Print / PDF</button>
+    <button class="print-btn" onclick="printPageReport('Customers — Outstanding Balances','section-customers')">Print / PDF</button>
     <button class="print-btn" onclick="printThreeMonthActiveCustomers()">Active Customers (3 Months) Print / PDF</button>
   </div>
   <div class="kpi-row">
@@ -809,7 +826,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
       <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')"> <label>Day:</label><input type="date" id="v-day" onchange="setDay('vendors',this.value)">
     </div>
-    <button class="print-btn" onclick="printSection('Vendors — Payable Balances','vend-tbl')">Print / PDF</button>
+    <button class="print-btn" onclick="printPageReport('Vendors — Payable Balances','section-vendors')">Print / PDF</button>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Payable</div><div class="kpi-value" id="v-total-pay">—</div></div>
@@ -853,7 +870,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
         <label>To:</label><input type="date" id="eb-to" onchange="clearPresetBtns('erpbank')"> <label>Day:</label><input type="date" id="eb-day" onchange="setDay('erpbank',this.value)">
         <button class="pbtn" onclick="loadErpBank()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('Bank Book','erp-bank-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printPageReport('Cash & Bank','section-bank')">Print / PDF</button>
     </div>
     <div class="tbl-wrap" id="erp-bank-tbl" style="max-height:520px;overflow:auto"></div>
     <div id="erp-bank-pager" class="no-print"></div>
@@ -904,7 +921,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
         <label>To:</label><input type="date" id="pl-to" onchange="clearPresetBtns('pl')"> <label>Day:</label><input type="date" id="pl-day" onchange="setDay('pl',this.value)">
         <button class="pbtn" onclick="loadPL()">Go</button>
       </div>
-      <button class="print-btn" onclick="printSection('P&L Reconciliation','pl-tbl')">Print / PDF</button>
+      <button class="print-btn" onclick="printPageReport('P&L Reconciliation','section-pl')">Print / PDF</button>
     </div>
     <div class="kpi-row">
       <div class="kpi navy"><div class="kpi-label">Left — Sale − Exp − Share</div><div class="kpi-value" id="pl-left">—</div></div>
@@ -969,7 +986,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 <!-- GST -->
 <div class="section" id="section-gst">
-  <div class="page-header"><h2>GST</h2></div>
+  <div class="page-header"><h2>GST</h2><button class="print-btn no-print" onclick="printPageReport('GST Control Room','section-gst')">Print / PDF</button></div>
   <div class="card">
     <h3>GST Control Room — Director Summary</h3>
     <p style="font-size:13px;color:#555;margin-bottom:10px">One canonical daily dataset from 1 April through today. GST portal files are generated per tax month; the FY view is for analysis and control.</p>
@@ -1005,7 +1022,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 <!-- AUDIT CA -->
 <div class="section" id="section-auditca">
-  <div class="page-header"><h2>AUDIT CA</h2></div>
+  <div class="page-header"><h2>AUDIT CA</h2><button class="print-btn no-print" onclick="printPageReport('AUDIT CA','section-auditca')">Print / PDF</button></div>
   <div class="card">
     <h3>CA Control Room — Tally-ready source</h3>
     <p style="font-size:13px;color:#555;margin-bottom:10px">Sales, expenses, receipts, vendor payments, GST tax ledgers and daily control totals are generated from the same canonical rows used by GST.</p>
@@ -2706,8 +2723,11 @@ function downloadPdfReport(payload){
 function openTablePdf(title,el,subtitle){
   if(!el){flash('Nothing to print',false);return false;}
   const detail=subtitle?`${esc(subtitle)} &nbsp;|&nbsp; `:'';
-  const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${el.outerHTML}`;
-  runPrint(title, content);
+  const copy=el.cloneNode(true);
+  copy.querySelectorAll('.no-print,button,input,select,textarea').forEach(node=>node.remove());
+  copy.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{wrap.style.removeProperty('height');wrap.style.removeProperty('max-height');wrap.style.removeProperty('overflow');});
+  const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${copy.outerHTML}`;
+  runPrint(title, content,'report-print');
   return true;
 }
 function printSection(title,tableContainerId){
@@ -2723,6 +2743,17 @@ function printSection(title,tableContainerId){
     else if(s&&s.value)dateRange=`Date: ${s.value}`;
   }
   openTablePdf(title,el,dateRange);
+}
+function printPageReport(title,sectionId){
+  const root=document.getElementById(sectionId);
+  if(!root){flash('Nothing to print',false);return;}
+  const copy=root.cloneNode(true);
+  copy.querySelectorAll('.no-print,button,input,select,textarea,.pager,[id$="-pager"]').forEach(node=>node.remove());
+  copy.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{wrap.style.removeProperty('height');wrap.style.removeProperty('max-height');wrap.style.removeProperty('overflow');});
+  const subtitle=pdfSubtitleFromRoot(root);
+  const detail=subtitle?`${esc(subtitle)} &nbsp;|&nbsp; `:'';
+  const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${copy.outerHTML}`;
+  runPrint(title,content,'report-print');
 }
 function printDailyBook(){
   const ledger=document.getElementById('ledger-tbl');
@@ -2823,12 +2854,7 @@ async function printDashboard(doPrint=true){
   else{const pa=document.getElementById('print-area');pa.className='dashboard-print';pa.innerHTML=content;}
 }
 function printCurrentOpsTab(){
-  const act=document.querySelector('.subtab-content.active');
-  if(!act)return;
-  const tbl=act.querySelector('.tbl-wrap');
-  const h3=act.querySelector('h3')?.textContent||'Operations';
-  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  openTablePdf(h3,tbl,`Period: ${f} to ${t}`);
+  printPageReport('Operations','section-ops');
 }
 function downloadCurrentPagePdf(){
   const name=_activeSectionName();
