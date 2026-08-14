@@ -76,6 +76,22 @@ def main() -> int:
         "payable_due_15_plus", "payable_due_30_plus", "payable_due_45_plus", "payable_due_60_plus",
         "age_0_15", "age_16_30", "age_31_45", "age_45_plus",
     )), advance_row
+
+    # The Supplier List owns the display spelling; Supplier Balance contributes
+    # only balance and the source supplier ID.  Numeric list IDs map to the
+    # corresponding balance IDs with their Loctell suffix.
+    supplier_page = """
+      <table><tr><th>S.No</th><th>Supplier</th><th>Action</th></tr>
+      <tr><td>1</td><td>dhaneswari</td><td><a href='/home/updateSupplier?id=8237'>Edit</a></td></tr>
+      <tr><td>2</td><td>soling manju</td><td><a href='/home/updateSupplier?id=8238'>Edit</a></td></tr></table>
+    """
+    supplier_master = engine.parse_supplier_master_page(supplier_page, {"8237_1", "8238_1"})
+    assert supplier_master == [
+        {"name": "dhaneswari", "erp_supplier_id": "8237_1", "active": True},
+        {"name": "soling manju", "erp_supplier_id": "8238_1", "active": True},
+    ], supplier_master
+    source_master = engine.canonical_vendor_master([], creditors[:1], source_master=supplier_master[:1])
+    assert source_master[0]["name"] == "dhaneswari" and source_master[0]["erp_supplier_id"] == "8237_1", source_master
     print("vendor FIFO aging fixture passed")
     return 0
 

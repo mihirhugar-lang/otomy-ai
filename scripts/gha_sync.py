@@ -1190,6 +1190,88 @@ def fetch_creditors(sess, as_of=None):
         raise ErpFetchError(f"creditors fetch failed; skipped Otomy write: {e}") from e
     return creditors
 
+
+def _supplier_id_from_master_markup(markup, known_supplier_ids):
+    """Resolve a Supplier List row's ID to the balance-report supplier ID."""
+    text = str(markup or "")
+    exact = [supplier_id for supplier_id in known_supplier_ids if supplier_id and supplier_id in text]
+    if len(exact) == 1:
+        return exact[0]
+    ids = re.findall(r"(?:[?&]|\b)(?:supplierId|supplier_id|id)=([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+    for raw_id in ids:
+        matches = [supplier_id for supplier_id in known_supplier_ids
+                   if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def _supplier_name_from_cells(cells, supplier_id):
+    """Supplier List tables put the display name in the first textual cell."""
+    for cell in cells:
+        value = re.sub(r"\s+", " ", str(cell or "")).strip()
+        compact = re.sub(r"[^A-Za-z0-9]", "", value)
+        if (not value or value.lower() in {"supplier", "name", "action", "edit", "delete"}
+                or value == supplier_id or value == supplier_id.split("_", 1)[0]
+                or re.fullmatch(r"\d+", value) or re.fullmatch(r"[+()\-\d ]{7,}", value)
+                or re.fullmatch(r"[A-Za-z0-9]{15}", compact)):
+            continue
+        return value[:200]
+    return ""
+
+
+def parse_supplier_master_page(payload, known_supplier_ids):
+    """Parse Loctell Home > Suppliers into ID-backed master rows.
+
+    The master page is authoritative for the supplier display name.  The
+    balance report remains authoritative only for payable amounts and its
+    ledger-link supplier IDs.  Refuse a partial mapping rather than silently
+    falling back to balance-report spelling.
+    """
+    known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
+    rows = []
+    seen = set()
+    for match in _TR.finditer(str(payload or "")):
+        markup = match.group(1)
+        supplier_id = _supplier_id_from_master_markup(markup, known)
+        if not supplier_id or supplier_id in seen:
+            continue
+        name = _supplier_name_from_cells([_clean(cell) for cell in _TD.findall(markup)], supplier_id)
+        if not name:
+            continue
+        rows.append({"name": name, "erp_supplier_id": supplier_id, "active": True})
+        seen.add(supplier_id)
+    missing = sorted(known - seen)
+    if missing:
+        raise ErpFetchError(
+            "Loctell Supplier List did not map every current supplier ID "
+            f"({len(missing)} missing); refusing to use balance-report names as a master"
+        )
+    return rows
+
+
+def fetch_supplier_master(sess, creditors):
+    """Fetch the authoritative Home > Suppliers master, linked to balance IDs."""
+    known_supplier_ids = {
+        str(row.get("erp_supplier_id") or "").strip()
+        for row in creditors or []
+        if str(row.get("erp_supplier_id") or "").strip()
+    }
+    if not known_supplier_ids:
+        raise ErpFetchError("Supplier Balance returned no supplier IDs; cannot build supplier master")
+    try:
+        payload = _request_text_with_retry(
+            sess, f"{ERP_BASE}/home/listSuppliers", timeout=45, label="supplier master"
+        )
+        rows = parse_supplier_master_page(payload, known_supplier_ids)
+    except Exception as e:
+        if isinstance(e, ErpFetchError):
+            raise
+        raise ErpFetchError(f"supplier master fetch failed; skipped Otomy write: {e}") from e
+    print(f"  {len(rows)} Supplier List master rows")
+    return rows
+
+
 def fetch_vendor_payments(sess, creditors, from_d, to_d):
     fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
     if not creditors:
@@ -3516,7 +3598,7 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
     return sorted(rows, key=lambda row: str(row.get("name") or "").upper())
 
 
-def canonical_vendor_master(seed_rows, creditors):
+def canonical_vendor_master(seed_rows, creditors, *, source_master=None):
     """Merge the checked-in full master with ERP rows by supplier ID.
 
     The explicit master makes a zero-balance supplier visible.  Creditors are
@@ -3531,9 +3613,10 @@ def canonical_vendor_master(seed_rows, creditors):
         for row in creditors or []
         if str(row.get("name") or "").strip() and str(row.get("erp_supplier_id") or "").strip()
     }
+    master_sources = list(source_master) if source_master is not None else (list(load_vendor_master()) + list(seed_rows or []))
     by_identity = {}
     max_id = 0
-    for source in list(load_vendor_master()) + list(seed_rows or []):
+    for source in master_sources:
         row = dict(source or {})
         name = str(row.get("name") or "").strip()
         if not name:
@@ -3559,8 +3642,12 @@ def canonical_vendor_master(seed_rows, creditors):
                 "id": max_id, "name": name, "gstin": "", "phone": "", "address": "",
                 "opening_balance": 0.0, "notes": "", "active": True,
             }
+        # When the Home > Suppliers master was fetched successfully, it owns
+        # the display spelling.  ListSupplierBalance contributes the payable
+        # and the ledger-link ID only.
+        display_name = current.get("name") if source_master is not None and current.get("name") else name
         by_identity[key] = {
-            **current, "name": name, "erp_supplier_id": supplier_id,
+            **current, "name": display_name, "erp_supplier_id": supplier_id,
             "active": current.get("active", True),
         }
     return sorted(by_identity.values(), key=lambda row: (str(row.get("name") or "").upper(), _vendor_identity(row)))
