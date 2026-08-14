@@ -82,15 +82,10 @@ def main() -> int:
         balances_by_day[str(day)] = engine.fetch_creditors(session, day)
         day += timedelta(days=1)
     current_creditors = balances_by_day[str(end)]
-    # The normal Loctell Supplier List is the only source permitted to rename
-    # or introduce a vendor.  While a few legacy masters are still pending
-    # cleanup in Loctell, preserve their existing R2 rows by stable ERP ID;
-    # never append a Crusher Supplier or balance-report spelling.
-    supplier_master = engine.fetch_supplier_master(session, current_creditors, require_complete=False)
-    supplier_master = engine.retain_unmapped_published_supplier_rows(
-        supplier_master, engine.load_published_vendor_master(), current_creditors
-    )
-    vendor_master = engine.canonical_vendor_master([], current_creditors, source_master=supplier_master)
+    # Supplier Balance is the single vendor-name and balance source for both
+    # CrusherOps and Otomy.  Stable ledger-link IDs keep same-name suppliers
+    # distinct; supplier ledgers continue to provide the aging calculation.
+    vendor_master = engine.canonical_vendor_master([], current_creditors)
     missing_supplier_ids = [
         row["name"] for row in vendor_master
         if not str(row.get("erp_supplier_id") or "").strip()
