@@ -1270,6 +1270,29 @@ def _supplier_master_ajax_url(payload):
     return ""
 
 
+def _supplier_master_page_links(payload):
+    """Return only pagination links that stay on Home > Suppliers."""
+    out = []
+    for href in re.findall(r"href\s*=\s*[\"']([^\"']+)[\"']", str(payload or ""), re.IGNORECASE):
+        candidate = htmllib.unescape(href.strip())
+        if "listsuppliers" not in candidate.lower() or candidate.lower().startswith("javascript:"):
+            continue
+        out.append(candidate)
+    return out
+
+
+def _require_complete_supplier_master(rows, known_supplier_ids):
+    known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
+    by_id = {str(row.get("erp_supplier_id") or "").strip(): row for row in rows if row.get("erp_supplier_id")}
+    missing = sorted(known - set(by_id))
+    if missing:
+        raise ErpFetchError(
+            "Loctell Supplier List did not map every current supplier ID "
+            f"({len(missing)} missing); refusing to use balance-report names as a master"
+        )
+    return [by_id[supplier_id] for supplier_id in sorted(by_id)]
+
+
 def parse_supplier_master_page(payload, known_supplier_ids):
     """Parse Loctell Home > Suppliers into ID-backed master rows.
 
@@ -1278,15 +1301,9 @@ def parse_supplier_master_page(payload, known_supplier_ids):
     ledger-link supplier IDs.  Refuse a partial mapping rather than silently
     falling back to balance-report spelling.
     """
-    known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
-    rows = _supplier_master_rows_from_payload(payload, known)
-    missing = sorted(known - {row["erp_supplier_id"] for row in rows})
-    if missing:
-        raise ErpFetchError(
-            "Loctell Supplier List did not map every current supplier ID "
-            f"({len(missing)} missing); refusing to use balance-report names as a master"
-        )
-    return rows
+    return _require_complete_supplier_master(
+        _supplier_master_rows_from_payload(payload, known_supplier_ids), known_supplier_ids
+    )
 
 
 def fetch_supplier_master(sess, creditors):
@@ -1299,20 +1316,28 @@ def fetch_supplier_master(sess, creditors):
     if not known_supplier_ids:
         raise ErpFetchError("Supplier Balance returned no supplier IDs; cannot build supplier master")
     try:
-        payload = _request_text_with_retry(
-            sess, f"{ERP_BASE}/home/listSuppliers", timeout=45, label="supplier master"
-        )
-        rows = _supplier_master_rows_from_payload(payload, known_supplier_ids)
-        missing = known_supplier_ids - {row["erp_supplier_id"] for row in rows}
+        base_url = f"{ERP_BASE}/home/listSuppliers"
+        payload = _request_text_with_retry(sess, base_url, timeout=45, label="supplier master")
+        rows_by_id = {row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(payload, known_supplier_ids)}
+        pending = [urljoin(base_url, value) for value in _supplier_master_page_links(payload)]
+        seen_urls = {base_url}
         ajax_url = _supplier_master_ajax_url(payload)
-        if missing and ajax_url:
-            ajax_payload = _request_text_with_retry(
-                sess, urljoin(f"{ERP_BASE}/home/listSuppliers", ajax_url), timeout=45, label="supplier master data"
-            )
-            rows_by_id = {row["erp_supplier_id"]: row for row in rows}
-            rows_by_id.update({row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(ajax_payload, missing)})
-            rows = list(rows_by_id.values())
-        rows = parse_supplier_master_page(json.dumps(rows), known_supplier_ids)
+        if ajax_url:
+            pending.append(urljoin(base_url, ajax_url))
+        while pending and len(rows_by_id) < len(known_supplier_ids):
+            next_url = pending.pop(0)
+            if next_url in seen_urls:
+                continue
+            seen_urls.add(next_url)
+            page = _request_text_with_retry(sess, next_url, timeout=45, label="supplier master page")
+            rows_by_id.update({row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(page, known_supplier_ids)})
+            for value in _supplier_master_page_links(page):
+                page_url = urljoin(base_url, value)
+                if page_url not in seen_urls:
+                    pending.append(page_url)
+            if len(seen_urls) > 60:
+                raise ErpFetchError("Supplier List pagination exceeded 60 pages; refusing ambiguous master refresh")
+        rows = _require_complete_supplier_master(list(rows_by_id.values()), known_supplier_ids)
     except Exception as e:
         if isinstance(e, ErpFetchError):
             raise
