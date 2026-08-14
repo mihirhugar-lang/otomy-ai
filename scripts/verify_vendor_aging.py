@@ -19,11 +19,15 @@ def _read_snapshot(root: Path, url: str):
         return json.load(handle)
 
 
-def _check_rows(rows, expected_names, label):
+def _check_rows(rows, label, expected_names=None, *, require_exact_names=False):
     names = {str(row.get("name") or "").strip() for row in rows}
-    missing = expected_names - names
-    if missing:
-        raise AssertionError(f"{label}: missing master supplier(s): {sorted(missing)}")
+    if expected_names is not None:
+        missing = expected_names - names
+        unexpected = names - expected_names
+        if missing:
+            raise AssertionError(f"{label}: missing supplier-balance row(s): {sorted(missing)}")
+        if require_exact_names and unexpected:
+            raise AssertionError(f"{label}: unexpected supplier-balance row(s): {sorted(unexpected)}")
     ids = [row.get("id") for row in rows]
     if len(ids) != len(set(ids)):
         raise AssertionError(f"{label}: duplicate vendor ids")
@@ -79,18 +83,26 @@ def main() -> int:
     parser.add_argument("--to-date", default=date.today().isoformat())
     args = parser.parse_args()
     root = Path(args.root)
-    expected_names = {str(row["name"]).strip() for row in engine.load_vendor_master()}
     dates = sorted({args.from_date, args.to_date, *[f"{month}-01" for month in ("2026-05", "2026-06", "2026-07", "2026-08") if args.from_date <= f"{month}-01" <= args.to_date]})
     for as_of in dates:
         rows = _read_snapshot(root, f"/api/vendors/?active_only=false&as_of={as_of}")
         payables = _read_snapshot(root, f"/api/vendors/payables?as_of={as_of}")
-        _check_rows(rows, expected_names, as_of)
+        # Historical balance reports legitimately contain a different set of
+        # suppliers.  Validate every row and its payable list, but do not
+        # require names that only exist in today's Supplier Balance report.
+        _check_rows(rows, as_of)
         _check_payables(rows, payables, as_of)
     current_rows = _read_snapshot(root, "/api/vendors/?active_only=false")
-    _check_rows(current_rows, expected_names, "current")
+    # The current vendor page must be exactly the current Loctell Supplier
+    # Balance report, not a union with an old seed/master list.
+    expected_names = {
+        str(row.get("name") or "").strip()
+        for row in _read_snapshot(root, f"/api/vendors/?active_only=false&as_of={args.to_date}")
+    }
+    _check_rows(current_rows, "current", expected_names, require_exact_names=True)
     for row in current_rows:
         _check_ledger(root, row)
-    print(f"vendor aging verification passed: master={len(expected_names)}, checked_dates={len(dates)}")
+    print(f"vendor aging verification passed: current_supplier_balance_rows={len(expected_names)}, checked_dates={len(dates)}")
     return 0
 
 
