@@ -79,43 +79,15 @@ def main() -> int:
         "age_0_15", "age_16_30", "age_31_45", "age_45_plus",
     )), advance_row
 
-    # The normal Loctell Supplier List owns display spelling; the Balance
-    # report contributes only balance and ledger identity.  A master numeric
-    # ID maps to the corresponding balance ID suffix without accepting a
-    # Crusher-specific supplier list as a second source.
-    source_creditors = [
-        {"name": "old dhaneswari", "erp_supplier_id": "8237_1"},
-        {"name": "old soling", "erp_supplier_id": "8238_1"},
-    ]
-    supplier_master = engine.supplier_master_rows_from_org_list([
-        {"id": 8237, "name": "dhaneswari"},
-        {"id": 8238, "name": "soling manju"},
-    ], source_creditors)
-    assert supplier_master == [
-        {"name": "dhaneswari", "erp_supplier_id": "8237_1", "active": True},
-        {"name": "soling manju", "erp_supplier_id": "8238_1", "active": True},
-    ], supplier_master
-    source_master = engine.canonical_vendor_master([], source_creditors[:1], source_master=supplier_master[:1])
-    assert source_master[0]["name"] == "dhaneswari" and source_master[0]["erp_supplier_id"] == "8237_1", source_master
-    try:
-        engine.supplier_master_rows_from_org_list([{"id": 8237, "name": "dhaneswari"}], source_creditors)
-        assert False, "partial normal supplier master must fail closed"
-    except engine.ErpFetchError:
-        pass
-    partial_master = engine.supplier_master_rows_from_org_list(
-        [{"id": 8237, "name": "dhaneswari"}], source_creditors, require_complete=False
-    )
-    preserved_master = engine.retain_unmapped_published_supplier_rows(partial_master, [
-        {"id": 9, "name": "existing soling", "erp_supplier_id": "8238_1", "active": True},
-    ], source_creditors)
-    assert {row["erp_supplier_id"]: row["name"] for row in preserved_master} == {
-        "8237_1": "dhaneswari", "8238_1": "existing soling"
-    }, preserved_master
-    try:
-        engine.retain_unmapped_published_supplier_rows(partial_master, [], source_creditors)
-        assert False, "unpublished supplier must not be created from a secondary source"
-    except engine.ErpFetchError:
-        pass
+    # Supplier Balance is the sole display-name and balance source.  Its
+    # ledger-link supplier IDs keep case-variant Loctell rows distinct.
+    balance_names = {row["erp_supplier_id"]: row["name"] for row in master}
+    assert {supplier_id: balance_names[supplier_id] for supplier_id in (
+        "8237_1", "13655_2", "8238_1", "13656_2"
+    )} == {
+        "8237_1": "Dhaneswari", "13655_2": "dhaneswari",
+        "8238_1": "Soling Manju", "13656_2": "soling manju",
+    }, master
     print("vendor FIFO aging fixture passed")
     return 0
 
