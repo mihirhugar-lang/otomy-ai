@@ -1203,6 +1203,15 @@ def _supplier_id_from_master_markup(markup, known_supplier_ids):
                    if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
         if len(matches) == 1:
             return matches[0]
+    # Supplier List action buttons are not consistent across Loctell releases:
+    # some use updateSupplier(8237), rather than a query-string supplierId.
+    # A numeric token is safe only when it maps to exactly one live balance ID;
+    # this deliberately rejects row serial numbers and ambiguous IDs.
+    for raw_id in re.findall(r"(?<![A-Za-z0-9_])(\d{3,})(?![A-Za-z0-9_])", text):
+        matches = [supplier_id for supplier_id in known_supplier_ids
+                   if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
+        if len(matches) == 1:
+            return matches[0]
     return None
 
 

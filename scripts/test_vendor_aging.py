@@ -100,6 +100,7 @@ def main() -> int:
     ]})
     assert engine.parse_supplier_master_page(supplier_json, {"8237_1", "8238_1"}) == supplier_master
     assert engine._supplier_master_page_links("<a href='/home/listSuppliers?page=2'>2</a>") == ["/home/listSuppliers?page=2"]
+    assert engine._supplier_id_from_master_markup("<button onclick='updateSupplier(8237)'>Edit</button>", {"8237_1"}) == "8237_1"
     print("vendor FIFO aging fixture passed")
     return 0
 
