@@ -88,6 +88,8 @@ def main() -> int:
         "8237_1": "Dhaneswari", "13655_2": "dhaneswari",
         "8238_1": "Soling Manju", "13656_2": "soling manju",
     }, master
+    balance_master = engine.canonical_vendor_master([], creditors, source_master=creditors)
+    assert all(row.get("id") for row in balance_master), balance_master
     print("vendor FIFO aging fixture passed")
     return 0
 

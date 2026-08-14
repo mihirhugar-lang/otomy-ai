@@ -3546,6 +3546,9 @@ def canonical_vendor_master(seed_rows, creditors, *, source_master=None):
         key = _vendor_identity(row)
         current = by_identity.get(key, {})
         merged = {**current, **row, "name": name, "active": row.get("active", current.get("active", True))}
+        if not merged.get("id"):
+            max_id += 1
+            merged["id"] = max_id
         by_identity[key] = merged
         max_id = max(max_id, int(merged.get("id") or 0))
     for creditor in creditors or []:
