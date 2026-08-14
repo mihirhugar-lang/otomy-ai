@@ -102,6 +102,20 @@ def main() -> int:
         assert False, "partial normal supplier master must fail closed"
     except engine.ErpFetchError:
         pass
+    partial_master = engine.supplier_master_rows_from_org_list(
+        [{"id": 8237, "name": "dhaneswari"}], source_creditors, require_complete=False
+    )
+    preserved_master = engine.retain_unmapped_published_supplier_rows(partial_master, [
+        {"id": 9, "name": "existing soling", "erp_supplier_id": "8238_1", "active": True},
+    ], source_creditors)
+    assert {row["erp_supplier_id"]: row["name"] for row in preserved_master} == {
+        "8237_1": "dhaneswari", "8238_1": "existing soling"
+    }, preserved_master
+    try:
+        engine.retain_unmapped_published_supplier_rows(partial_master, [], source_creditors)
+        assert False, "unpublished supplier must not be created from a secondary source"
+    except engine.ErpFetchError:
+        pass
     print("vendor FIFO aging fixture passed")
     return 0
 

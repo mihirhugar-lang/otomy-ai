@@ -1203,7 +1203,7 @@ def _require_complete_supplier_master(rows, known_supplier_ids):
     return [by_id[supplier_id] for supplier_id in sorted(by_id)]
 
 
-def supplier_master_rows_from_org_list(org_rows, creditors):
+def supplier_master_rows_from_org_list(org_rows, creditors, *, require_complete=True):
     """Map balance identities to the normal Loctell Supplier List only.
 
     Loctell's normal Supplier List owns vendor display names and stable master
@@ -1244,10 +1244,58 @@ def supplier_master_rows_from_org_list(org_rows, creditors):
         if len(matches) == 1:
             add(source_row.get("name"), matches[0], "Supplier List")
 
-    return _require_complete_supplier_master(list(rows_by_id.values()), known_ids)
+    rows = [rows_by_id[supplier_id] for supplier_id in sorted(rows_by_id)]
+    return _require_complete_supplier_master(rows, known_ids) if require_complete else rows
 
 
-def fetch_supplier_master(sess, creditors):
+def retain_unmapped_published_supplier_rows(master_rows, published_rows, creditors):
+    """Keep already-published vendor masters while Loctell master cleanup is pending.
+
+    This is deliberately a preservation path, never a balance-report fallback:
+    a supplier absent from the normal Loctell Supplier List may remain only if
+    its stable ERP ID is already in the downloaded R2 vendor bundle.  Once the
+    normal Loctell master contains it, that authoritative spelling wins.
+    """
+    known_ids = {
+        str(row.get("erp_supplier_id") or "").strip()
+        for row in creditors or []
+        if str(row.get("erp_supplier_id") or "").strip()
+    }
+    by_id = {
+        str(row.get("erp_supplier_id") or "").strip(): dict(row)
+        for row in master_rows or []
+        if str(row.get("erp_supplier_id") or "").strip()
+    }
+    published_by_id = {}
+    for row in published_rows or []:
+        supplier_id = str(row.get("erp_supplier_id") or "").strip()
+        if supplier_id and supplier_id not in published_by_id:
+            published_by_id[supplier_id] = dict(row)
+    missing = sorted(known_ids - set(by_id))
+    unavailable = [supplier_id for supplier_id in missing if supplier_id not in published_by_id]
+    if unavailable:
+        raise ErpFetchError(
+            "Loctell Supplier List is missing current supplier IDs that are not already published "
+            f"({len(unavailable)} missing); refusing to create them from a secondary source"
+        )
+    for supplier_id in missing:
+        row = published_by_id[supplier_id]
+        if not _clean(row.get("name")):
+            raise ErpFetchError("Published vendor row has no name; refusing ambiguous master preservation")
+        by_id[supplier_id] = {**row, "erp_supplier_id": supplier_id, "active": row.get("active", True)}
+    return [by_id[supplier_id] for supplier_id in sorted(by_id)]
+
+
+def load_published_vendor_master():
+    """Load the vendor bundle downloaded from R2 at the start of a guarded run."""
+    try:
+        rows = json.loads((DATA_DIR / "vendors.json").read_text())
+        return rows if isinstance(rows, list) else []
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def fetch_supplier_master(sess, creditors, *, require_complete=True):
     """Fetch the normal Loctell Supplier List, linked to balance identities."""
     known_supplier_ids = {
         str(row.get("erp_supplier_id") or "").strip()
@@ -1260,7 +1308,7 @@ def fetch_supplier_master(sess, creditors):
         org_rows = _request_json_with_retry(
             sess, f"{ERP_BASE}/restserver/rest/org/listSuppliers", timeout=45, label="supplier master"
         )
-        rows = supplier_master_rows_from_org_list(org_rows, creditors)
+        rows = supplier_master_rows_from_org_list(org_rows, creditors, require_complete=require_complete)
     except Exception as e:
         if isinstance(e, ErpFetchError):
             raise
