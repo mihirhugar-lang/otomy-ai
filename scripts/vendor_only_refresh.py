@@ -85,7 +85,9 @@ def main() -> int:
     # Supplier Balance is the single vendor-name and balance source for both
     # CrusherOps and Otomy.  Stable ledger-link IDs keep same-name suppliers
     # distinct; supplier ledgers continue to provide the aging calculation.
-    vendor_master = engine.canonical_vendor_master([], current_creditors)
+    vendor_master = engine.canonical_vendor_master(
+        [], current_creditors, source_master=current_creditors
+    )
     missing_supplier_ids = [
         row["name"] for row in vendor_master
         if not str(row.get("erp_supplier_id") or "").strip()

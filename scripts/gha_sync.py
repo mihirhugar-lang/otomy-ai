@@ -5053,7 +5053,7 @@ def main():
         # Fetch the complete checked-in supplier master, not only today's
         # payable suppliers.  A settled supplier can still have a bill/payment
         # history that must remain visible in its Tally-style ledger.
-        vendor_ledger_sources = canonical_vendor_master([], creditors)
+        vendor_ledger_sources = canonical_vendor_master([], creditors, source_master=creditors)
         vendor_ledger_sources = vendor_rows_as_of(vendor_ledger_sources, creditors, {}, today)
         vendor_ledgers_full = fetch_supplier_ledgers_full(sess, vendor_ledger_sources, VENDOR_LEDGER_START, today)
         print(f"  {len(vendor_ledgers_full)} full vendor ledgers")
@@ -5401,7 +5401,9 @@ def main():
     write("customers.json",             customers_full)
 
     # ── vendors ───────────────────────────────────────────────────────────────
-    vendors_full = canonical_vendor_master(seed_endpoints.get("vendors_all", []), creditors)
+    # The balance report is the sole live Vendor-page source.  Do not retain
+    # stale seed masters after Loctell removes or renames a supplier.
+    vendors_full = canonical_vendor_master([], creditors, source_master=creditors)
     # Set the current Loctell payable before calculating ERP-ledger openings.
     # The master is a name/ID list, not itself a balance snapshot.
     vendors_full = vendor_rows_as_of(vendors_full, creditors, {}, today)
