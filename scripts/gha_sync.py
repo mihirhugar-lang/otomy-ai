@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
 try:
@@ -1197,7 +1197,7 @@ def _supplier_id_from_master_markup(markup, known_supplier_ids):
     exact = [supplier_id for supplier_id in known_supplier_ids if supplier_id and supplier_id in text]
     if len(exact) == 1:
         return exact[0]
-    ids = re.findall(r"(?:[?&]|\b)(?:supplierId|supplier_id|id)=([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+    ids = re.findall(r"(?:[?&]|\b)(?:supplierId|supplier_id|id)\s*[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9_-]+)", text, re.IGNORECASE)
     for raw_id in ids:
         matches = [supplier_id for supplier_id in known_supplier_ids
                    if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
@@ -1220,6 +1220,56 @@ def _supplier_name_from_cells(cells, supplier_id):
     return ""
 
 
+def _supplier_master_rows_from_payload(payload, known_supplier_ids):
+    """Read either a rendered Supplier List table or its DataTables JSON."""
+    known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
+    rows = []
+    seen = set()
+
+    def add(markup, cells):
+        supplier_id = _supplier_id_from_master_markup(markup, known)
+        if not supplier_id or supplier_id in seen:
+            return
+        name = _supplier_name_from_cells(cells, supplier_id)
+        if not name:
+            return
+        rows.append({"name": name, "erp_supplier_id": supplier_id, "active": True})
+        seen.add(supplier_id)
+
+    text = str(payload or "")
+    try:
+        decoded = json.loads(text)
+    except (TypeError, ValueError):
+        decoded = None
+    if isinstance(decoded, dict):
+        decoded = decoded.get("data", decoded.get("aaData", []))
+    if isinstance(decoded, list):
+        for row in decoded:
+            if isinstance(row, dict):
+                add(json.dumps(row, ensure_ascii=False), [str(value or "") for value in row.values()])
+            elif isinstance(row, (list, tuple)):
+                add(json.dumps(row, ensure_ascii=False), [_clean(value) for value in row])
+    else:
+        for match in _TR.finditer(text):
+            markup = match.group(1)
+            add(markup, [_clean(cell) for cell in _TD.findall(markup)])
+    return rows
+
+
+def _supplier_master_ajax_url(payload):
+    """Find the data URL configured by Loctell's Supplier List DataTable."""
+    text = str(payload or "")
+    patterns = (
+        r"(?:ajax|sAjaxSource)\s*[:=]\s*[\"']([^\"']*[Ss]upplier[^\"']*)[\"']",
+        r"url\s*:\s*[\"']([^\"']*[Ss]upplier[^\"']*)[\"']",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return htmllib.unescape(match.group(1).strip())
+    return ""
+
+
 def parse_supplier_master_page(payload, known_supplier_ids):
     """Parse Loctell Home > Suppliers into ID-backed master rows.
 
@@ -1229,19 +1279,8 @@ def parse_supplier_master_page(payload, known_supplier_ids):
     falling back to balance-report spelling.
     """
     known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
-    rows = []
-    seen = set()
-    for match in _TR.finditer(str(payload or "")):
-        markup = match.group(1)
-        supplier_id = _supplier_id_from_master_markup(markup, known)
-        if not supplier_id or supplier_id in seen:
-            continue
-        name = _supplier_name_from_cells([_clean(cell) for cell in _TD.findall(markup)], supplier_id)
-        if not name:
-            continue
-        rows.append({"name": name, "erp_supplier_id": supplier_id, "active": True})
-        seen.add(supplier_id)
-    missing = sorted(known - seen)
+    rows = _supplier_master_rows_from_payload(payload, known)
+    missing = sorted(known - {row["erp_supplier_id"] for row in rows})
     if missing:
         raise ErpFetchError(
             "Loctell Supplier List did not map every current supplier ID "
@@ -1263,7 +1302,17 @@ def fetch_supplier_master(sess, creditors):
         payload = _request_text_with_retry(
             sess, f"{ERP_BASE}/home/listSuppliers", timeout=45, label="supplier master"
         )
-        rows = parse_supplier_master_page(payload, known_supplier_ids)
+        rows = _supplier_master_rows_from_payload(payload, known_supplier_ids)
+        missing = known_supplier_ids - {row["erp_supplier_id"] for row in rows}
+        ajax_url = _supplier_master_ajax_url(payload)
+        if missing and ajax_url:
+            ajax_payload = _request_text_with_retry(
+                sess, urljoin(f"{ERP_BASE}/home/listSuppliers", ajax_url), timeout=45, label="supplier master data"
+            )
+            rows_by_id = {row["erp_supplier_id"]: row for row in rows}
+            rows_by_id.update({row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(ajax_payload, missing)})
+            rows = list(rows_by_id.values())
+        rows = parse_supplier_master_page(json.dumps(rows), known_supplier_ids)
     except Exception as e:
         if isinstance(e, ErpFetchError):
             raise

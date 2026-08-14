@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Small deterministic guard for the supplier FIFO aging rule."""
 
+import json
+
 import gha_sync as engine
 
 
@@ -92,6 +94,11 @@ def main() -> int:
     ], supplier_master
     source_master = engine.canonical_vendor_master([], creditors[:1], source_master=supplier_master[:1])
     assert source_master[0]["name"] == "dhaneswari" and source_master[0]["erp_supplier_id"] == "8237_1", source_master
+    supplier_json = json.dumps({"data": [
+        ["1", "dhaneswari", "<a href='/home/updateSupplier?id=8237'>Edit</a>"],
+        ["2", "soling manju", "<a href='/home/updateSupplier?id=8238'>Edit</a>"],
+    ]})
+    assert engine.parse_supplier_master_page(supplier_json, {"8237_1", "8238_1"}) == supplier_master
     print("vendor FIFO aging fixture passed")
     return 0
 
