@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
 try:
@@ -1191,105 +1191,6 @@ def fetch_creditors(sess, as_of=None):
     return creditors
 
 
-def _supplier_id_from_master_markup(markup, known_supplier_ids):
-    """Resolve a Supplier List row's ID to the balance-report supplier ID."""
-    text = str(markup or "")
-    exact = [supplier_id for supplier_id in known_supplier_ids if supplier_id and supplier_id in text]
-    if len(exact) == 1:
-        return exact[0]
-    ids = re.findall(r"(?:[?&]|\b)(?:supplierId|supplier_id|id)\s*[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9_-]+)", text, re.IGNORECASE)
-    for raw_id in ids:
-        matches = [supplier_id for supplier_id in known_supplier_ids
-                   if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
-        if len(matches) == 1:
-            return matches[0]
-    # Supplier List action buttons are not consistent across Loctell releases:
-    # some use updateSupplier(8237), rather than a query-string supplierId.
-    # A numeric token is safe only when it maps to exactly one live balance ID;
-    # this deliberately rejects row serial numbers and ambiguous IDs.
-    for raw_id in re.findall(r"(?<![A-Za-z0-9_])(\d{3,})(?![A-Za-z0-9_])", text):
-        matches = [supplier_id for supplier_id in known_supplier_ids
-                   if supplier_id == raw_id or supplier_id.split("_", 1)[0] == raw_id]
-        if len(matches) == 1:
-            return matches[0]
-    return None
-
-
-def _supplier_name_from_cells(cells, supplier_id):
-    """Supplier List tables put the display name in the first textual cell."""
-    for cell in cells:
-        value = re.sub(r"\s+", " ", str(cell or "")).strip()
-        compact = re.sub(r"[^A-Za-z0-9]", "", value)
-        if (not value or value.lower() in {"supplier", "name", "action", "edit", "delete"}
-                or value == supplier_id or value == supplier_id.split("_", 1)[0]
-                or re.fullmatch(r"\d+", value) or re.fullmatch(r"[+()\-\d ]{7,}", value)
-                or re.fullmatch(r"[A-Za-z0-9]{15}", compact)):
-            continue
-        return value[:200]
-    return ""
-
-
-def _supplier_master_rows_from_payload(payload, known_supplier_ids):
-    """Read either a rendered Supplier List table or its DataTables JSON."""
-    known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
-    rows = []
-    seen = set()
-
-    def add(markup, cells):
-        supplier_id = _supplier_id_from_master_markup(markup, known)
-        if not supplier_id or supplier_id in seen:
-            return
-        name = _supplier_name_from_cells(cells, supplier_id)
-        if not name:
-            return
-        rows.append({"name": name, "erp_supplier_id": supplier_id, "active": True})
-        seen.add(supplier_id)
-
-    text = str(payload or "")
-    try:
-        decoded = json.loads(text)
-    except (TypeError, ValueError):
-        decoded = None
-    if isinstance(decoded, dict):
-        decoded = decoded.get("data", decoded.get("aaData", []))
-    if isinstance(decoded, list):
-        for row in decoded:
-            if isinstance(row, dict):
-                add(json.dumps(row, ensure_ascii=False), [str(value or "") for value in row.values()])
-            elif isinstance(row, (list, tuple)):
-                add(json.dumps(row, ensure_ascii=False), [_clean(value) for value in row])
-    else:
-        for match in _TR.finditer(text):
-            markup = match.group(1)
-            add(markup, [_clean(cell) for cell in _TD.findall(markup)])
-    return rows
-
-
-def _supplier_master_ajax_url(payload):
-    """Find the data URL configured by Loctell's Supplier List DataTable."""
-    text = str(payload or "")
-    patterns = (
-        r"(?:ajax|sAjaxSource)\s*[:=]\s*[\"']([^\"']*[Ss]upplier[^\"']*)[\"']",
-        r"url\s*:\s*[\"']([^\"']*[Ss]upplier[^\"']*)[\"']",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return htmllib.unescape(match.group(1).strip())
-    return ""
-
-
-def _supplier_master_page_links(payload):
-    """Return only pagination links that stay on Home > Suppliers."""
-    out = []
-    for href in re.findall(r"href\s*=\s*[\"']([^\"']+)[\"']", str(payload or ""), re.IGNORECASE):
-        candidate = htmllib.unescape(href.strip())
-        if "listsuppliers" not in candidate.lower() or candidate.lower().startswith("javascript:"):
-            continue
-        out.append(candidate)
-    return out
-
-
 def _require_complete_supplier_master(rows, known_supplier_ids):
     known = {str(value).strip() for value in known_supplier_ids or [] if str(value).strip()}
     by_id = {str(row.get("erp_supplier_id") or "").strip(): row for row in rows if row.get("erp_supplier_id")}
@@ -1302,21 +1203,52 @@ def _require_complete_supplier_master(rows, known_supplier_ids):
     return [by_id[supplier_id] for supplier_id in sorted(by_id)]
 
 
-def parse_supplier_master_page(payload, known_supplier_ids):
-    """Parse Loctell Home > Suppliers into ID-backed master rows.
+def supplier_master_rows_from_org_list(org_rows, creditors):
+    """Map balance identities to the normal Loctell Supplier List only.
 
-    The master page is authoritative for the supplier display name.  The
-    balance report remains authoritative only for payable amounts and its
-    ledger-link supplier IDs.  Refuse a partial mapping rather than silently
-    falling back to balance-report spelling.
+    Loctell's normal Supplier List owns vendor display names and stable master
+    IDs.  Crusher-specific lists are intentionally not a vendor-master source:
+    an unmapped payable supplier must be corrected in Loctell, never appended
+    to Otomy under a second source or spelling.
     """
-    return _require_complete_supplier_master(
-        _supplier_master_rows_from_payload(payload, known_supplier_ids), known_supplier_ids
-    )
+    known_ids = {
+        str(row.get("erp_supplier_id") or "").strip()
+        for row in creditors or []
+        if str(row.get("erp_supplier_id") or "").strip()
+    }
+    by_base = {}
+    for supplier_id in known_ids:
+        by_base.setdefault(supplier_id.split("_", 1)[0], []).append(supplier_id)
+    rows_by_id = {}
+
+    def add(name, supplier_id, source):
+        display_name = _clean(name)
+        if not display_name:
+            raise ErpFetchError(f"Loctell {source} master supplied a blank name; refusing ambiguous vendor refresh")
+        existing = rows_by_id.get(supplier_id)
+        row = {"name": display_name[:200], "erp_supplier_id": supplier_id, "active": True}
+        if existing and existing["name"] != row["name"]:
+            raise ErpFetchError(
+                f"Loctell supplier ID {supplier_id} has conflicting master names; refusing vendor refresh"
+            )
+        rows_by_id[supplier_id] = row
+
+    if not isinstance(org_rows, list):
+        raise ErpFetchError("Loctell Supplier List did not return a list; refusing vendor refresh")
+    for source_row in org_rows:
+        if not isinstance(source_row, dict):
+            continue
+        matches = by_base.get(str(source_row.get("id") or "").strip(), [])
+        if len(matches) > 1:
+            raise ErpFetchError("Loctell Supplier List numeric ID maps to multiple balance IDs; refusing vendor refresh")
+        if len(matches) == 1:
+            add(source_row.get("name"), matches[0], "Supplier List")
+
+    return _require_complete_supplier_master(list(rows_by_id.values()), known_ids)
 
 
 def fetch_supplier_master(sess, creditors):
-    """Fetch the authoritative Home > Suppliers master, linked to balance IDs."""
+    """Fetch the normal Loctell Supplier List, linked to balance identities."""
     known_supplier_ids = {
         str(row.get("erp_supplier_id") or "").strip()
         for row in creditors or []
@@ -1325,28 +1257,10 @@ def fetch_supplier_master(sess, creditors):
     if not known_supplier_ids:
         raise ErpFetchError("Supplier Balance returned no supplier IDs; cannot build supplier master")
     try:
-        base_url = f"{ERP_BASE}/home/listSuppliers"
-        payload = _request_text_with_retry(sess, base_url, timeout=45, label="supplier master")
-        rows_by_id = {row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(payload, known_supplier_ids)}
-        pending = [urljoin(base_url, value) for value in _supplier_master_page_links(payload)]
-        seen_urls = {base_url}
-        ajax_url = _supplier_master_ajax_url(payload)
-        if ajax_url:
-            pending.append(urljoin(base_url, ajax_url))
-        while pending and len(rows_by_id) < len(known_supplier_ids):
-            next_url = pending.pop(0)
-            if next_url in seen_urls:
-                continue
-            seen_urls.add(next_url)
-            page = _request_text_with_retry(sess, next_url, timeout=45, label="supplier master page")
-            rows_by_id.update({row["erp_supplier_id"]: row for row in _supplier_master_rows_from_payload(page, known_supplier_ids)})
-            for value in _supplier_master_page_links(page):
-                page_url = urljoin(base_url, value)
-                if page_url not in seen_urls:
-                    pending.append(page_url)
-            if len(seen_urls) > 60:
-                raise ErpFetchError("Supplier List pagination exceeded 60 pages; refusing ambiguous master refresh")
-        rows = _require_complete_supplier_master(list(rows_by_id.values()), known_supplier_ids)
+        org_rows = _request_json_with_retry(
+            sess, f"{ERP_BASE}/restserver/rest/org/listSuppliers", timeout=45, label="supplier master"
+        )
+        rows = supplier_master_rows_from_org_list(org_rows, creditors)
     except Exception as e:
         if isinstance(e, ErpFetchError):
             raise
