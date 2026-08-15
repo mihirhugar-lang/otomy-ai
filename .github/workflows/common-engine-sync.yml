@@ -29,6 +29,10 @@ on:
         description: "Optional protected repair end date; publish only this historical window (YYYY-MM-DD)"
         required: false
         default: ""
+      history_to:
+        description: "Historical vendor derived-snapshot repair end date (YYYY-MM-DD)"
+        required: false
+        default: "2026-07-31"
 
 concurrency:
   group: otomy-common-engine-sync
@@ -126,6 +130,7 @@ jobs:
           OTOMY_SYNC_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}
           OTOMY_FULL_FROM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.full_from || '2026-04-01' }}
           OTOMY_REPAIR_TO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.repair_to || '' }}
+          OTOMY_HISTORY_TO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.history_to || '2026-07-31' }}
           OTOMY_RECENT_DAYS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.recent_days || '7' }}
           OTOMY_ERP_RETRIES: "3"
           OTOMY_ERP_RETRY_DELAY: "1.5"
@@ -142,7 +147,7 @@ jobs:
           if [ "$OTOMY_SYNC_MODE" = "vendor" ]; then
             python3 scripts/vendor_only_refresh.py --from-date "$OTOMY_FULL_FROM"
           elif [ "$OTOMY_SYNC_MODE" = "vendor_history" ]; then
-            python3 scripts/repair_historical_vendor_snapshot.py --as-of "$OTOMY_FULL_FROM"
+            python3 scripts/repair_historical_vendor_snapshot.py --from-date "$OTOMY_FULL_FROM" --to-date "$OTOMY_HISTORY_TO"
           else
             python3 scripts/gha_sync.py
           fi
@@ -182,7 +187,7 @@ jobs:
             python3 scripts/verify_vendor_aging.py --from-date "${{ github.event.inputs.full_from }}"
           elif [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" = "vendor_history" ]; then
             python3 scripts/verify_dashboard_parity.py --code-only
-            python3 scripts/repair_historical_vendor_snapshot.py --as-of "${{ github.event.inputs.full_from }}" --verify-only
+            python3 scripts/repair_historical_vendor_snapshot.py --from-date "${{ github.event.inputs.full_from }}" --to-date "${{ github.event.inputs.history_to }}" --verify-only
           else
             python3 scripts/verify_dashboard_parity.py
           fi
