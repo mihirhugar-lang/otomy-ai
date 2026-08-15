@@ -346,9 +346,11 @@ def verify_dashboard_balance_source_guard() -> None:
     required = (
         "ending_debtors=None,",
         "end_debtors = debtors_as_of(end) or archive_balance_rows(",
-        "end_creditors = creditors_as_of(end) or archive_balance_rows(",
+        "end_creditors = creditors_as_of(end)",
+        "archived_vendor_balances_as_of(",
+        "range_vendor_master = historical_vendor_master_rows(vendors_full, end_creditors)",
         "ending_debtors=end_debtors,",
-        "vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))",
+        "vendor_rows = vendor_rows_as_of(range_vendor_master, end_creditors, vendor_ledgers, str(end))",
         'summary["receivables"] = round(sum(row["balance"] for row in receivable_rows), 2)',
         'summary["payables"] = round(sum(row["balance"] for row in payable_rows), 2)',
         'write_snapshot(f"/api/vendors/payables?as_of={end}", payable_rows)',
