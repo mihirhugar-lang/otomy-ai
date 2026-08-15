@@ -612,6 +612,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
 <script src="/static/vendor/jspdf-2.5.1.umd.min.js"></script>
 <script src="/static/insights.js"></script>
+<script src="/static/insights-v2.js"></script>
 </head>
 <body>
 
@@ -693,7 +694,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 <!-- INSIGHTS -->
 <div class="section" id="section-insights">
-  <div class="page-header insights-head"><div><h2>Director Analytics</h2><p>FYTD visual intelligence · 1 April onwards · hover or tap a chart for detail</p></div><div class="no-print" style="display:flex;gap:8px"><button class="print-btn" onclick="printPageReport('Director Analytics','section-insights')">Print / PDF</button><button class="print-btn" onclick="loadInsights()">Refresh Charts</button></div></div>
+  <div class="page-header insights-head"><div><h2>Director Analytics</h2><p id="insights-period-label">Choose a period from 1 April onwards · hover or tap a chart for detail</p></div><div class="no-print" style="display:flex;gap:8px"><button class="print-btn" onclick="printPageReport('Director Analytics','section-insights')">Print / PDF</button><button class="print-btn" onclick="loadInsights()">Refresh Charts</button></div></div>
   <div class="preset-bar no-print">
     <span class="preset-label">Period:</span>
     <button class="pbtn" onclick="preset('insights','today',this)">Today</button>
@@ -2136,7 +2137,7 @@ function nav(name){
   document.getElementById('page-title').textContent=TITLES[name]||name;
   toggleMobileNav(false);
   if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
-  if(name==='insights'){const[f,t]=calcPreset('fytd');document.getElementById('insights-from').value=f;document.getElementById('insights-to').value=t;loadInsights();}
+  if(name==='insights'){const fromEl=document.getElementById('insights-from'),toEl=document.getElementById('insights-to');if(!fromEl.value||!toEl.value){const[f,t]=calcPreset('fytd');fromEl.value=f;toEl.value=t;}loadInsights();}
   if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
   if(name==='exptonne'){resetRangeToToday('exptonne');loadExpTonne();}
   if(name==='customers'){resetRangeToToday('customers');loadCustomers();fillCustSelect('cr-cust');}
