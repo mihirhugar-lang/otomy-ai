@@ -15,6 +15,7 @@ on:
           - full
           - recent
           - vendor
+          - vendor_history
         default: full
       full_from:
         description: "Full rebuild start date (YYYY-MM-DD)"
@@ -140,6 +141,8 @@ jobs:
           fi
           if [ "$OTOMY_SYNC_MODE" = "vendor" ]; then
             python3 scripts/vendor_only_refresh.py --from-date "$OTOMY_FULL_FROM"
+          elif [ "$OTOMY_SYNC_MODE" = "vendor_history" ]; then
+            python3 scripts/repair_historical_vendor_snapshot.py --as-of "$OTOMY_FULL_FROM"
           else
             python3 scripts/gha_sync.py
           fi
@@ -177,13 +180,18 @@ jobs:
             # regenerating/rechecking unrelated financial snapshots.
             python3 scripts/verify_dashboard_parity.py --code-only
             python3 scripts/verify_vendor_aging.py --from-date "${{ github.event.inputs.full_from }}"
+          elif [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" = "vendor_history" ]; then
+            python3 scripts/verify_dashboard_parity.py --code-only
+            python3 scripts/repair_historical_vendor_snapshot.py --as-of "${{ github.event.inputs.full_from }}" --verify-only
           else
             python3 scripts/verify_dashboard_parity.py
           fi
           # Validate the generated historical ledger/cashbook before any R2
           # object is touched.  Read-back remains an integrity check; this
           # pre-publish guard makes a bad recent build unable to go live.
-          python3 scripts/verify_r2_readback.py data data
+          if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" != "vendor_history" ]; then
+            python3 scripts/verify_r2_readback.py data data
+          fi
 
       - name: Build content delta publish plan
         if: steps.initial_control.outputs.enabled == 'true'
