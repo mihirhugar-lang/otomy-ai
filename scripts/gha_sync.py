@@ -3490,7 +3490,7 @@ def vendor_payable_age_buckets(entries, payable, as_of):
     return {key: round(value, 2) for key, value in result.items()}
 
 
-def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of, range_payments=None):
+def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
     # Loctell can have separate supplier masters whose names differ only by
     # case or punctuation.  Supplier ID, not the display label, owns balance.
     balances = {
@@ -3498,10 +3498,6 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of, range_pa
         for row in balance_rows or []
         if str(row.get("name") or "").strip()
     }
-    range_paid = {}
-    for payment in range_payments or []:
-        key = _vendor_identity(payment)
-        range_paid[key] = round(range_paid.get(key, 0.0) + _num(payment.get("amount")), 2)
     rows = []
     for source in master_rows:
         row = dict(source)
@@ -3514,7 +3510,6 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of, range_pa
             "payable": payable,
             "total_purchases": round(sum(_num(entry.get("credit")) for entry in entries), 2),
             "total_payments": round(sum(_num(entry.get("debit")) for entry in entries), 2),
-            "range_payment_paid": round(range_paid.get(_vendor_identity(row), 0.0), 2),
             **vendor_payable_due_aging(entries, payable, as_of),
             **vendor_payable_age_buckets(entries, payable, as_of),
         })
@@ -4274,8 +4269,7 @@ def write_snapshot_bundle(
             aging_sales=aging_sales,
             aging_repayments=aging_repayments,
         )
-        range_vendor_payments = rows_between(vendor_payments, start, end)
-        vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end), range_vendor_payments)
+        vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))
         receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
         payable_rows = positive_balance_rows(vendor_rows, "payable")
 
@@ -4300,7 +4294,7 @@ def write_snapshot_bundle(
             customer_rows,
         )
         write_snapshot(f"/api/vendors/?active_only=false&as_of={end}", vendor_rows)
-        write_snapshot(f"/api/vendors/?active_only=false&from_date={start}&to_date={end}&as_of={end}", vendor_rows)
+        write_snapshot(f"/api/vendors/payments/?from_date={start}&to_date={end}", rows_between(vendor_payments, start, end))
         write_snapshot(f"/api/vendors/payables?as_of={end}", payable_rows)
         write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
         write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
