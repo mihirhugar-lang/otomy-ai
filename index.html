@@ -1133,6 +1133,7 @@ async function snapshotFetch(url){
     '/api/customers/outstanding',
     '/api/vendors/',
     '/api/vendors/payables',
+    '/api/vendors/payments/',
   ]).has(u.pathname);
   // The engine publishes canonical snapshots for every dashboard and book
   // preset.  Always use one when present: completed-range archive arithmetic
@@ -1699,6 +1700,7 @@ async function archiveFetch(url){
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/vendors/payments/')return _rowsInRange(months,'vendor_payments',from,to).sort((a,b)=>`${b.date}|${b.id||b.reference||''}`.localeCompare(`${a.date}|${a.id||a.reference||''}`));
     if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(_rowsInRange(months,'bank',from,to)).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
@@ -3536,14 +3538,15 @@ async function loadVendors(){
   try{
     const asOf=document.getElementById('v-to')?.value||today();
     const from=document.getElementById('v-from')?.value||asOf;
-    const rows=await api(`/api/vendors/?active_only=false&from_date=${from}&to_date=${asOf}&as_of=${asOf}`);
+    const rows=await api(`/api/vendors/?active_only=false&as_of=${asOf}`);
+    const rangePayments=await api(`/api/vendors/payments/?from_date=${from}&to_date=${asOf}`);
     _vendors=rows;
     const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
     document.getElementById('v-total-pay').textContent=fmtINR(totPay);
     document.getElementById('v-with-pay').textContent=pay.length;
-    document.getElementById('v-range-paid').textContent=fmtINR(rows.filter(r=>r.active).reduce((s,r)=>s+_num(r.range_payment_paid),0));
+    document.getElementById('v-range-paid').textContent=fmtINR(rangePayments.reduce((s,r)=>s+_num(r.amount),0));
     const derived={
       payable:r=>r.payable??(pay.find(p=>p.id===r.id)||{}).payable??0,
       total_purchases:r=>r.total_purchases??(pay.find(p=>p.id===r.id)||{}).total_purchases??0,
