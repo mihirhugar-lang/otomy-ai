@@ -43,9 +43,10 @@ class HistoricalVendorRepairTests(unittest.TestCase):
             control_path.write_text(json.dumps({"summary": {"payables": 0}, "top_payables": []}))
             written = set()
             with patch.object(engine, "ARCHIVE_DIR", archive_dir), patch.object(engine, "SNAPSHOT_API_DIR", snapshot_dir), patch.object(engine, "_WRITTEN_SNAPSHOT_FILES", written):
-                rows, total = repair.stage(__import__("datetime").date.fromisoformat(as_of))
+                rows, total, controls = repair.stage(__import__("datetime").date.fromisoformat(as_of))
 
             self.assertEqual(total, 4050010)
+            self.assertEqual(controls, 1)
             self.assertEqual(sum(row["payable"] for row in rows), 4050010)
             self.assertEqual(len(written), 3)
             control = json.loads(control_path.read_text())
