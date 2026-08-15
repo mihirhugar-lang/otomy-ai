@@ -3517,6 +3517,58 @@ def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
     return sorted(rows, key=lambda row: str(row.get("name") or "").upper())
 
 
+def archived_vendor_balances_as_of(archive_rows, master_rows):
+    """Attach immutable supplier IDs to historical archive balances.
+
+    Monthly archive balances predate the supplier-ID field and contain only the
+    local master ID plus display name.  The dated Vendor page, however, is
+    deliberately ID-backed so same-name Loctell suppliers are never merged.
+    Reusing those name-only archive rows therefore makes every ID-backed
+    supplier look like it has a zero balance.  Resolve each archive row to one
+    current master row before using it; ambiguity is a hard failure rather than
+    publishing an apparently-valid zero-payable month.
+    """
+    masters_by_id = {}
+    masters_by_name = {}
+    for master in master_rows or []:
+        if not str(master.get("name") or "").strip():
+            continue
+        masters_by_id.setdefault(str(master.get("id") or ""), []).append(master)
+        masters_by_name.setdefault(_norm_name(master.get("name")), []).append(master)
+
+    resolved, unresolved = [], []
+    for source in archive_rows or []:
+        name = str(source.get("name") or "").strip()
+        if not name:
+            continue
+        # The archive's numeric ID is authoritative only when it still names
+        # the same supplier; a renamed/reordered master falls back to its
+        # normalized display name instead.
+        candidates = [
+            row for row in masters_by_id.get(str(source.get("id") or ""), [])
+            if _norm_name(row.get("name")) == _norm_name(name)
+        ]
+        if not candidates:
+            candidates = masters_by_name.get(_norm_name(name), [])
+        candidates = [row for row in candidates if str(row.get("erp_supplier_id") or "").strip()]
+        if len(candidates) != 1:
+            unresolved.append(name)
+            continue
+        master = candidates[0]
+        resolved.append({
+            "name": master.get("name") or name,
+            "payable": _num(source.get("payable", source.get("balance", 0.0))),
+            "erp_supplier_id": str(master.get("erp_supplier_id")),
+        })
+
+    if unresolved:
+        raise ErpFetchError(
+            "historical vendor balance identity unresolved; refusing to publish "
+            f"zero-payable snapshot for: {', '.join(sorted(set(unresolved)))}"
+        )
+    return resolved
+
+
 def canonical_vendor_master(seed_rows, creditors, *, source_master=None):
     """Merge the checked-in full master with ERP rows by supplier ID.
 
@@ -4254,9 +4306,21 @@ def write_snapshot_bundle(
         end_debtors = debtors_as_of(end) or archive_balance_rows(
             archive_balance, "receivables_rows", "outstanding"
         )
-        end_creditors = creditors_as_of(end) or archive_balance_rows(
-            archive_balance, "payables_rows", "payable"
-        )
+        end_creditors = creditors_as_of(end)
+        payable_source_rows = end_creditors
+        used_mapped_creditors = False
+        # Older saved balance snapshots have the same name-only shape as the
+        # archive.  Never send either form directly to the ID-backed vendor
+        # renderer: resolve it first or stop the publish.
+        if end_creditors and not all(str(row.get("erp_supplier_id") or "").strip() for row in end_creditors):
+            end_creditors = archived_vendor_balances_as_of(end_creditors, vendors_full)
+            used_mapped_creditors = True
+        elif not end_creditors and archive_balance:
+            payable_source_rows = archive_balance.get("payables_rows") or []
+            end_creditors = archived_vendor_balances_as_of(
+                payable_source_rows, vendors_full
+            )
+            used_mapped_creditors = True
         customer_rows = build_customer_range_rows(
             customers_full,
             all_sales,
@@ -4272,6 +4336,18 @@ def write_snapshot_bundle(
         vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))
         receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
         payable_rows = positive_balance_rows(vendor_rows, "payable")
+
+        if used_mapped_creditors:
+            expected_payables = round(sum(
+                max(0.0, _num(row.get("balance", row.get("payable", 0.0))))
+                for row in payable_source_rows
+            ), 2)
+            actual_payables = round(sum(_num(row.get("payable")) for row in payable_rows), 2)
+            if abs(actual_payables - expected_payables) > 0.01:
+                raise ErpFetchError(
+                    f"historical vendor payable parity failed for {end}: "
+                    f"archive={expected_payables:.2f} snapshot={actual_payables:.2f}"
+                )
 
         # The Dashboard must not have independent balance math. Its tiles and
         # top-five lists come directly from the selected-date Customer/Vendor
