@@ -3569,6 +3569,68 @@ def archived_vendor_balances_as_of(archive_rows, master_rows):
     return resolved
 
 
+def historical_vendor_master_rows(current_rows, balance_rows):
+    """Add only retired, historically-balanced suppliers to a dated view.
+
+    Today's Supplier Balance is intentionally the authority for the live
+    Vendor page.  A supplier removed from Loctell must not reappear there.
+    It can nevertheless have had a real payable at the end of a prior month.
+    For that dated snapshot only, recover its stable seed identity so the
+    historical payable remains visible and reconcilable.
+    """
+    result = [dict(row) for row in current_rows or []]
+    existing_keys = {_vendor_identity(row) for row in result}
+    used_ids = {str(row.get("id") or "") for row in result}
+    seed_rows = load_vendor_master()
+    seed_by_id = {}
+    seed_by_name = {}
+    seed_by_erp = {}
+    for row in seed_rows:
+        if not str(row.get("name") or "").strip():
+            continue
+        seed_by_id.setdefault(str(row.get("id") or ""), []).append(row)
+        seed_by_name.setdefault(_norm_name(row.get("name")), []).append(row)
+        if str(row.get("erp_supplier_id") or "").strip():
+            seed_by_erp.setdefault(str(row.get("erp_supplier_id")), []).append(row)
+
+    unresolved = []
+    for source in balance_rows or []:
+        name = str(source.get("name") or "").strip()
+        source_erp = str(source.get("erp_supplier_id") or source.get("supplier_id") or "").strip()
+        if not name:
+            continue
+        if source_erp and f"erp:{source_erp}" in existing_keys:
+            continue
+        if not source_erp and any(_norm_name(row.get("name")) == _norm_name(name) for row in result):
+            continue
+        candidates = []
+        if source_erp:
+            candidates = seed_by_erp.get(source_erp, [])
+        if not candidates:
+            candidates = [
+                row for row in seed_by_id.get(str(source.get("id") or ""), [])
+                if _norm_name(row.get("name")) == _norm_name(name)
+            ]
+        if not candidates:
+            candidates = seed_by_name.get(_norm_name(name), [])
+        if len(candidates) != 1 or not str(candidates[0].get("erp_supplier_id") or "").strip():
+            unresolved.append(name)
+            continue
+        row = dict(candidates[0])
+        if str(row.get("id") or "") in used_ids:
+            row["id"] = f"historical-{row['erp_supplier_id']}"
+        result.append(row)
+        used_ids.add(str(row.get("id") or ""))
+        existing_keys.add(_vendor_identity(row))
+
+    if unresolved:
+        raise ErpFetchError(
+            "historical supplier master unresolved; refusing to publish "
+            f"incomplete payable snapshot for: {', '.join(sorted(set(unresolved)))}"
+        )
+    return result
+
+
 def canonical_vendor_master(seed_rows, creditors, *, source_master=None):
     """Merge the checked-in full master with ERP rows by supplier ID.
 
@@ -4313,14 +4375,21 @@ def write_snapshot_bundle(
         # archive.  Never send either form directly to the ID-backed vendor
         # renderer: resolve it first or stop the publish.
         if end_creditors and not all(str(row.get("erp_supplier_id") or "").strip() for row in end_creditors):
-            end_creditors = archived_vendor_balances_as_of(end_creditors, vendors_full)
             used_mapped_creditors = True
         elif not end_creditors and archive_balance:
             payable_source_rows = archive_balance.get("payables_rows") or []
-            end_creditors = archived_vendor_balances_as_of(
-                payable_source_rows, vendors_full
-            )
+            end_creditors = payable_source_rows
             used_mapped_creditors = True
+        # A supplier can be removed from today's Loctell master after a real
+        # historical payable existed.  Keep it on that dated page only; never
+        # reintroduce it into the live Vendor view.
+        range_vendor_master = historical_vendor_master_rows(vendors_full, end_creditors)
+        if used_mapped_creditors:
+            # Resolve name-only archive balances against the same dated master
+            # that will render them, including a legitimate retired supplier.
+            end_creditors = archived_vendor_balances_as_of(
+                payable_source_rows, range_vendor_master
+            )
         customer_rows = build_customer_range_rows(
             customers_full,
             all_sales,
@@ -4333,7 +4402,7 @@ def write_snapshot_bundle(
             aging_sales=aging_sales,
             aging_repayments=aging_repayments,
         )
-        vendor_rows = vendor_rows_as_of(vendors_full, end_creditors, vendor_ledgers, str(end))
+        vendor_rows = vendor_rows_as_of(range_vendor_master, end_creditors, vendor_ledgers, str(end))
         receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
         payable_rows = positive_balance_rows(vendor_rows, "payable")
 

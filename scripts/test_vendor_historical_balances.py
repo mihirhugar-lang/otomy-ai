@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,24 @@ class HistoricalVendorBalanceTests(unittest.TestCase):
                 [{"id": 1, "name": "UNKNOWN SUPPLIER", "balance": 1}],
                 [{"id": 1, "name": "RAJRAJESHWARI PETROLEUMS", "erp_supplier_id": "10237_2"}],
             )
+
+    def test_retired_supplier_remains_in_the_historical_snapshot_only(self):
+        engine = load_engine()
+        current = [{"id": 1, "name": "RAJRAJESHWARI PETROLEUMS", "erp_supplier_id": "10237_2"}]
+        retired = {"id": 24, "name": "SHIVAJI", "erp_supplier_id": "13435_2"}
+        archive = [
+            {"id": 1, "name": "RAJRAJESHWARI PETROLEUMS", "balance": 1164903},
+            {"id": 24, "name": "SHIVAJI", "balance": 170762},
+        ]
+
+        with patch.object(engine, "load_vendor_master", return_value=[retired]):
+            dated_master = engine.historical_vendor_master_rows(current, archive)
+            balances = engine.archived_vendor_balances_as_of(archive, dated_master)
+            rows = engine.vendor_rows_as_of(dated_master, balances, {}, "2026-07-31")
+
+        self.assertEqual(len(current), 1)  # live master remains untouched
+        self.assertEqual(sum(row["payable"] for row in rows), 1335665)
+        self.assertEqual(next(row for row in rows if row["name"] == "SHIVAJI")["payable"], 170762)
 
 
 if __name__ == "__main__":
