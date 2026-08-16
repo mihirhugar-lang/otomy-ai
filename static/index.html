@@ -180,6 +180,8 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
 .print-btn{margin-left:auto;padding:6px 14px;border-radius:5px;border:1.5px solid #1a237e;background:#fff;color:#1a237e;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
 .print-btn:hover{background:#1a237e;color:#fff}
+.page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.page-actions .print-btn{margin-left:0}
 
 /* ── Sub-tabs ── */
 .subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
@@ -284,6 +286,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .preset-dates{display:flex;flex:0 0 100%;flex-wrap:wrap;margin:8px 0 0;gap:6px}
   .preset-dates input{min-width:128px;flex:1}
   .print-btn{margin-left:0;flex:0 0 auto;padding:7px 12px}
+  .page-actions{margin-left:0;flex:0 0 100%;gap:6px}
  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
  #section-dashboard>.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(76px,auto)}
   #ledger-summary,#ledger-average-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
@@ -685,8 +688,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>To:</label><input type="date" id="dash-to" onchange="clearPresetBtns('dashboard');_debouncedLoadDash()">
       <label>Day:</label><input type="date" id="dash-date" onchange="setDashboardDay(this.value)">
     </div>
-    <button class="print-btn" onclick="printDashboard()">Print / PDF</button>
-    <button class="print-btn" onclick="printDashboardConsolidated()">Consolidated Print / PDF</button>
+    <div class="page-actions no-print"><button class="print-btn" onclick="printDashboard()">Print / PDF</button><button class="print-btn" onclick="printDashboardConsolidated()">Consolidated Print / PDF</button></div>
   </div>
 <div id="dash-profit-bar"></div>
 <div class="kpi-row">
@@ -801,8 +803,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <label>From:</label><input type="date" id="c-from" onchange="clearPresetBtns('customers')">
       <label>To:</label><input type="date" id="c-to" onchange="clearPresetBtns('customers')"> <label>Day:</label><input type="date" id="c-day" onchange="setDay('customers',this.value)">
     </div>
-    <button class="print-btn" onclick="printPageReport('Customers — Outstanding Balances','section-customers')">Print / PDF</button>
-    <button class="print-btn" onclick="printThreeMonthActiveCustomers()">Active Customers (3 Months) Print / PDF</button>
+    <div class="page-actions no-print"><button class="print-btn" onclick="printPageReport('Customers — Outstanding Balances','section-customers')">Print / PDF</button><button class="print-btn" onclick="printThreeMonthActiveCustomers()">Active Customers (3 Months) Print / PDF</button></div>
   </div>
   <div class="kpi-row">
     <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
