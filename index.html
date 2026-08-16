@@ -171,6 +171,8 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .preset-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:rgba(255,255,255,.92);border-radius:16px;box-shadow:var(--shadow);border:1px solid rgba(228,231,236,.9);border-left:5px solid var(--amber)}
 .preset-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-right:2px;white-space:nowrap}
 .pbtn{padding:5px 13px;border-radius:16px;border:1.5px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#555;transition:all .15s;white-space:nowrap}
+.month-range-select{appearance:auto;min-width:128px;max-width:172px;padding:5px 8px;border:1.5px solid #c9b98f;border-radius:4px;background:#fffdf5;color:#1f4e79;font:700 12px var(--tally-mono,ui-monospace,monospace);cursor:pointer}
+.month-range-select[size]{position:relative;z-index:120;max-height:180px;overflow-y:auto}
 .pbtn:hover,.pbtn.act{border-color:var(--amber);color:#92400e;background:#fff7ed}
 .pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
@@ -974,13 +976,20 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="page-header"><h2>Daily Book</h2></div>
   <div class="card">
     <div class="preset-bar no-print">
-      <span class="preset-label">Month:</span>
-      <button class="pbtn" onclick="loadLedgerView(monthNow())">This Month</button>
-      <button class="pbtn" onclick="loadLedgerView(lastMonthYM())">Last Month</button>
-      <div class="preset-dates"><select id="ledger-month" onchange="loadLedgerView()"></select></div>
+      <span class="preset-label">Period:</span>
+      <button class="pbtn" onclick="preset('ledger','today',this)">Today</button>
+      <button class="pbtn" onclick="preset('ledger','yesterday',this)">Yesterday</button>
+      <button class="pbtn" onclick="preset('ledger','week',this)">This Week</button>
+      <button class="pbtn" onclick="preset('ledger','lastweek',this)">Last Week</button>
+      <button class="pbtn" onclick="preset('ledger','mtd',this)">Month Till Date</button>
+      <button class="pbtn" onclick="preset('ledger','lastmonth',this)">Last Month</button>
+      <button class="pbtn" onclick="preset('ledger','fytd',this)">This FY</button>
+      <button class="pbtn" onclick="preset('ledger','lastfy',this)">Last FY</button>
+      <select id="ledger-month" class="month-range-select" onchange="setRangeMonth('ledger',this.value,this)" onfocus="expandMonthSelect(this)" onblur="collapseMonthSelect(this)"></select>
+      <div class="preset-dates"><label>From:</label><input type="date" id="ledger-from" onchange="clearPresetBtns('ledger')"><label>To:</label><input type="date" id="ledger-to" onchange="clearPresetBtns('ledger')"><button class="pbtn" onclick="loadLedgerRange()">Go</button></div>
       <button class="print-btn" onclick="printDailyBook()">Print / PDF</button>
     </div>
-    <div class="ledger-summary-heading">Total / Month</div>
+    <div class="ledger-summary-heading">Total / Period</div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
     <div id="ledger-average-panel"><div class="ledger-average-heading">Average / Day</div><div id="ledger-average-summary" class="kpi-row"></div></div>
@@ -2145,7 +2154,7 @@ function nav(name){
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
   if(name==='pl'){resetRangeToToday('pl');loadPL();}
   if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
-  if(name==='ledger'){if(!document.getElementById('ledger-month').value)document.getElementById('ledger-month').value=monthNow();loadLedgerView();}
+  if(name==='ledger'){if(!document.getElementById('ledger-from').value){const[f,t]=calcPreset('mtd');document.getElementById('ledger-from').value=f;document.getElementById('ledger-to').value=t;}loadLedgerRange();}
   if(name==='gst'){resetRangeToToday('gst');loadGST();}
   if(name==='auditca'){resetRangeToToday('auditca');loadAuditCA();}
 }
@@ -2169,6 +2178,7 @@ const PRESET_CFG={
   erpcash:{from:'ec-from',to:'ec-to',reload:()=>loadErpCash()},
   pl:{from:'pl-from',to:'pl-to',reload:()=>loadPL()},
   ops:{from:'op-from',to:'op-to',reload:()=>opsReload()},
+  ledger:{from:'ledger-from',to:'ledger-to',reload:()=>loadLedgerRange()},
   gst:{from:'gst-from',to:'gst-to',reload:()=>loadGST()},
   auditca:{from:'ca-from',to:'ca-to',reload:()=>loadAuditCA()},
 };
@@ -2226,6 +2236,44 @@ function clearPresetBtns(section){
   const fromId=cfg.from||cfg.single;
   const el=fromId?document.getElementById(fromId):null;
   if(el){const bar=el.closest('.preset-bar');if(bar)bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
+}
+function _rangeMonthOptions(){
+  const out=[],now=new Date(),lastY=now.getFullYear(),lastM=now.getMonth()+1;let y=2026,m=4;
+  while(y<lastY||(y===lastY&&m<=lastM)){const ym=String(y)+'-'+String(m).padStart(2,'0');out.push({ym,label:new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'})});m++;if(m===13){m=1;y++;}}
+  return out.reverse();
+}
+function expandMonthSelect(sel){if(sel&&sel.options.length>6)sel.size=6;}
+function collapseMonthSelect(sel){if(sel)setTimeout(()=>{sel.size=1;},120);}
+function setRangeMonth(section,ym,sel){
+  const cfg=PRESET_CFG[section];if(!cfg||!ym)return;
+  const parts=ym.split('-'),year=Number(parts[0]),month=Number(parts[1]),from=ym+'-01';
+  let to=localISO(new Date(year,month,0));if(to>today())to=today();
+  document.getElementById(cfg.from).value=from;document.getElementById(cfg.to).value=to;
+  clearPresetBtns(section);if(sel)collapseMonthSelect(sel);
+  if(_page[section]!==undefined)_page[section]=1;cfg.reload();
+}
+function initRangeMonthSelectors(){
+  const months=_rangeMonthOptions();
+  Object.keys(PRESET_CFG).filter(section=>section!=='ledger').forEach(section=>{
+    const cfg=PRESET_CFG[section],fromEl=document.getElementById(cfg.from),bar=fromEl&&fromEl.closest('.preset-bar');if(!bar||bar.querySelector('#range-month-'+section))return;
+    let lastFy=[...bar.querySelectorAll('.pbtn')].find(btn=>String(btn.getAttribute('onclick')||'').includes("preset('"+section+"','lastfy'"));
+    if(!lastFy){const fy=[...bar.querySelectorAll('.pbtn')].find(btn=>String(btn.getAttribute('onclick')||'').includes("preset('"+section+"','fytd'"));if(!fy)return;lastFy=document.createElement('button');lastFy.type='button';lastFy.className='pbtn';lastFy.textContent='Last FY';lastFy.setAttribute('onclick',"preset('"+section+"','lastfy',this)");fy.insertAdjacentElement('afterend',lastFy);}
+    const sel=document.createElement('select');sel.id='range-month-'+section;sel.className='month-range-select';sel.setAttribute('aria-label','Select month');sel.innerHTML='<option value="">Month</option>'+months.map(row=>'<option value="'+row.ym+'">'+row.label+'</option>').join('');
+    sel.addEventListener('change',()=>setRangeMonth(section,sel.value,sel));sel.addEventListener('focus',()=>expandMonthSelect(sel));sel.addEventListener('blur',()=>collapseMonthSelect(sel));lastFy.insertAdjacentElement('afterend',sel);
+  });
+}
+function _ledgerRangeTotals(rows){
+  const keys=['sale_trips','sale_amount','spot_sale_amount','spot_sale_cash','spot_sale_bank','qty_mt','credit_sale_amount','credit_repayment','credit_repayment_cash','credit_repayment_bank','expenses','expense_cash','expense_bank','boulder_input_mt','boulder_trips','stock_in_plant_mt'];
+  const totals={};keys.forEach(key=>totals[key]=Math.round(rows.reduce((sum,row)=>sum+_num(row[key]),0)*100)/100);
+  const last=rows[rows.length-1]||{};totals.cash_balance_office=_num(last.cash_balance_office);totals.bank_balance=_num(last.bank_balance);return totals;
+}
+async function loadLedgerRange(){
+  const from=document.getElementById('ledger-from')?.value,to=document.getElementById('ledger-to')?.value;
+  if(!from||!to||from>to){document.getElementById('ledger-tbl').innerHTML='<div class="empty">Choose a valid date range.</div>';return;}
+  const start=new Date(from+'T00:00:00'),end=new Date(to+'T00:00:00'),calls=[];let y=start.getFullYear(),m=start.getMonth()+1;
+  while(y<end.getFullYear()||(y===end.getFullYear()&&m<=end.getMonth()+1)){calls.push(api('/api/dashboard/ledger-view?year='+y+'&month='+m));m++;if(m===13){m=1;y++;}}
+  try{const pages=await Promise.all(calls),rows=pages.flatMap(page=>(page&&page.rows)||[]).filter(row=>String(row.date||'')>=from&&String(row.date||'')<=to).sort((a,b)=>String(a.date).localeCompare(String(b.date)));renderLedgerView({rows,totals:_ledgerRangeTotals(rows)});}
+  catch(e){document.getElementById('ledger-tbl').innerHTML='<div class="empty">Daily Book error: '+esc(e.message)+'</div>';document.getElementById('ledger-average-summary').innerHTML='';}
 }
 
 // Ops preset (controls all ops sub-tabs)
@@ -2766,7 +2814,8 @@ function printDailyBook(){
   const summary=document.getElementById('ledger-summary');
   const averages=document.getElementById('ledger-average-panel');
   const monthSelect=document.getElementById('ledger-month');
-  const month=monthSelect?.selectedOptions?.[0]?.textContent||monthSelect?.value||'';
+  const rangeFrom=document.getElementById('ledger-from')?.value,rangeTo=document.getElementById('ledger-to')?.value;
+  const month=rangeFrom&&rangeTo?rangeFrom+' to '+rangeTo:(monthSelect?.selectedOptions?.[0]?.textContent||monthSelect?.value||'');
   const landscape='<style media="print">@page{size:A4 landscape;margin:4mm}</style>';
   const totalTiles=summary?`<div class="daily-book-print-kpis">${summary.previousElementSibling?.outerHTML||''}${summary.outerHTML}</div>`:'';
   const averageTiles=averages?`<div class="daily-book-print-kpis">${averages.outerHTML}</div>`:'';
@@ -2882,9 +2931,11 @@ window.onload=async function(){
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   // Set all date defaults
   ['s-date','e-date','b-date','m-date','l-date','p-date','ba-initdate','bt-date','cr-date','vp-date','emi-due','rpt-daily-date','mu-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','ledger-from','ledger-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   document.getElementById('dash-from').value=t;
   document.getElementById('dash-date').value=t;
+  _populateLedgerMonths();
+  initRangeMonthSelectors();
   ['gst-from','ca-from'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=fyStart();});
   ['rpt-month','gst-month','gst-return-month','gst-2b-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   // Restore the page the user was on before a refresh (same tab/session only). A brand-new
