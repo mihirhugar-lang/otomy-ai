@@ -5205,7 +5205,15 @@ def main():
     # ── creditors (already fetched in parallel above) ─────────────────────────
     print(f"  {len(creditors)} vendors")
     vendor_payments, vendor_payments_fresh = fetch_vendor_payments_or_saved()
-    print(f"  {len(vendor_payments)} vendor payments")
+    # Recent syncs fetch only a short delta, whereas an MTD snapshot needs all
+    # of the month's payments.  Merge the fresh window into the existing
+    # archive before every downstream consumer (vendor page, control snapshots,
+    # ledger, compliance) reads it.  Without this, the exact MTD payment
+    # snapshot silently omitted valid early-month payments.
+    vendor_payments = merge_rows_by_archive_key(
+        archive_rows.get("vendor_payments"), vendor_payments, "vendor_payments"
+    )
+    print(f"  {len(vendor_payments)} vendor payments (merged archive + fresh window)")
     try:
         # Fetch the complete checked-in supplier master, not only today's
         # payable suppliers.  A settled supplier can still have a bill/payment
