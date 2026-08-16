@@ -518,10 +518,14 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .customer-sales-table th:nth-child(8)::after{content:"Bank"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(9)::after{content:"Cash"}
   #print-area.dashboard-print .customer-sales-table th:nth-child(11)::after{content:"Credit"}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(1),#print-area.dashboard-print .customer-sales-table td:nth-child(1){width:20%!important}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(2),#print-area.dashboard-print .customer-sales-table td:nth-child(2){width:9%!important}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(3),#print-area.dashboard-print .customer-sales-table td:nth-child(3){width:14%!important}
-  #print-area.dashboard-print .customer-sales-table th:nth-child(n+4),#print-area.dashboard-print .customer-sales-table td:nth-child(n+4){width:9.5%!important;text-align:right!important}
+  /* A printed weekly report has ten visible columns: give Ticket enough real width for six full numbers. */
+  #print-area.dashboard-print .customer-sales-table th:nth-child(1),#print-area.dashboard-print .customer-sales-table td:nth-child(1){width:17%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(2),#print-area.dashboard-print .customer-sales-table td:nth-child(2){width:7%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(3),#print-area.dashboard-print .customer-sales-table td:nth-child(3){width:22%!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(4),#print-area.dashboard-print .customer-sales-table td:nth-child(4){width:7%!important;text-align:right!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(5),#print-area.dashboard-print .customer-sales-table td:nth-child(5),#print-area.dashboard-print .customer-sales-table th:nth-child(6),#print-area.dashboard-print .customer-sales-table td:nth-child(6){width:7%!important;text-align:right!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(7),#print-area.dashboard-print .customer-sales-table td:nth-child(7){width:9%!important;text-align:right!important}
+  #print-area.dashboard-print .customer-sales-table th:nth-child(8),#print-area.dashboard-print .customer-sales-table td:nth-child(8),#print-area.dashboard-print .customer-sales-table th:nth-child(9),#print-area.dashboard-print .customer-sales-table td:nth-child(9),#print-area.dashboard-print .customer-sales-table th:nth-child(11),#print-area.dashboard-print .customer-sales-table td:nth-child(11){width:8%!important;text-align:right!important}
   #print-area.dashboard-print .expense-table th:nth-child(1),#print-area.dashboard-print .expense-table td:nth-child(1){width:9%!important}
   #print-area.dashboard-print .expense-table th:nth-child(2),#print-area.dashboard-print .expense-table td:nth-child(2){width:8%!important}
   #print-area.dashboard-print .expense-table th:nth-child(3),#print-area.dashboard-print .expense-table td:nth-child(3){width:16%!important}
@@ -531,7 +535,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .expense-table th:nth-child(7),#print-area.dashboard-print .expense-table td:nth-child(7){width:12%!important;text-align:right!important}
   #print-area.dashboard-print .ticket-list{line-height:1.4!important}
   /* Weekly and longer sales reports retain the dashboard's compact six-ticket grouping. */
-  #print-area.ticket-grid-print .customer-sales-table .ticket-list{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:1px 2px!important;line-height:1.15!important;word-break:normal!important;overflow-wrap:normal!important}
+  #print-area.ticket-grid-print .customer-sales-table .ticket-list{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:1px 0!important;line-height:1.15!important;word-break:normal!important;overflow-wrap:normal!important}
   #print-area.ticket-grid-print .customer-sales-table .ticket-item{display:block!important;min-width:0!important;font-size:6.5px!important;letter-spacing:-.35px!important;line-height:1.15!important;white-space:nowrap!important}
   #print-area.ticket-grid-print .customer-sales-table .ticket-item::after{content:none!important}
   .print-ph{border-bottom:1px solid #7c4a03;margin-bottom:5px;padding:0 0 4px 0}
@@ -2915,7 +2919,8 @@ async function printDashboard(doPrint=true){
   const kpis=document.querySelector('#section-dashboard .kpi-row');
   const body=document.getElementById('dash-print-area');
   if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
-  const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
+  const landscape='<style media="print">@page{size:A4 landscape;margin:4mm}</style>';
+  const content=`${landscape}<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
   const printClass=_isPrintWeekOrMore(f,t)?'dashboard-print ticket-grid-print':'dashboard-print';
   if(doPrint)runPrint('Dashboard Daily Report', content, printClass);
   else{const pa=document.getElementById('print-area');pa.className=printClass;pa.innerHTML=content;}
