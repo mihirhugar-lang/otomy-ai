@@ -237,6 +237,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .report-table tbody tr:hover{background:#ffefcf}
 .report-table tfoot td{background:#f6ead7;font-weight:800;padding:10px 12px;border-top:2px solid #b45309}
 .ticket-list{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#7c3d00;line-height:1.6;word-break:break-word}
+.ticket-list .ticket-item{display:inline}
+.ticket-list .ticket-item:not(:last-child)::after{content:', '}
 /* Compact sales table + wider Ticket No column so long date ranges fit more ticket numbers */
 .customer-sales-table th,.customer-sales-table td{padding:8px 8px}
 .customer-sales-table th:nth-child(3),.customer-sales-table td:nth-child(3){min-width:210px;max-width:380px}
@@ -528,6 +530,10 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .expense-table th:nth-child(6),#print-area.dashboard-print .expense-table td:nth-child(6){width:10%!important}
   #print-area.dashboard-print .expense-table th:nth-child(7),#print-area.dashboard-print .expense-table td:nth-child(7){width:12%!important;text-align:right!important}
   #print-area.dashboard-print .ticket-list{line-height:1.4!important}
+  /* Weekly and longer sales reports retain the dashboard's compact six-ticket grouping. */
+  #print-area.ticket-grid-print .customer-sales-table .ticket-list{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:1px 2px!important;line-height:1.15!important;word-break:normal!important;overflow-wrap:normal!important}
+  #print-area.ticket-grid-print .customer-sales-table .ticket-item{display:block!important;min-width:0!important;font-size:6.5px!important;letter-spacing:-.35px!important;line-height:1.15!important;white-space:nowrap!important}
+  #print-area.ticket-grid-print .customer-sales-table .ticket-item::after{content:none!important}
   .print-ph{border-bottom:1px solid #7c4a03;margin-bottom:5px;padding:0 0 4px 0}
   .print-ph h1{font-size:14px;font-weight:800;color:#2b2118;margin:0}
   .print-ph p{font-size:8px;color:#555;margin:1px 0 0}
@@ -2773,29 +2779,35 @@ function downloadPdfReport(payload){
   flash('PDF downloaded');
   return true;
 }
-function openTablePdf(title,el,subtitle){
+function openTablePdf(title,el,subtitle,printClass='report-print'){
   if(!el){flash('Nothing to print',false);return false;}
   const detail=subtitle?`${esc(subtitle)} &nbsp;|&nbsp; `:'';
   const copy=el.cloneNode(true);
   copy.querySelectorAll('.no-print,button,input,select,textarea').forEach(node=>node.remove());
   copy.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{wrap.style.removeProperty('height');wrap.style.removeProperty('max-height');wrap.style.removeProperty('overflow');});
   const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${copy.outerHTML}`;
-  runPrint(title, content,'report-print');
+  runPrint(title, content,printClass);
   return true;
 }
 function printSection(title,tableContainerId){
   const el=document.getElementById(tableContainerId);
   if(!el){flash('Nothing to print',false);return;}
   const section=document.querySelector('.section.active');
+  let f=null,t=null;
   let dateRange='';
   if(section){
-    const f=section.querySelector('input[id$="-from"]');
-    const t=section.querySelector('input[id$="-to"]');
+    f=section.querySelector('input[id$="-from"]');
+    t=section.querySelector('input[id$="-to"]');
     const s=section.querySelector('input[id$="-date"]');
     if(f&&t&&f.value)dateRange=`Period: ${f.value} to ${t.value}`;
     else if(s&&s.value)dateRange=`Date: ${s.value}`;
   }
-  openTablePdf(title,el,dateRange);
+  const isWeeklyCustomerSales=tableContainerId==='dash-customer-sales-card'&&f&&t&&_isPrintWeekOrMore(f.value,t.value);
+  openTablePdf(title,el,dateRange,isWeeklyCustomerSales?'report-print ticket-grid-print':'report-print');
+}
+function _isPrintWeekOrMore(from,to){
+  const start=Date.parse(`${from||''}T00:00:00`),end=Date.parse(`${to||''}T00:00:00`);
+  return Number.isFinite(start)&&Number.isFinite(end)&&end>=start&&(end-start)>=6*86400000;
 }
 function printPageReport(title,sectionId){
   const root=document.getElementById(sectionId);
@@ -2904,8 +2916,9 @@ async function printDashboard(doPrint=true){
   const body=document.getElementById('dash-print-area');
   if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
   const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
-  if(doPrint)runPrint('Dashboard Daily Report', content, 'dashboard-print');
-  else{const pa=document.getElementById('print-area');pa.className='dashboard-print';pa.innerHTML=content;}
+  const printClass=_isPrintWeekOrMore(f,t)?'dashboard-print ticket-grid-print':'dashboard-print';
+  if(doPrint)runPrint('Dashboard Daily Report', content, printClass);
+  else{const pa=document.getElementById('print-area');pa.className=printClass;pa.innerHTML=content;}
 }
 function printCurrentOpsTab(){
   printPageReport('Operations','section-ops');
@@ -3134,7 +3147,7 @@ async function renderControlRoom(data){
     </tr>
   `).join('')||'<tr><td colspan="9" class="empty">No credit sale repayments received in this period</td></tr>';
   const customerSalesRows=(data.customer_sales||[]).map(r=>{
-    const ticketLines=(r.ticket_nos||[]).map(t=>esc(t)).join(', ')||'—';
+    const ticketLines=(r.ticket_nos||[]).map(t=>`<span class="ticket-item">${esc(t)}</span>`).join('')||'<span class="ticket-item">—</span>';
     return `<tr>
       <td>${esc(r.customer_name)}</td>
       <td>${esc(r.material||'—')}</td>
