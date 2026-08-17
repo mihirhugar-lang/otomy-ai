@@ -849,7 +849,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi"><div class="kpi-label">Total Vendors</div><div class="kpi-value" id="v-total">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Payable</div><div class="kpi-value" id="v-with-pay">—</div></div>
     <div class="kpi green"><div class="kpi-label">Paid in Range</div><div class="kpi-value" id="v-range-paid">—</div></div>
-    <div class="kpi blue"><div class="kpi-label">Received in Range</div><div class="kpi-value" id="v-range-received">—</div></div>
+    <div class="kpi blue"><div class="kpi-label">Purchased in Range</div><div class="kpi-value" id="v-range-received">—</div></div>
   </div>
   <div class="card">
     <h3>Vendor List — Payable Balances &amp; FIFO Due Aging</h3>
@@ -3489,20 +3489,19 @@ async function loadCustomers(){
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
     const activeRows=sortedRows(active,'customers',derived);
-    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_payment_received','Payment Received','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
     const totCredit=active.reduce((s,r)=>s+(r.range_credit_sales??0),0);
-    const totPaid=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
     const totSold=active.reduce((s,r)=>s+(r.range_total_sales??0),0);
     const totDue15=active.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
     const totDue30=active.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
-    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#2e7d32">${fmtINR(totPaid)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!active.length)html+='<tr><td colspan="8" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="7" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
@@ -3610,13 +3609,13 @@ async function addVendor(){
   try{await api('/api/vendors/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Vendor added!');['v-name','v-gstin','v-phone','v-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('v-opbal').value=0;loadVendors();api('/api/vendors/').then(d=>{_vendors=d;fillVendSelect('e-vendor');fillVendSelect('vp-vend');});}
   catch(e){flash(e.message,false);}
 }
-async function _vendorReceivedInRange(vendors,from,to){
+async function _vendorPurchasesInRange(vendors,from,to){
   const inRange=row=>{const d=String(row.date||'').slice(0,10);return d>=from&&d<=to;};
-  const amounts=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
+  const purchases=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
     const ledger=await api(`/api/vendors/ledger/${row.id}`);
-    return (ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0);
+    return [String(row.id),(ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0)];
   }));
-  return amounts.reduce((sum,amount)=>sum+amount,0);
+  return new Map(purchases);
 }
 function _vendorRangeKey(row){
   const supplierId=String(row?.erp_supplier_id||row?.supplier_id||'').trim();
@@ -3638,15 +3637,17 @@ async function loadVendors(){
     });
     _vendors=rows;
     const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
-    const rangeReceived=await _vendorReceivedInRange(rows.filter(row=>row.active),from,asOf);
+    const rangePurchasedByVendor=await _vendorPurchasesInRange(rows.filter(row=>row.active),from,asOf);
+    const rangePurchased=Array.from(rangePurchasedByVendor.values()).reduce((sum,amount)=>sum+amount,0);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
     document.getElementById('v-total-pay').textContent=fmtINR(totPay);
     document.getElementById('v-with-pay').textContent=pay.length;
     document.getElementById('v-range-paid').textContent=fmtINR(rangePayments.reduce((s,r)=>s+_num(r.amount),0));
-    document.getElementById('v-range-received').textContent=fmtINR(rangeReceived);
+    document.getElementById('v-range-received').textContent=fmtINR(rangePurchased);
     const derived={
       payable:r=>r.payable??(pay.find(p=>p.id===r.id)||{}).payable??0,
+      range_purchased:r=>rangePurchasedByVendor.get(String(r.id))||0,
       range_paid:r=>rangePaidByVendor.get(_vendorRangeKey(r))||0,
       total_purchases:r=>r.total_purchases??(pay.find(p=>p.id===r.id)||{}).total_purchases??0,
       total_payments:r=>r.total_payments??(pay.find(p=>p.id===r.id)||{}).total_payments??0,
@@ -3658,20 +3659,20 @@ async function loadVendors(){
     const activeRows=sortedRows(rows.filter(r=>r.active),'vendors',derived);
     const totalFor=field=>activeRows.reduce((sum,row)=>sum+_num(derived[field](row)),0);
     const vendorTotals={
-      range_paid:totalFor('range_paid'),
+      range_purchased:totalFor('range_purchased'), range_paid:totalFor('range_paid'),
       opening_balance:activeRows.reduce((sum,row)=>sum+_num(row.opening_balance),0),
       total_purchases:totalFor('total_purchases'), total_payments:totalFor('total_payments'),
       age_0_15:totalFor('age_0_15'), age_16_30:totalFor('age_16_30'),
       age_31_45:totalFor('age_31_45'), age_45_plus:totalFor('age_45_plus'), payable:totalFor('payable'),
     };
-    let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','gstin','GSTIN','loadVendors')+thSort('vendors','range_paid','Paid in Range','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','Payable 0–15 Days','loadVendors')+thSort('vendors','age_16_30','Payable 16–30 Days','loadVendors')+thSort('vendors','age_31_45','Payable 31–45 Days','loadVendors')+thSort('vendors','age_45_plus','Payable 45+ Days','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
-    if(activeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${activeRows.length})</td><td style="color:#2e7d32">${fmtINR(vendorTotals.range_paid)}</td><td>${fmtINR(vendorTotals.opening_balance)}</td><td>${fmtINR(vendorTotals.total_purchases)}</td><td>${fmtINR(vendorTotals.total_payments)}</td><td>${fmtINR(vendorTotals.age_0_15)}</td><td>${fmtINR(vendorTotals.age_16_30)}</td><td>${fmtINR(vendorTotals.age_31_45)}</td><td style="color:#c62828">${fmtINR(vendorTotals.age_45_plus)}</td><td style="color:#c62828">${fmtINR(vendorTotals.payable)}</td></tr>`;
+    let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','range_purchased','Purchased in Range','loadVendors')+thSort('vendors','range_paid','Paid in Range','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','Payable 0–15 Days','loadVendors')+thSort('vendors','age_16_30','Payable 16–30 Days','loadVendors')+thSort('vendors','age_31_45','Payable 31–45 Days','loadVendors')+thSort('vendors','age_45_plus','Payable 45+ Days','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
+    if(activeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${activeRows.length})</td><td style="color:#1565c0">${fmtINR(vendorTotals.range_purchased)}</td><td style="color:#2e7d32">${fmtINR(vendorTotals.range_paid)}</td><td>${fmtINR(vendorTotals.opening_balance)}</td><td>${fmtINR(vendorTotals.total_purchases)}</td><td>${fmtINR(vendorTotals.total_payments)}</td><td>${fmtINR(vendorTotals.age_0_15)}</td><td>${fmtINR(vendorTotals.age_16_30)}</td><td>${fmtINR(vendorTotals.age_31_45)}</td><td style="color:#c62828">${fmtINR(vendorTotals.age_45_plus)}</td><td style="color:#c62828">${fmtINR(vendorTotals.payable)}</td></tr>`;
     activeRows.forEach(r=>{
       const pb=pay.find(p=>p.id===r.id)||{};
       const payable=derived.payable(r);
       const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_paid(r))}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_purchased(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_paid(r))}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No vendors</td></tr>';
     html+='</tbody></table>';
