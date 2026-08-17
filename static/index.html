@@ -3489,19 +3489,19 @@ async function loadCustomers(){
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
     const activeRows=sortedRows(active,'customers',derived);
-    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
-    const totCredit=active.reduce((s,r)=>s+(r.range_credit_sales??0),0);
+    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Received in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    const totReceived=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
     const totSold=active.reduce((s,r)=>s+(r.range_total_sales??0),0);
     const totDue15=active.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
     const totDue30=active.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
-    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${active.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!active.length)html+='<tr><td colspan="7" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="6" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
