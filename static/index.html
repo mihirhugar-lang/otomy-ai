@@ -3488,19 +3488,19 @@ async function loadCustomers(){
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
     const activeRows=sortedRows(active,'customers',derived);
-    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_payment_received','Payment Received','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','material_sold','Material Sold','loadCustomers')+thSort('customers','range_credit_sales','Credit Sale','loadCustomers')+thSort('customers','range_payment_received','Payment Received','loadCustomers')+thSort('customers','range_payment_received','Received in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
     const totCredit=active.reduce((s,r)=>s+(r.range_credit_sales??0),0);
     const totPaid=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
     const totDue15=active.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
     const totDue30=active.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
-    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#2e7d32">${fmtINR(totPaid)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${active.length})</td><td>${fmtINR(totCredit)}</td><td style="color:#2e7d32">${fmtINR(totPaid)}</td><td style="color:#2e7d32">${fmtINR(totPaid)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td>${esc(derived.material_sold(r))}</td><td>${fmtINR(derived.range_credit_sales(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!active.length)html+='<tr><td colspan="7" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="8" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
@@ -3616,12 +3616,24 @@ async function _vendorReceivedInRange(vendors,from,to){
   }));
   return amounts.reduce((sum,amount)=>sum+amount,0);
 }
+function _vendorRangeKey(row){
+  const supplierId=String(row?.erp_supplier_id||row?.supplier_id||'').trim();
+  if(supplierId)return `erp:${supplierId}`;
+  const vendorId=row?.vendor_id??row?.id;
+  if(vendorId!==null&&vendorId!==undefined&&String(vendorId).trim())return `id:${vendorId}`;
+  return `name:${String(row?.vendor_name||row?.name||'').trim().toUpperCase()}`;
+}
 async function loadVendors(){
   try{
     const asOf=document.getElementById('v-to')?.value||today();
     const from=document.getElementById('v-from')?.value||asOf;
     const rows=await api(`/api/vendors/?active_only=false&as_of=${asOf}`);
     const rangePayments=await api(`/api/vendors/payments/?from_date=${from}&to_date=${asOf}`);
+    const rangePaidByVendor=new Map();
+    rangePayments.forEach(payment=>{
+      const key=_vendorRangeKey(payment);
+      rangePaidByVendor.set(key,(rangePaidByVendor.get(key)||0)+_num(payment.amount));
+    });
     _vendors=rows;
     const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
     const rangeReceived=await _vendorReceivedInRange(rows.filter(row=>row.active),from,asOf);
@@ -3633,6 +3645,7 @@ async function loadVendors(){
     document.getElementById('v-range-received').textContent=fmtINR(rangeReceived);
     const derived={
       payable:r=>r.payable??(pay.find(p=>p.id===r.id)||{}).payable??0,
+      range_paid:r=>rangePaidByVendor.get(_vendorRangeKey(r))||0,
       total_purchases:r=>r.total_purchases??(pay.find(p=>p.id===r.id)||{}).total_purchases??0,
       total_payments:r=>r.total_payments??(pay.find(p=>p.id===r.id)||{}).total_payments??0,
       age_0_15:r=>r.age_0_15??(pay.find(p=>p.id===r.id)||{}).age_0_15??0,
@@ -3641,13 +3654,13 @@ async function loadVendors(){
       age_45_plus:r=>r.age_45_plus??(pay.find(p=>p.id===r.id)||{}).age_45_plus??0,
     };
     const activeRows=sortedRows(rows.filter(r=>r.active),'vendors',derived);
-    let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','gstin','GSTIN','loadVendors')+thSort('vendors','phone','Phone','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','Payable 0–15 Days','loadVendors')+thSort('vendors','age_16_30','Payable 16–30 Days','loadVendors')+thSort('vendors','age_31_45','Payable 31–45 Days','loadVendors')+thSort('vendors','age_45_plus','Payable 45+ Days','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
+    let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','gstin','GSTIN','loadVendors')+thSort('vendors','range_paid','Paid in Range','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','Payable 0–15 Days','loadVendors')+thSort('vendors','age_16_30','Payable 16–30 Days','loadVendors')+thSort('vendors','age_31_45','Payable 31–45 Days','loadVendors')+thSort('vendors','age_45_plus','Payable 45+ Days','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
     activeRows.forEach(r=>{
       const pb=pay.find(p=>p.id===r.id)||{};
       const payable=derived.payable(r);
       const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showVendLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td>${r.phone||'—'}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td>${r.gstin||'—'}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_paid(r))}</td><td>${fmtINR(r.opening_balance)}</td><td>${fmtINR(derived.total_purchases(r))}</td><td>${fmtINR(derived.total_payments(r))}</td><td>${fmtINR(derived.age_0_15(r))}</td><td>${fmtINR(derived.age_16_30(r))}</td><td>${fmtINR(derived.age_31_45(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.age_45_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(payable)}</td></tr>`;
     });
     if(!rows.filter(r=>r.active).length)html+='<tr><td colspan="12" class="empty">No vendors</td></tr>';
     html+='</tbody></table>';
