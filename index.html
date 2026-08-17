@@ -3656,7 +3656,16 @@ async function loadVendors(){
       age_45_plus:r=>r.age_45_plus??(pay.find(p=>p.id===r.id)||{}).age_45_plus??0,
     };
     const activeRows=sortedRows(rows.filter(r=>r.active),'vendors',derived);
+    const totalFor=field=>activeRows.reduce((sum,row)=>sum+_num(derived[field](row)),0);
+    const vendorTotals={
+      range_paid:totalFor('range_paid'),
+      opening_balance:activeRows.reduce((sum,row)=>sum+_num(row.opening_balance),0),
+      total_purchases:totalFor('total_purchases'), total_payments:totalFor('total_payments'),
+      age_0_15:totalFor('age_0_15'), age_16_30:totalFor('age_16_30'),
+      age_31_45:totalFor('age_31_45'), age_45_plus:totalFor('age_45_plus'), payable:totalFor('payable'),
+    };
     let html='<table><thead><tr>'+thSort('vendors','name','Name','loadVendors')+thSort('vendors','gstin','GSTIN','loadVendors')+thSort('vendors','range_paid','Paid in Range','loadVendors')+thSort('vendors','opening_balance','Opening Bal','loadVendors')+thSort('vendors','total_purchases','Purchases','loadVendors')+thSort('vendors','total_payments','Payments Made','loadVendors')+thSort('vendors','age_0_15','Payable 0–15 Days','loadVendors')+thSort('vendors','age_16_30','Payable 16–30 Days','loadVendors')+thSort('vendors','age_31_45','Payable 31–45 Days','loadVendors')+thSort('vendors','age_45_plus','Payable 45+ Days','loadVendors')+thSort('vendors','payable','Payable','loadVendors')+'</tr></thead><tbody>';
+    if(activeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="2">TOTAL (${activeRows.length})</td><td style="color:#2e7d32">${fmtINR(vendorTotals.range_paid)}</td><td>${fmtINR(vendorTotals.opening_balance)}</td><td>${fmtINR(vendorTotals.total_purchases)}</td><td>${fmtINR(vendorTotals.total_payments)}</td><td>${fmtINR(vendorTotals.age_0_15)}</td><td>${fmtINR(vendorTotals.age_16_30)}</td><td>${fmtINR(vendorTotals.age_31_45)}</td><td style="color:#c62828">${fmtINR(vendorTotals.age_45_plus)}</td><td style="color:#c62828">${fmtINR(vendorTotals.payable)}</td></tr>`;
     activeRows.forEach(r=>{
       const pb=pay.find(p=>p.id===r.id)||{};
       const payable=derived.payable(r);
