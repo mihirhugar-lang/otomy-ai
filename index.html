@@ -810,6 +810,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi"><div class="kpi-label">Total Customers</div><div class="kpi-value" id="c-total">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Balance</div><div class="kpi-value" id="c-with-bal">—</div></div>
     <div class="kpi green"><div class="kpi-label">Received in Range</div><div class="kpi-value" id="c-range-paid">—</div></div>
+    <div class="kpi blue"><div class="kpi-label">Sold in Range</div><div class="kpi-value" id="c-range-sold">—</div></div>
   </div>
   <div class="card">
     <h3>Customer List — Outstanding Balances</h3>
@@ -848,6 +849,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi"><div class="kpi-label">Total Vendors</div><div class="kpi-value" id="v-total">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Payable</div><div class="kpi-value" id="v-with-pay">—</div></div>
     <div class="kpi green"><div class="kpi-label">Paid in Range</div><div class="kpi-value" id="v-range-paid">—</div></div>
+    <div class="kpi blue"><div class="kpi-label">Received in Range</div><div class="kpi-value" id="v-range-received">—</div></div>
   </div>
   <div class="card">
     <h3>Vendor List — Payable Balances &amp; FIFO Due Aging</h3>
@@ -3475,6 +3477,7 @@ async function loadCustomers(){
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
     document.getElementById('c-with-bal').textContent=active.filter(r=>(r.total_outstanding??r.outstanding??r.balance??0)>0).length;
     document.getElementById('c-range-paid').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_payment_received),0));
+    document.getElementById('c-range-sold').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_total_sales),0));
     const derived={
       outstanding:r=>r.total_outstanding??r.outstanding??r.balance??0,
       material_sold:r=>r.material_sold||'No sale',
@@ -3605,6 +3608,14 @@ async function addVendor(){
   try{await api('/api/vendors/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Vendor added!');['v-name','v-gstin','v-phone','v-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('v-opbal').value=0;loadVendors();api('/api/vendors/').then(d=>{_vendors=d;fillVendSelect('e-vendor');fillVendSelect('vp-vend');});}
   catch(e){flash(e.message,false);}
 }
+async function _vendorReceivedInRange(vendors,from,to){
+  const inRange=row=>{const d=String(row.date||'').slice(0,10);return d>=from&&d<=to;};
+  const amounts=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
+    const ledger=await api(`/api/vendors/ledger/${row.id}`);
+    return (ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0);
+  }));
+  return amounts.reduce((sum,amount)=>sum+amount,0);
+}
 async function loadVendors(){
   try{
     const asOf=document.getElementById('v-to')?.value||today();
@@ -3613,11 +3624,13 @@ async function loadVendors(){
     const rangePayments=await api(`/api/vendors/payments/?from_date=${from}&to_date=${asOf}`);
     _vendors=rows;
     const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
+    const rangeReceived=await _vendorReceivedInRange(rows.filter(row=>row.active),from,asOf);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
     document.getElementById('v-total-pay').textContent=fmtINR(totPay);
     document.getElementById('v-with-pay').textContent=pay.length;
     document.getElementById('v-range-paid').textContent=fmtINR(rangePayments.reduce((s,r)=>s+_num(r.amount),0));
+    document.getElementById('v-range-received').textContent=fmtINR(rangeReceived);
     const derived={
       payable:r=>r.payable??(pay.find(p=>p.id===r.id)||{}).payable??0,
       total_purchases:r=>r.total_purchases??(pay.find(p=>p.id===r.id)||{}).total_purchases??0,
