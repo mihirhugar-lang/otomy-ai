@@ -2165,6 +2165,13 @@ function resetRangeToToday(section){
   const bar=anchor?.closest('.preset-bar');
   if(bar){bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));const btn=[...bar.querySelectorAll('.pbtn')].find(b=>b.textContent.trim()==='Today');if(btn)btn.classList.add('act');}
 }
+function setLedgerLandingToMTD(){
+  const[f,t]=calcPreset('mtd');
+  document.getElementById('ledger-from').value=f;
+  document.getElementById('ledger-to').value=t;
+  const bar=document.getElementById('ledger-from')?.closest('.preset-bar');
+  if(bar)bar.querySelectorAll('.pbtn').forEach(btn=>btn.classList.toggle('act',String(btn.getAttribute('onclick')||'').includes("preset('ledger','mtd'")));
+}
 function nav(name){
   try{sessionStorage.setItem('cx_active_section',name);}catch(e){}  // remember page so a refresh stays here
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -2182,7 +2189,7 @@ function nav(name){
   if(name==='bank'){resetRangeToToday('erpbank');resetRangeToToday('erpcash');loadBankSummary();loadErpBank();loadErpCash();}
   if(name==='pl'){resetRangeToToday('pl');loadPL();}
   if(name==='ops'){const[f,t]=calcPreset('today');document.getElementById('op-from').value=f;document.getElementById('op-to').value=t;loadOpsDefaults();}
-  if(name==='ledger'){if(!document.getElementById('ledger-from').value){const[f,t]=calcPreset('mtd');document.getElementById('ledger-from').value=f;document.getElementById('ledger-to').value=t;}loadLedgerRange();}
+  if(name==='ledger'){setLedgerLandingToMTD();loadLedgerRange();}
   if(name==='gst'){resetRangeToToday('gst');loadGST();}
   if(name==='auditca'){resetRangeToToday('auditca');loadAuditCA();}
 }
@@ -2967,7 +2974,8 @@ window.onload=async function(){
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   // Set all date defaults
   ['s-date','e-date','b-date','m-date','l-date','p-date','ba-initdate','bt-date','cr-date','vp-date','emi-due','rpt-daily-date','mu-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','ledger-from','ledger-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  setLedgerLandingToMTD();
   document.getElementById('dash-from').value=t;
   document.getElementById('dash-date').value=t;
   _populateLedgerMonths();
