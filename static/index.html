@@ -350,17 +350,29 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 /* Shared report print canvas. It mirrors dashboard cards, but keeps wider
    report KPIs readable in four columns on browser and mobile PDF output. */
 #print-area.report-print{background:#fffdf8;color:#111827;font-family:Georgia,'Times New Roman',serif}
+#print-area.report-print,#print-area.report-print *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 #print-area.report-print .section{display:block!important}
 #print-area.report-print .page-header{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:12px!important;margin:0 0 7px!important;padding-bottom:5px!important;border-bottom:2px solid #d97706!important}
 #print-area.report-print .page-header h2{margin:0!important;color:#1a237e!important;font-size:17px!important}
 #print-area.report-print .page-header p{margin:3px 0 0!important;font-size:9px!important;line-height:1.25!important;color:#475569!important}
 #print-area.report-print .kpi-row{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:5px!important;margin:0 0 6px!important}
-#print-area.report-print .kpi{min-width:0!important;min-height:46px!important;padding:6px!important;border-radius:7px!important;overflow:hidden!important;box-shadow:none!important}
+#print-area.report-print .kpi{min-width:0!important;min-height:46px!important;padding:6px!important;border:1px solid #d97706!important;border-top:3px solid #d97706!important;border-radius:7px!important;background:#fff7ed!important;overflow:visible!important;box-shadow:none!important}
+#print-area.report-print .kpi.green{background:#e8f5e9!important;border-color:#2e7d32!important;border-top-color:#2e7d32!important}
+#print-area.report-print .kpi.blue{background:#e3f2fd!important;border-color:#1565c0!important;border-top-color:#1565c0!important}
+#print-area.report-print .kpi.red{background:#ffebee!important;border-color:#c62828!important;border-top-color:#c62828!important}
+#print-area.report-print .kpi.navy{background:#e8eaf6!important;border-color:#1a237e!important;border-top-color:#1a237e!important}
+#print-area.report-print .kpi.purple{background:#f3e5f5!important;border-color:#6a1b9a!important;border-top-color:#6a1b9a!important}
 #print-area.report-print .kpi-label{font-size:7px!important;line-height:1.15!important;letter-spacing:0!important;margin:0 0 3px!important;white-space:normal!important;overflow-wrap:anywhere!important}
-#print-area.report-print .kpi-value{font-size:12px!important;line-height:1.1!important;letter-spacing:-.2px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
+#print-area.report-print .kpi-value{font-size:12px!important;line-height:1.1!important;letter-spacing:-.2px!important;white-space:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;text-overflow:clip!important}
 #print-area.report-print .card{margin:0 0 6px!important;padding:7px 8px!important;border:1px solid #d8dee8!important;border-radius:7px!important;box-shadow:none!important}
 #print-area.report-print .card h3{font-size:11px!important;margin:0 0 4px!important;padding-bottom:3px!important;border-bottom:1px solid #e2e8f0!important}
 #print-area.report-print .tbl-wrap,#print-area.report-print .report-table-wrap{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important}
+#print-area.report-print table,#print-area.report-print .report-table,#print-area.report-print .cashbook-table,#print-area.report-print .tally-ledger{width:100%!important;max-width:100%!important;table-layout:fixed!important;border-collapse:collapse!important;font-family:Georgia,'Times New Roman',serif!important;font-size:8px!important;line-height:1.18!important;background:#fffdf8!important;color:#111827!important;border:1px solid #cfcfcf!important}
+#print-area.report-print th{padding:3px 4px!important;background:#1a237e!important;color:#fff!important;font-family:inherit!important;font-size:8px!important;line-height:1.14!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;vertical-align:top!important}
+#print-area.report-print td{min-width:0!important;padding:3px 4px!important;font-family:inherit!important;font-size:8px!important;line-height:1.18!important;color:#111827!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;vertical-align:top!important}
+#print-area.report-print tfoot td{background:#e8eaf6!important;font-weight:700!important}
+#print-area.report-print tbody tr:nth-child(even){background:#f9f9f9!important}
+#print-area.report-print tr{break-inside:avoid!important;page-break-inside:avoid!important}
 #print-area.report-print .insights-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
 #print-area.report-print .insight-card{min-width:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
 #print-area.report-print svg{max-width:100%!important;height:auto!important}
@@ -389,12 +401,15 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 #print-area.dashboard-print .cash-grid .kpi-label{font-size:7px!important;line-height:1.1!important;letter-spacing:0!important;margin:0 0 2px!important;white-space:normal!important;overflow-wrap:anywhere!important}
 #print-area.dashboard-print .cash-grid .kpi-value{font-size:12px!important;line-height:1.08!important;letter-spacing:-.15px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
 @media print{
-  @page{size:A4 portrait;margin:5mm}
+  /* Every report uses the same wide dashboard canvas: it prevents right-edge
+     truncation on ledger, vendor and customer tables while retaining colours. */
+  @page{size:A4 landscape;margin:5mm}
   html,body{background:#fff!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;display:block!important;overflow:visible!important}
   body > :not(#print-area){display:none!important}
   #print-area,#print-area *{visibility:visible}
   #print-area{display:block!important;position:static!important;left:auto;top:auto;width:auto!important;max-width:100%!important;margin:0!important;padding:0!important;color:#111827;overflow:visible!important}
   .no-print{display:none!important}
+  #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   #print-area table{width:100%;border-collapse:collapse;font-size:10px}
   #print-area thead{display:table-header-group}
   #print-area thead th{background:#1a237e!important;color:#fff!important;padding:7px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
