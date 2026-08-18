@@ -136,6 +136,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 #section-ledger #ledger-tbl{max-height:none;overflow:visible}
 #ledger-average-panel{clear:both;margin-top:16px}
 .ledger-summary-heading,.ledger-average-heading{margin:0 0 9px;font-size:13px;font-weight:800;color:#1a237e;text-transform:uppercase;letter-spacing:.5px}
+.ledger-summary-heading,.ledger-average-heading{display:flex;align-items:center;gap:8px}
+.ledger-heading-price{display:inline-flex;align-items:center;padding:2px 7px;border:1px solid #9db7e8;border-radius:5px;background:#eef4ff;color:#1a237e;font:800 10px Georgia,'Times New Roman',serif;letter-spacing:.1px;line-height:1.15;text-transform:none;white-space:nowrap}
+.ledger-average-heading .ledger-heading-price{border-color:#9ed5ad;background:linear-gradient(135deg,#f1fff4,#d8f6e0);color:#166534}
 .ledger-view-table tfoot .ledger-avg-row td{background:#eef0fa;font-weight:600;border-top:1px solid #c5cae9}
 .preset-dates select{border:1.5px solid #c9b98f;border-radius:4px;padding:5px 8px;font-size:12px;background:#fffdf5;color:#c2610c;font-weight:700}
 thead th{background:#212121;color:#fff;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
@@ -426,6 +429,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.daily-book-print #ledger-summary,#print-area.daily-book-print #ledger-average-summary{display:grid!important;grid-template-columns:repeat(8,minmax(0,1fr))!important;grid-auto-rows:1fr!important;gap:2.3mm!important;margin:0!important}
   #print-area.daily-book-print #ledger-average-panel{clear:both!important;margin:2.6mm 0 0!important}
   #print-area.daily-book-print .ledger-summary-heading,#print-area.daily-book-print .ledger-average-heading{font-family:Georgia,'Times New Roman',serif;font-size:9px!important;font-weight:900!important;color:#1a237e!important;text-transform:uppercase;letter-spacing:.45px;margin:0 0 1.8mm!important}
+  #print-area.daily-book-print .ledger-summary-heading,#print-area.daily-book-print .ledger-average-heading{display:flex!important;align-items:center!important;gap:1.5mm!important}
+  #print-area.daily-book-print .ledger-heading-price{padding:.7mm 1.2mm!important;border:1px solid #9db7e8!important;border-radius:1.4mm!important;background:#eef4ff!important;color:#1a237e!important;font:800 7px Georgia,'Times New Roman',serif!important;letter-spacing:.05px!important;line-height:1.1!important;text-transform:none!important;white-space:nowrap!important}
+  #print-area.daily-book-print .ledger-average-heading .ledger-heading-price{border-color:#9ed5ad!important;background:#d8f6e0!important;color:#166534!important}
   #print-area.daily-book-print .kpi{min-width:0!important;min-height:0!important;padding:2.1mm 2.3mm!important;border-radius:3mm!important;border:1px solid #d97706!important;border-top:3px solid #d97706!important;background:#fff7ed!important;box-shadow:none!important;break-inside:avoid!important;page-break-inside:avoid!important}
   #print-area.daily-book-print .kpi.green{background:#e8f5e9!important;border-color:#2e7d32!important;border-top-color:#2e7d32!important}
   #print-area.daily-book-print .kpi.blue{background:#e3f2fd!important;border-color:#1565c0!important;border-top-color:#1565c0!important}
@@ -434,7 +440,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.daily-book-print .kpi.purple{background:#f3e5f5!important;border-color:#6a1b9a!important;border-top-color:#6a1b9a!important}
   #print-area.daily-book-print .kpi-label{font-size:5.7px!important;line-height:1.15!important;color:#344054!important;letter-spacing:.28px!important;margin:0 0 1mm!important;white-space:normal!important}
   #print-area.daily-book-print .kpi-value{font-size:10px!important;line-height:1.1!important;letter-spacing:-.2px!important;color:#111827!important;white-space:nowrap!important;word-break:normal!important}
-  /* Daily Book has 17 numeric columns. Print it landscape and never replace a value with an ellipsis. */
+  /* Daily Book has 18 numeric columns. Print it landscape and never replace a value with an ellipsis. */
   #print-area.daily-book-print{width:100%!important;max-width:none!important}
   #print-area.daily-book-print .ledger-view-table{table-layout:auto!important;width:100%!important;min-width:0!important;font-family:Consolas,Menlo,'Courier New',monospace!important;font-size:5.4px!important;line-height:1.12!important;font-variant-numeric:tabular-nums}
   #print-area.daily-book-print .ledger-view-table th,#print-area.daily-book-print .ledger-view-table td{width:auto!important;min-width:0!important;overflow:visible!important;text-overflow:clip!important;white-space:nowrap!important;padding:1.5px!important;letter-spacing:-.3px!important}
@@ -1017,10 +1023,10 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
       <div class="preset-dates"><label>From:</label><input type="date" id="ledger-from" onchange="clearPresetBtns('ledger')"><label>To:</label><input type="date" id="ledger-to" onchange="clearPresetBtns('ledger')"><button class="pbtn" onclick="loadLedgerRange()">Go</button></div>
       <button class="print-btn" onclick="printDailyBook()">Print / PDF</button>
     </div>
-    <div class="ledger-summary-heading">Total / Period</div>
+    <div class="ledger-summary-heading">Total / Period <span id="ledger-period-avg-price" class="ledger-heading-price">Avg Price —</span></div>
     <div id="ledger-summary" class="kpi-row" style="margin-bottom:12px"></div>
     <div class="tbl-wrap" id="ledger-tbl"></div>
-    <div id="ledger-average-panel"><div class="ledger-average-heading">Average / Day</div><div id="ledger-average-summary" class="kpi-row"></div></div>
+    <div id="ledger-average-panel"><div class="ledger-average-heading">Average / Day <span id="ledger-average-avg-price" class="ledger-heading-price">Avg Price —</span></div><div id="ledger-average-summary" class="kpi-row"></div></div>
   </div>
 </div>
 
@@ -3865,6 +3871,10 @@ function renderLedgerView(data){
   const per=(n,d)=>d?fmtINR2(n/d):'—';
   const tProfit=_num(t.sale_amount)-_num(t.expenses);
   const _aProfit=_sum('sale_amount')-_sum('expenses');
+  const _avgPrice=(sales,qty)=>qty?fmtINR2(sales/qty):'—';
+  const rangeAvgPrice=_avgPrice(_num(t.sale_amount),_num(t.qty_mt));
+  document.getElementById('ledger-period-avg-price').textContent='Avg Price '+rangeAvgPrice;
+  document.getElementById('ledger-average-avg-price').textContent='Avg Price '+rangeAvgPrice;
   document.getElementById('ledger-summary').innerHTML=`
     <div class="kpi purple"><div class="kpi-label">Sale Tonne</div><div class="kpi-value">${fmtNum(t.qty_mt||0,2)}</div></div>
     <div class="kpi green"><div class="kpi-label">Spot Sale Bank</div><div class="kpi-value">${fmtINR(t.spot_sale_bank||0)}</div></div>
@@ -3901,7 +3911,7 @@ function renderLedgerView(data){
     <div class="kpi green"><div class="kpi-label">Avg Profit / BI</div><div class="kpi-value">${per(_aProfit,_sum('boulder_input_mt'))}</div></div>
     <div class="kpi purple"><div class="kpi-label">Avg Stock in Plant</div><div class="kpi-value">${fmtNum(_avgOf(_stockInPlant),2)} MT</div></div>
   `;
-  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Repay Cash</th><th>Repay Bank</th><th>Exp Cash</th><th>Exp Bank</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Stock in Plant</th><th>Sale Tonne</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
+  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Repay Cash</th><th>Repay Bank</th><th>Exp Cash</th><th>Exp Bank</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Stock in Plant</th><th>Sale Tonne</th><th>Avg Price</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
@@ -3919,13 +3929,14 @@ function renderLedgerView(data){
       <td>${fmtNum(r.boulder_input_mt||0,2)} MT</td>
       <td>${fmtNum(_stockInPlant(r),2)} MT</td>
       <td>${fmtNum(r.qty_mt||0,2)}</td>
+      <td>${_avgPrice(_num(r.sale_amount),_num(r.qty_mt))}</td>
       <td>${per(_num(r.expenses),_num(r.qty_mt))}</td>
       <td>${per(_num(r.expenses),_num(r.boulder_input_mt))}</td>
       <td>${per(profit,_num(r.qty_mt))}</td>
       <td>${per(profit,_num(r.boulder_input_mt))}</td>
     </tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="18" class="empty">No Daily Book data for this month</td></tr>';
+  if(!rows.length)html+='<tr><td colspan="19" class="empty">No Daily Book data for this month</td></tr>';
   html+=`</tbody><tfoot><tr class="ledger-avg-row">
     <td><strong>Average / Day</strong></td>
     <td>${fmtINR2(_avg('sale_amount'))}</td>
@@ -3941,6 +3952,7 @@ function renderLedgerView(data){
     <td>${fmtNum(_avg('boulder_input_mt'),2)} MT</td>
     <td>${fmtNum(_avgOf(_stockInPlant),2)} MT</td>
     <td>${fmtNum(_avg('qty_mt'),2)}</td>
+    <td>${rangeAvgPrice}</td>
     <td>${per(_sum('expenses'),_sum('qty_mt'))}</td>
     <td>${per(_sum('expenses'),_sum('boulder_input_mt'))}</td>
     <td>${per(_aProfit,_sum('qty_mt'))}</td>
@@ -3960,6 +3972,7 @@ function renderLedgerView(data){
     <td><strong>${fmtNum(t.boulder_input_mt||0,2)} MT</strong></td>
     <td><strong>${fmtNum(_stockInPlant(t),2)} MT</strong></td>
     <td><strong>${fmtNum(t.qty_mt||0,2)}</strong></td>
+    <td><strong>${rangeAvgPrice}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.qty_mt))}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.boulder_input_mt))}</strong></td>
     <td><strong>${per(tProfit,_num(t.qty_mt))}</strong></td>
