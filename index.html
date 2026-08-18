@@ -3901,7 +3901,7 @@ function renderLedgerView(data){
     <div class="kpi green"><div class="kpi-label">Avg Profit / BI</div><div class="kpi-value">${per(_aProfit,_sum('boulder_input_mt'))}</div></div>
     <div class="kpi purple"><div class="kpi-label">Avg Sale Tonne</div><div class="kpi-value">${fmtNum(_avg('qty_mt'),2)}</div></div>
   `;
-  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Repay Cash</th><th>Repay Bank</th><th>Exp Cash</th><th>Exp Bank</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Sale Tonne</th><th>Stock in Plant</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
+  let html='<table class="ledger-view-table"><thead><tr><th>Date</th><th>Total Sale</th><th>Spot Cash</th><th>Spot Bank</th><th>Credit Sale</th><th>Repay Cash</th><th>Repay Bank</th><th>Exp Cash</th><th>Exp Bank</th><th>Cash in Office</th><th>Bank Balance</th><th>Boulders Input</th><th>Stock in Plant</th><th>Sale Tonne</th><th title="Expenses per Tonne Sale">Exp/MT</th><th title="Expenses per Boulder Input">Exp/BI</th><th title="Profit per Tonne Sale">PT/MT</th><th title="Profit per Boulder Input">P/BI</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const profit=_num(r.sale_amount)-_num(r.expenses);
     html+=`<tr>
@@ -3917,8 +3917,8 @@ function renderLedgerView(data){
       <td><strong>${fmtINR(r.cash_balance_office||0)}</strong></td>
       <td><strong>${fmtINR(r.bank_balance||0)}</strong></td>
       <td>${fmtNum(r.boulder_input_mt||0,2)} MT</td>
-      <td>${fmtNum(r.qty_mt||0,2)}</td>
       <td>${fmtNum(_stockInPlant(r),2)} MT</td>
+      <td>${fmtNum(r.qty_mt||0,2)}</td>
       <td>${per(_num(r.expenses),_num(r.qty_mt))}</td>
       <td>${per(_num(r.expenses),_num(r.boulder_input_mt))}</td>
       <td>${per(profit,_num(r.qty_mt))}</td>
@@ -3939,8 +3939,8 @@ function renderLedgerView(data){
     <td>${fmtINR(_avg('cash_balance_office'))}</td>
     <td>${fmtINR(_avg('bank_balance'))}</td>
     <td>${fmtNum(_avg('boulder_input_mt'),2)} MT</td>
-    <td>${fmtNum(_avg('qty_mt'),2)}</td>
     <td>${fmtNum(_avgOf(_stockInPlant),2)} MT</td>
+    <td>${fmtNum(_avg('qty_mt'),2)}</td>
     <td>${per(_sum('expenses'),_sum('qty_mt'))}</td>
     <td>${per(_sum('expenses'),_sum('boulder_input_mt'))}</td>
     <td>${per(_aProfit,_sum('qty_mt'))}</td>
@@ -3958,8 +3958,8 @@ function renderLedgerView(data){
     <td><strong>${fmtINR(t.cash_balance_office||0)}</strong></td>
     <td><strong>${fmtINR(t.bank_balance||0)}</strong></td>
     <td><strong>${fmtNum(t.boulder_input_mt||0,2)} MT</strong></td>
-    <td><strong>${fmtNum(t.qty_mt||0,2)}</strong></td>
     <td><strong>${fmtNum(_stockInPlant(t),2)} MT</strong></td>
+    <td><strong>${fmtNum(t.qty_mt||0,2)}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.qty_mt))}</strong></td>
     <td><strong>${per(_num(t.expenses),_num(t.boulder_input_mt))}</strong></td>
     <td><strong>${per(tProfit,_num(t.qty_mt))}</strong></td>
