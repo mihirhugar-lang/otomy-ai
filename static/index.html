@@ -68,6 +68,8 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .section{display:none}.section.active{display:block}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .page-header h2{font-size:18px;font-weight:700;color:#1a237e}
+.vendor-range-status{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;white-space:nowrap}
+.vendor-range-status.loading{color:#b45309}.vendor-range-status.ready{color:#2e7d32}.vendor-range-status.error{color:#c62828}
 
 /* ── KPI Cards ── */
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
@@ -860,8 +862,8 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <button class="pbtn" onclick="preset('vendors','fytd',this)">This FY</button>
     <button class="pbtn" onclick="preset('vendors','lastfy',this)">Last FY</button>
     <div class="preset-dates">
-      <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors')">
-      <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors')"> <label>Day:</label><input type="date" id="v-day" onchange="setDay('vendors',this.value)">
+      <label>From:</label><input type="date" id="v-from" onchange="clearPresetBtns('vendors');loadVendors()">
+      <label>To:</label><input type="date" id="v-to" onchange="clearPresetBtns('vendors');loadVendors()"> <label>Day:</label><input type="date" id="v-day" onchange="setDay('vendors',this.value)">
     </div>
     <button class="print-btn" onclick="printPageReport('Vendors — Payable Balances','section-vendors')">Print / PDF</button>
   </div>
@@ -873,7 +875,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi blue"><div class="kpi-label">Purchased in Range</div><div class="kpi-value" id="v-range-received">—</div></div>
   </div>
   <div class="card">
-    <h3>Vendor List — Payable Balances &amp; FIFO Due Aging</h3>
+    <h3>Vendor List — Payable Balances &amp; FIFO Due Aging <span id="vendor-range-status" class="vendor-range-status" role="status" aria-live="polite"></span></h3>
     <div class="tbl-wrap" id="vend-tbl"></div>
   </div>
   <div class="card" id="vend-ledger-card" style="display:none">
@@ -3667,20 +3669,38 @@ function _vendorRangeKey(row){
   if(vendorId!==null&&vendorId!==undefined&&String(vendorId).trim())return `id:${vendorId}`;
   return `name:${String(row?.vendor_name||row?.name||'').trim().toUpperCase()}`;
 }
+let _vendorLoadToken=0;
+function _vendorRangeLabel(from,to){
+  const fmt=value=>{const d=new Date(`${value}T00:00:00`);return Number.isNaN(d.getTime())?value:d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});};
+  return `${fmt(from)} – ${fmt(to)}`;
+}
+function _setVendorRangeStatus(state,from,to){
+  const el=document.getElementById('vendor-range-status');
+  if(!el)return;
+  const label=_vendorRangeLabel(from,to);
+  el.className=`vendor-range-status ${state}`;
+  el.textContent=state==='loading'?`Loading ${label}…`:state==='error'?`Could not load ${label}`:`Showing ${label}`;
+}
 async function loadVendors(){
+  const loadToken=++_vendorLoadToken;
+  const asOf=document.getElementById('v-to')?.value||today();
+  const from=document.getElementById('v-from')?.value||asOf;
+  _setVendorRangeStatus('loading',from,asOf);
   try{
-    const asOf=document.getElementById('v-to')?.value||today();
-    const from=document.getElementById('v-from')?.value||asOf;
-    const rows=await api(`/api/vendors/?active_only=false&as_of=${asOf}`);
-    const rangePayments=await api(`/api/vendors/payments/?from_date=${from}&to_date=${asOf}`);
+    const [rows,rangePayments,pay]=await Promise.all([
+      api(`/api/vendors/?active_only=false&as_of=${asOf}`),
+      api(`/api/vendors/payments/?from_date=${from}&to_date=${asOf}`),
+      api(`/api/vendors/payables?as_of=${asOf}`),
+    ]);
+    if(loadToken!==_vendorLoadToken)return;
     const rangePaidByVendor=new Map();
     rangePayments.forEach(payment=>{
       const key=_vendorRangeKey(payment);
       rangePaidByVendor.set(key,(rangePaidByVendor.get(key)||0)+_num(payment.amount));
     });
     _vendors=rows;
-    const pay=await api(`/api/vendors/payables?as_of=${asOf}`);
     const rangePurchasedByVendor=await _vendorPurchasesInRange(rows.filter(row=>row.active),from,asOf);
+    if(loadToken!==_vendorLoadToken)return;
     const rangePurchased=Array.from(rangePurchasedByVendor.values()).reduce((sum,amount)=>sum+amount,0);
     let totPay=pay.reduce((s,r)=>s+r.payable,0);
     document.getElementById('v-total').textContent=rows.length;
@@ -3720,7 +3740,8 @@ async function loadVendors(){
     html+='</tbody></table>';
     document.getElementById('vend-tbl').innerHTML=html;
     fillVendSelect('vp-vend');
-  }catch(e){flash(e.message,false);}
+    _setVendorRangeStatus('ready',from,asOf);
+  }catch(e){if(loadToken===_vendorLoadToken){_setVendorRangeStatus('error',from,asOf);flash(e.message,false);}}
 }
 async function showVendLedger(id,name){
   try{
