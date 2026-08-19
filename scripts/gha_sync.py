@@ -4314,6 +4314,11 @@ def write_snapshot_bundle(
     write_snapshot(f"/api/vendors/?active_only=false&as_of={today}", vendors_full)
     write_snapshot("/api/vendors/payables", vendors_payables)
     write_snapshot(f"/api/vendors/payables?as_of={today}", vendors_payables)
+    # The Vendor page groups this complete, already-synced ledger source by
+    # its selected date range.  Publishing it once avoids a browser request
+    # for every supplier ledger while leaving the individual ledger snapshots
+    # intact for the on-demand detail view.
+    write_snapshot("/api/vendors/ledger-summary", {"ledgers": vendor_ledgers})
     write_snapshot("/api/bank/accounts", bank_accounts)
     for account in bank_accounts:
         write_snapshot(f"/api/bank/accounts/{account['id']}/statement", seed_bank_statements.get(str(account["id"]), []))
