@@ -3640,11 +3640,25 @@ async function addVendor(){
 }
 async function _vendorPurchasesInRange(vendors,from,to){
   const inRange=row=>{const d=String(row.date||'').slice(0,10);return d>=from&&d<=to;};
-  const purchases=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
-    const ledger=await api(`/api/vendors/ledger/${row.id}`);
-    return [String(row.id),(ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0)];
-  }));
-  return new Map(purchases);
+  try{
+    // One R2 summary read replaces one supplier-ledger request per vendor.
+    // It uses the same canonical ledger rows and range formula as before.
+    const summary=await api('/api/vendors/ledger-summary');
+    const ledgers=summary?.ledgers||{};
+    return new Map(vendors.filter(row=>Number.isInteger(Number(row.id))).map(row=>{
+      const entries=ledgers[String(row.id)]||[];
+      const amount=entries.filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0);
+      return [String(row.id),amount];
+    }));
+  }catch(_summaryError){
+    // Keep the prior exact path during the short interval before the first
+    // data sync publishes the new summary object.
+    const purchases=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
+      const ledger=await api(`/api/vendors/ledger/${row.id}`);
+      return [String(row.id),(ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0)];
+    }));
+    return new Map(purchases);
+  }
 }
 function _vendorRangeKey(row){
   const supplierId=String(row?.erp_supplier_id||row?.supplier_id||'').trim();
