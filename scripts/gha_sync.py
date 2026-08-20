@@ -1218,6 +1218,50 @@ def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
     return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
 
+def fetch_fuel_received(sess, financial_year_start, today):
+    """Supplier-wise fuel receipts from Loctell, limited to report columns through Received By."""
+    start = int(datetime.combine(financial_year_start, datetime.min.time(), tzinfo=IST).timestamp() * 1000)
+    end = int(datetime.now(IST).timestamp() * 1000)
+    url = (
+        f"{ERP_BASE}/restserver/rest/fuel/getFuelReceivedReportsWithPagination/"
+        f"{start}/{end}/-1/0/-1/-1/-1/-1"
+    )
+    try:
+        payload = _request_json_with_retry(
+            sess, url, params={"page": 0, "size": 2000}, timeout=35,
+            label=f"fuel received {financial_year_start} to {today}",
+        )
+    except Exception as exc:
+        raise ErpFetchError(f"fuel received fetch failed: {exc}") from exc
+
+    result = []
+    for row in (payload.get("data", []) if isinstance(payload, dict) else []):
+        received_on = _loctell_ist_date(row.get("createdDate"))
+        if received_on is None:
+            continue
+        try:
+            received_at = str(row.get("createdDate") or "").replace("Z[Etc/UTC]", "+00:00").replace("[Etc/UTC]", "+00:00")
+            if received_at.endswith("Z"):
+                received_at = f"{received_at[:-1]}+00:00"
+            received_label = datetime.fromisoformat(received_at).astimezone(IST).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            received_label = str(received_on)
+        qty = _num(row.get("qty"))
+        rate = _num(row.get("rate"))
+        result.append({
+            "date": str(received_on),
+            "received_date": received_label,
+            "supplier_name": row.get("supplierName") or "—",
+            "camp": row.get("campName") or "—",
+            "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "—"),
+            "quantity": round(qty, 2),
+            "unit_price": round(rate, 2),
+            "amount": round(qty * rate, 2),
+            "received_by": (row.get("createdBy") or {}).get("userFullName") or "—",
+        })
+    return sorted(result, key=lambda row: row["received_date"], reverse=True)
+
+
 def fetch_boulder_rows(sess, from_d, to_d):
     days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
 
@@ -4310,6 +4354,7 @@ def write_snapshot_bundle(
     machines_rows,
     odometer_readings,
     vmi_loader_fuel_issues,
+    fuel_received_rows,
     boulder_rows,
     iot_rows,
     cash_rows,
@@ -4484,6 +4529,7 @@ def write_snapshot_bundle(
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
     write_snapshot("/api/machines/odometer", odometer_readings)
     write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
+    write_snapshot("/api/machines/fuel-received", fuel_received_rows)
     write_snapshot("/api/customers/", customers_full)
     write_snapshot("/api/customers/?active_only=false", customers_full)
     write_snapshot(f"/api/customers/?active_only=false&as_of={today}", customers_full)
@@ -4935,6 +4981,7 @@ def main():
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
         f_odometer = pool.submit(fetch_live_odometer_readings, _clone_sess(sess), today)
         f_vmi_fuel = pool.submit(fetch_vmi_loader_fuel_issued, _clone_sess(sess), financial_year_start, today)
+        f_fuel_received = pool.submit(fetch_fuel_received, _clone_sess(sess), financial_year_start, today)
 
         fresh_sales, sales_fresh = fetch_rows_or_saved(
             f_sales, "sales", saved_stream_rows("sales", sync_start, today, "sales_all.json")
@@ -4987,6 +5034,12 @@ def main():
             # Do not carry a stale fuel total into a new selected range.
             print(f"  VMI Loader fuel issues unavailable: {exc}")
             vmi_loader_fuel_issues = []
+        try:
+            fuel_received_rows = f_fuel_received.result()
+        except ErpFetchError as exc:
+            # This report is displayed as an operational source table only.
+            print(f"  fuel received report unavailable: {exc}")
+            fuel_received_rows = []
 
     # Capture per-ticket payment split (ERP ListSale Final Cash/Credit/UPI) onto fresh sales.
     try:
@@ -5921,6 +5974,7 @@ def main():
         machines_rows,
         odometer_readings,
         vmi_loader_fuel_issues,
+        fuel_received_rows,
         boulder_rows,
         iot_rows,
         cash_rows,

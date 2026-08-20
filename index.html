@@ -1000,9 +1000,15 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   </div>
 
   <div class="card">
-    <h3>Live Machine Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— live Loctell odometer · fuel for selected period</span></h3>
+    <h3>Live Machine Readings <span id="machines-period" style="font-size:12px;font-weight:400;color:#c2610c"></span></h3>
     <div class="tbl-wrap" id="machines-tbl"></div>
     <div id="machines-pager" class="no-print"></div>
+  </div>
+
+  <div class="card">
+    <h3>Fuel Received <span id="fuel-received-period" style="font-size:12px;font-weight:400;color:#c2610c"></span></h3>
+    <div class="tbl-wrap" id="fuel-received-tbl"></div>
+    <div id="fuel-received-pager" class="no-print"></div>
   </div>
 
 </div>
@@ -1177,6 +1183,7 @@ async function snapshotFetch(url){
     '/api/sync/erp/cashbook',
     '/api/machines/odometer',
     '/api/machines/fuel-issued',
+    '/api/machines/fuel-received',
     '/api/customers/',
     '/api/customers/outstanding',
     '/api/vendors/',
@@ -2328,7 +2335,7 @@ function opsPreset(p,btn){
   document.getElementById('op-to').value=t;
   document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));
   // Reset pages for all ops sections
-  ['boulders','machines'].forEach(k=>{_page[k]=1;});
+  ['boulders','machines','fuelReceived'].forEach(k=>{_page[k]=1;});
   btn.classList.add('act');
   opsReload();
 }
@@ -2640,6 +2647,11 @@ function pdfFullTableForId(id){
     const fuelReading=_machineFuelIssueReadingForRange(from,to);
     return pdfTableBlock('Live Machine Readings',['Vehicle Type','End Reading','Start Reading','Difference','Fuel Issued (L)','Fuel Issue Reading'],rows.map(r=>[r.vehicle_type,r.end_reading,r.start_reading,r.difference,r.vehicle_type==='VMI Loader'?fuel:'—',r.vehicle_type==='VMI Loader'?fuelReading:'—']));
   }
+  if(id==='fuel-received-tbl'){
+    const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
+    const rows=(_allData.fuelReceived||[]).filter(r=>r.date>=from&&r.date<=to);
+    return pdfTableBlock('Fuel Received',['Received Date','Supplier Name','Camp','Fuel Type','Quantity','Unit Price','Amount','Received By'],rows.map(r=>[r.received_date,r.supplier_name,r.camp,r.fuel_type,r.quantity,fmtINR(r.unit_price),fmtINR(r.amount),r.received_by]));
+  }
   if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
     const channel=id==='erp-cash-tbl'?'cash':'bank';
     const book=_cashbook[channel];if(!book)return null;
@@ -2659,7 +2671,7 @@ function pdfDataTablesForRoot(root){
   const direct=root?.id?pdfFullTableForId(root.id):null;
   if(direct)return [direct];
   const ids=root?.id==='section-bank'?['erp-bank-tbl','erp-cash-tbl']
-    :root?.id==='section-ops'?['boulders-tbl','machines-tbl']
+    :root?.id==='section-ops'?['boulders-tbl','machines-tbl','fuel-received-tbl']
     :[...(root?.querySelectorAll?.('.tbl-wrap[id]')||[])].map(el=>el.id);
   return ids.map(pdfFullTableForId).filter(Boolean);
 }
@@ -4098,8 +4110,8 @@ function _machineTableHtml(from,to,includeFuelIssueReading=false){
 async function loadMachines(dashboardFrom,dashboardTo){
   if(dashboardFrom&&dashboardTo){_machineDashboardRange.from=dashboardFrom;_machineDashboardRange.to=dashboardTo;}
   try{
-    const [rows,fuelRows]=await Promise.all([api('/api/machines/odometer'),api('/api/machines/fuel-issued')]);
-    _allData.machines=rows;_allData.machineFuel=fuelRows;_page.machines=_page.machines||1;
+    const [rows,fuelRows,fuelReceivedRows]=await Promise.all([api('/api/machines/odometer'),api('/api/machines/fuel-issued'),api('/api/machines/fuel-received')]);
+    _allData.machines=rows;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
   }catch(e){
@@ -4109,9 +4121,23 @@ async function loadMachines(dashboardFrom,dashboardTo){
 function renderMachines(){
   const rows=_allData.machines||[];
   const opFrom=document.getElementById('op-from')?.value,opTo=document.getElementById('op-to')?.value;
+  const period=opFrom&&opTo?`— ${opFrom} to ${opTo}`:'';
+  const machinesPeriod=document.getElementById('machines-period');if(machinesPeriod)machinesPeriod.textContent=period;
+  const receivedPeriod=document.getElementById('fuel-received-period');if(receivedPeriod)receivedPeriod.textContent=period;
   const ops=document.getElementById('machines-tbl');if(ops)ops.innerHTML=_machineTableHtml(opFrom,opTo,true);
   const dash=document.getElementById('dash-machine-odometer');if(dash)dash.innerHTML=_machineTableHtml(_machineDashboardRange.from,_machineDashboardRange.to);
   const pager=document.getElementById('machines-pager');if(pager)pager.innerHTML=pagerHTML('machines',rows.length);
+  renderFuelReceived();
+}
+function renderFuelReceived(){
+  const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
+  const rows=(_allData.fuelReceived||[]).filter(r=>r.date>=from&&r.date<=to),cur=_page.fuelReceived||1,size=pageSizeFor('fuelReceived',rows.length),slice=rows.slice((cur-1)*size,cur*size);
+  let html='<table><thead><tr><th>Received Date</th><th>Supplier Name</th><th>Camp</th><th>Fuel Type</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Received By</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td>${esc(r.received_date)}</td><td><strong>${esc(r.supplier_name)}</strong></td><td>${esc(r.camp)}</td><td>${esc(r.fuel_type)}</td><td>${fmtNum(r.quantity,2)}</td><td>${fmtINR(r.unit_price)}</td><td><strong>${fmtINR(r.amount)}</strong></td><td>${esc(r.received_by)}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No fuel received in the selected period</td></tr>';
+  html+='</tbody></table>';
+  const table=document.getElementById('fuel-received-tbl');if(table)table.innerHTML=html;
+  const pager=document.getElementById('fuel-received-pager');if(pager)pager.innerHTML=pagerHTML('fuelReceived',rows.length);
 }
 async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
