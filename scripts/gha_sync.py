@@ -4702,10 +4702,14 @@ def main():
             raise
 
     def fetch_vendor_payments_or_saved():
+        # Vendor-page MTD totals must include the whole live month.  A short
+        # recent delta alone can omit an early-month supplier payment that was
+        # added or corrected after its original archive window.
+        vendor_payment_start = min(sync_start, month_start)
         try:
-            return fetch_vendor_payments(sess, creditors, sync_start, today), True
+            return fetch_vendor_payments(sess, creditors, vendor_payment_start, today), True
         except ErpFetchError as e:
-            saved_rows = saved_vendor_payment_rows(sync_start, today)
+            saved_rows = saved_vendor_payment_rows(vendor_payment_start, today)
             if saved_rows:
                 print(f"  vendor payments fetch failed; using archived non-empty rows ({len(saved_rows)} rows): {e}")
                 return saved_rows, False
