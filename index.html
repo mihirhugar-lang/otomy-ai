@@ -2637,7 +2637,8 @@ function pdfFullTableForId(id){
     const rows=_allData.machines||[];
     const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
     const fuel=_machineFuelForRange(from,to);
-    return pdfTableBlock('Live Machine Readings',['Vehicle Type','End Reading','Start Reading','Difference','Fuel Issued (L)'],rows.map(r=>[r.vehicle_type,r.end_reading,r.start_reading,r.difference,r.vehicle_type==='VMI Loader'?fuel:'—']));
+    const fuelReading=_machineFuelIssueReadingForRange(from,to);
+    return pdfTableBlock('Live Machine Readings',['Vehicle Type','End Reading','Start Reading','Difference','Fuel Issued (L)','Fuel Issue Reading'],rows.map(r=>[r.vehicle_type,r.end_reading,r.start_reading,r.difference,r.vehicle_type==='VMI Loader'?fuel:'—',r.vehicle_type==='VMI Loader'?fuelReading:'—']));
   }
   if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
     const channel=id==='erp-cash-tbl'?'cash':'bank';
@@ -4070,17 +4071,28 @@ async function addMachine(){
 }
 const _machineDashboardRange={from:'',to:''};
 function _machineFuelForRange(from,to){
-  if(!from||!to)return null;
-  return Math.round((_allData.machineFuel||[]).filter(row=>row.date>=from&&row.date<=to).reduce((sum,row)=>sum+_num(row.fuel_issued),0)*100)/100;
+  return _machineFuelStatsForRange(from,to).liters;
 }
-function _machineTableHtml(from,to){
+function _machineFuelIssueReadingForRange(from,to){
+  return _machineFuelStatsForRange(from,to).reading;
+}
+function _machineFuelStatsForRange(from,to){
+  if(!from||!to)return {liters:null,reading:null};
+  const rows=(_allData.machineFuel||[]).filter(row=>row.date>=from&&row.date<=to);
+  const liters=Math.round(rows.reduce((sum,row)=>sum+_num(row.fuel_issued),0)*100)/100;
+  const latest=rows.slice().sort((a,b)=>String(a.issued_at||a.date).localeCompare(String(b.issued_at||b.date))).pop();
+  return {liters,reading:latest?.fuel_issue_reading??null};
+}
+function _machineTableHtml(from,to,includeFuelIssueReading=false){
   const rows=_allData.machines||[],cur=_page.machines||1,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   const reading=v=>v==null?'—':fmtNum(v,2);
   const fuel=_machineFuelForRange(from,to);
+  const fuelReading=_machineFuelIssueReadingForRange(from,to);
   const fuelText=fuel==null?'—':`${fmtNum(fuel,2)} L`;
-  let html='<table><thead><tr><th>Vehicle Type</th><th>End Reading</th><th>Start Reading</th><th>Difference</th><th>Fuel Issued (L)</th></tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td><strong>${esc(r.vehicle_type)}</strong></td><td>${reading(r.end_reading)}</td><td>${reading(r.start_reading)}</td><td><strong>${reading(r.difference)}</strong></td><td>${r.vehicle_type==='VMI Loader'?fuelText:'—'}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="5" class="empty">No live Loctell machinery readings available</td></tr>';
+  const fuelReadingText=reading(fuelReading);
+  let html='<table><thead><tr><th>Vehicle Type</th><th>End Reading</th><th>Start Reading</th><th>Difference</th><th>Fuel Issued (L)</th>'+(includeFuelIssueReading?'<th>Fuel Issue Reading</th>':'')+'</tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td><strong>${esc(r.vehicle_type)}</strong></td><td>${reading(r.end_reading)}</td><td>${reading(r.start_reading)}</td><td><strong>${reading(r.difference)}</strong></td><td>${r.vehicle_type==='VMI Loader'?fuelText:'—'}</td>${includeFuelIssueReading?`<td>${r.vehicle_type==='VMI Loader'?fuelReadingText:'—'}</td>`:''}</tr>`;});
+  if(!slice.length)html+=`<tr><td colspan="${includeFuelIssueReading?6:5}" class="empty">No live Loctell machinery readings available</td></tr>`;
   return html+'</tbody></table>';
 }
 async function loadMachines(dashboardFrom,dashboardTo){
@@ -4097,7 +4109,7 @@ async function loadMachines(dashboardFrom,dashboardTo){
 function renderMachines(){
   const rows=_allData.machines||[];
   const opFrom=document.getElementById('op-from')?.value,opTo=document.getElementById('op-to')?.value;
-  const ops=document.getElementById('machines-tbl');if(ops)ops.innerHTML=_machineTableHtml(opFrom,opTo);
+  const ops=document.getElementById('machines-tbl');if(ops)ops.innerHTML=_machineTableHtml(opFrom,opTo,true);
   const dash=document.getElementById('dash-machine-odometer');if(dash)dash.innerHTML=_machineTableHtml(_machineDashboardRange.from,_machineDashboardRange.to);
   const pager=document.getElementById('machines-pager');if(pager)pager.innerHTML=pagerHTML('machines',rows.length);
 }

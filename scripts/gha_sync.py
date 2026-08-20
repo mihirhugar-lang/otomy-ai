@@ -1210,10 +1210,12 @@ def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
             continue
         result.append({
             "date": str(issued_on),
+            "issued_at": str(row.get("createdDate") or ""),
             "vehicle_type": "VMI Loader",
             "fuel_issued": round(abs(_num(row.get("qty"))), 2),
+            "fuel_issue_reading": round(_num(row.get("odometerReading")), 2) if row.get("odometerReading") is not None else None,
         })
-    return sorted(result, key=lambda row: row["date"])
+    return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
 
 def fetch_boulder_rows(sess, from_d, to_d):
