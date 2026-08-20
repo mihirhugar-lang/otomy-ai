@@ -1000,7 +1000,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   </div>
 
   <div class="card">
-    <h3>Machine Readings</h3>
+    <h3>Live Machine Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— live Loctell odometer · fuel for selected period</span></h3>
     <div class="tbl-wrap" id="machines-tbl"></div>
     <div id="machines-pager" class="no-print"></div>
   </div>
@@ -1175,6 +1175,8 @@ async function snapshotFetch(url){
     '/api/sync/erp/bank',
     '/api/sync/erp/cash',
     '/api/sync/erp/cashbook',
+    '/api/machines/odometer',
+    '/api/machines/fuel-issued',
     '/api/customers/',
     '/api/customers/outstanding',
     '/api/vendors/',
@@ -2633,7 +2635,9 @@ function pdfFullTableForId(id){
   }
   if(id==='machines-tbl'){
     const rows=_allData.machines||[];
-    return pdfTableBlock('Machine Readings',['Date','Machine','Start Hrs','End Hrs','Run Hrs','Production MT','Fuel L'],rows.map(r=>[r.date,r.machine_name,r.start_hours,r.end_hours,r.running_hours,r.production_mt,r.fuel_liters]));
+    const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
+    const fuel=_machineFuelForRange(from,to);
+    return pdfTableBlock('Live Machine Readings',['Vehicle Type','End Reading','Start Reading','Difference','Fuel Issued (L)'],rows.map(r=>[r.vehicle_type,r.end_reading,r.start_reading,r.difference,r.vehicle_type==='VMI Loader'?fuel:'—']));
   }
   if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
     const channel=id==='erp-cash-tbl'?'cash':'bank';
@@ -3306,8 +3310,10 @@ async function renderControlRoom(data){
     </div>
     <div class="card print-section" id="dash-bank-book-card"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Bank Book','dash-bank-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section" id="dash-cash-book-card"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Cash Book','dash-cash-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section" id="dash-machine-odometer-card"><h3 class="cashbook-title">⚙️ Live Machinery Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— live Loctell odometer · fuel for selected range</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Live Machinery Readings','dash-machine-odometer-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-machine-odometer" style="max-height:520px;overflow:auto"></div></div>
   `;
   await renderDashboardCashBooks(data.period.from,data.period.to);
+  loadMachines(data.period.from,data.period.to);
 }
 // ── Sales ──────────────────────────────────────────────────────────────────
 function calcSale(){document.getElementById('s-amt').value=((parseFloat(document.getElementById('s-qty').value)||0)*(parseFloat(document.getElementById('s-rate').value)||0)).toFixed(2);}
@@ -4062,25 +4068,38 @@ async function addMachine(){
   try{await api('/api/machines/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});flash('Reading saved!');['m-start','m-end','m-run','m-prod','m-fuel','m-notes'].forEach(id=>document.getElementById(id).value='');loadMachines();}
   catch(e){flash(e.message,false);}
 }
-async function loadMachines(){
-  const f=document.getElementById('op-from').value,t=document.getElementById('op-to').value;
-  if(!f||!t)return;
+const _machineDashboardRange={from:'',to:''};
+function _machineFuelForRange(from,to){
+  if(!from||!to)return null;
+  return Math.round((_allData.machineFuel||[]).filter(row=>row.date>=from&&row.date<=to).reduce((sum,row)=>sum+_num(row.fuel_issued),0)*100)/100;
+}
+function _machineTableHtml(from,to){
+  const rows=_allData.machines||[],cur=_page.machines||1,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
+  const reading=v=>v==null?'—':fmtNum(v,2);
+  const fuel=_machineFuelForRange(from,to);
+  const fuelText=fuel==null?'—':`${fmtNum(fuel,2)} L`;
+  let html='<table><thead><tr><th>Vehicle Type</th><th>End Reading</th><th>Start Reading</th><th>Difference</th><th>Fuel Issued (L)</th></tr></thead><tbody>';
+  slice.forEach(r=>{html+=`<tr><td><strong>${esc(r.vehicle_type)}</strong></td><td>${reading(r.end_reading)}</td><td>${reading(r.start_reading)}</td><td><strong>${reading(r.difference)}</strong></td><td>${r.vehicle_type==='VMI Loader'?fuelText:'—'}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="5" class="empty">No live Loctell machinery readings available</td></tr>';
+  return html+'</tbody></table>';
+}
+async function loadMachines(dashboardFrom,dashboardTo){
+  if(dashboardFrom&&dashboardTo){_machineDashboardRange.from=dashboardFrom;_machineDashboardRange.to=dashboardTo;}
   try{
-    const rows=await api(`/api/machines/?from_date=${f}&to_date=${t}`);
-    _allData.machines=rows;_page.machines=_page.machines||1;
+    const [rows,fuelRows]=await Promise.all([api('/api/machines/odometer'),api('/api/machines/fuel-issued')]);
+    _allData.machines=rows;_allData.machineFuel=fuelRows;_page.machines=_page.machines||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
-  }catch(e){}
+  }catch(e){
+    ['machines-tbl','dash-machine-odometer'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
+  }
 }
 function renderMachines(){
-  applyTableRangeMode('machines','machines-tbl');
-  const rows=_allData.machines,cur=_page.machines,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let html='<table><thead><tr><th>Date</th><th>Machine</th><th>Start Hrs</th><th>End Hrs</th><th>Run Hrs</th><th>Production MT</th><th>Fuel L</th></tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.machine_name}</td><td>${r.start_hours}</td><td>${r.end_hours}</td><td><strong>${r.running_hours}</strong></td><td>${r.production_mt}</td><td>${r.fuel_liters}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="8" class="empty">No readings</td></tr>';
-  html+=`</tbody></table>`;
-  document.getElementById('machines-tbl').innerHTML=html;
-  document.getElementById('machines-pager').innerHTML=pagerHTML('machines',rows.length);
+  const rows=_allData.machines||[];
+  const opFrom=document.getElementById('op-from')?.value,opTo=document.getElementById('op-to')?.value;
+  const ops=document.getElementById('machines-tbl');if(ops)ops.innerHTML=_machineTableHtml(opFrom,opTo);
+  const dash=document.getElementById('dash-machine-odometer');if(dash)dash.innerHTML=_machineTableHtml(_machineDashboardRange.from,_machineDashboardRange.to);
+  const pager=document.getElementById('machines-pager');if(pager)pager.innerHTML=pagerHTML('machines',rows.length);
 }
 async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
