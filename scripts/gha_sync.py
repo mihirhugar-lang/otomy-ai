@@ -1106,6 +1106,116 @@ def fetch_boulders(sess, from_d, to_d):
     return result
 
 
+_ODOMETER_TARGETS = [
+    ("Jaw", "JAW"),
+    ("Cone", "CONE"),
+    ("VSI", "VSI"),
+    ("Hitachi", "HITACHI"),
+    ("VMI Loader", "VMI LOADER"),
+]
+
+
+def _odometer_key(value):
+    return " ".join(str(value or "").upper().split())
+
+
+def fetch_live_odometer_readings(sess, today):
+    """Today's five live machinery odometers from Loctell's official report.
+
+    This is intentionally not archived.  It is a current operating reading,
+    shown only for Jaw, Cone, VSI, Hitachi and VMI Loader.
+    """
+    now = datetime.now(IST)
+    start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    end = int(now.timestamp() * 1000)
+    try:
+        rows = _request_json_with_retry(
+            sess,
+            f"{ERP_BASE}/restserver/rest/machinery/getOdometerReadingForAllVehicles/{start}/{end}",
+            timeout=35,
+            label=f"machinery odometers {today}",
+        )
+    except Exception as exc:
+        raise ErpFetchError(f"machinery odometer fetch failed: {exc}") from exc
+
+    by_registration = {}
+    for row in rows if isinstance(rows, list) else []:
+        vehicle = row.get("vehicle") or {}
+        key = _odometer_key(vehicle.get("regNumber"))
+        if key:
+            by_registration[key] = row
+
+    result = []
+    for vehicle_type, registration in _ODOMETER_TARGETS:
+        row = by_registration.get(registration)
+        if row is None:
+            result.append({"vehicle_type": vehicle_type, "end_reading": None, "start_reading": None, "difference": None})
+            continue
+        end_reading = _num(row.get("vehicleEndReadings"))
+        start_reading = _num(row.get("vehicleStartReadings"))
+        result.append({
+            "vehicle_type": vehicle_type,
+            "end_reading": round(end_reading, 2),
+            "start_reading": round(start_reading, 2),
+            "difference": round(end_reading - start_reading, 2),
+        })
+    return result
+
+
+def _loctell_ist_date(value):
+    """Return the India operating date for a Loctell ISO/UTC timestamp."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        raw = raw.replace("Z[Etc/UTC]", "+00:00").replace("[Etc/UTC]", "+00:00")
+        if raw.endswith("Z"):
+            raw = f"{raw[:-1]}+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=IST)
+        return parsed.astimezone(IST).date()
+    except ValueError:
+        return None
+
+
+def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
+    """Actual VMI Loader fuel issues from Loctell's Fuel Issued report.
+
+    The frontend totals these source rows for the currently selected period.
+    It never derives fuel from an expense row or a manual adjustment.
+    """
+    start = int(datetime.combine(financial_year_start, datetime.min.time(), tzinfo=IST).timestamp() * 1000)
+    now = datetime.now(IST)
+    end = int(now.timestamp() * 1000)
+    url = (
+        f"{ERP_BASE}/restserver/rest/fuel/getFuelIssuedReportWithPagination/"
+        f"{start}/{end}/-1/-1/0/-1/-1/-1/-1/-1"
+    )
+    try:
+        payload = _request_json_with_retry(
+            sess, url, params={"page": 0, "size": 2000}, timeout=35,
+            label=f"VMI Loader fuel issues {financial_year_start} to {today}",
+        )
+    except Exception as exc:
+        raise ErpFetchError(f"VMI Loader fuel-issued fetch failed: {exc}") from exc
+
+    result = []
+    for row in (payload.get("data", []) if isinstance(payload, dict) else []):
+        vehicle = row.get("vehicle") or {}
+        if _odometer_key(vehicle.get("regNumber")) != "VMI LOADER":
+            continue
+        issued_on = _loctell_ist_date(row.get("createdDate"))
+        if issued_on is None:
+            continue
+        result.append({
+            "date": str(issued_on),
+            "vehicle_type": "VMI Loader",
+            "fuel_issued": round(abs(_num(row.get("qty"))), 2),
+        })
+    return sorted(result, key=lambda row: row["date"])
+
+
 def fetch_boulder_rows(sess, from_d, to_d):
     days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
 
@@ -4196,6 +4306,8 @@ def write_snapshot_bundle(
     labour_rows,
     parts_rows,
     machines_rows,
+    odometer_readings,
+    vmi_loader_fuel_issues,
     boulder_rows,
     iot_rows,
     cash_rows,
@@ -4368,6 +4480,8 @@ def write_snapshot_bundle(
 
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
+    write_snapshot("/api/machines/odometer", odometer_readings)
+    write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
     write_snapshot("/api/customers/", customers_full)
     write_snapshot("/api/customers/?active_only=false", customers_full)
     write_snapshot(f"/api/customers/?active_only=false&as_of={today}", customers_full)
@@ -4817,6 +4931,8 @@ def main():
         f_debtors  = pool.submit(fetch_debtors,      _clone_sess(sess), today)
         f_debtors_yest = pool.submit(fetch_debtors,  _clone_sess(sess), yesterday)
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
+        f_odometer = pool.submit(fetch_live_odometer_readings, _clone_sess(sess), today)
+        f_vmi_fuel = pool.submit(fetch_vmi_loader_fuel_issued, _clone_sess(sess), financial_year_start, today)
 
         fresh_sales, sales_fresh = fetch_rows_or_saved(
             f_sales, "sales", saved_stream_rows("sales", sync_start, today, "sales_all.json")
@@ -4855,6 +4971,20 @@ def main():
         creditors, creditors_today_fresh = fetch_result_or_saved(
             f_creditors, "today creditors", today, saved_creditors_snapshot
         )
+        try:
+            odometer_readings = f_odometer.result()
+        except ErpFetchError as exc:
+            # This is a live-only operating panel.  Do not show stale readings
+            # or block financial publication if Loctell's machinery report is
+            # temporarily unavailable.
+            print(f"  machinery odometers unavailable: {exc}")
+            odometer_readings = []
+        try:
+            vmi_loader_fuel_issues = f_vmi_fuel.result()
+        except ErpFetchError as exc:
+            # Do not carry a stale fuel total into a new selected range.
+            print(f"  VMI Loader fuel issues unavailable: {exc}")
+            vmi_loader_fuel_issues = []
 
     # Capture per-ticket payment split (ERP ListSale Final Cash/Credit/UPI) onto fresh sales.
     try:
@@ -5787,6 +5917,8 @@ def main():
         labour_rows,
         parts_rows,
         machines_rows,
+        odometer_readings,
+        vmi_loader_fuel_issues,
         boulder_rows,
         iot_rows,
         cash_rows,
