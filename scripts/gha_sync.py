@@ -189,6 +189,79 @@ def _sale_split_key(sale_date, ticket_no):
     return str(sale_date or "")[:10], str(ticket_no or "").strip()
 
 
+_LISTSALE_REQUIRED_COLUMNS = {
+    "ticket_no": "Bill Number",
+    "total": "Total Amount",
+    "pay_type": "Payment Type",
+    "cash": "Final Cash",
+    "credit": "Final Credit",
+    "upi": "Final UPI",
+    "mdp": "MDP Ton",
+}
+
+
+def _listsale_header_key(value):
+    """Compare ListSale headers independent of spaces, punctuation and case."""
+    return re.sub(r"[^a-z0-9]+", "", _clean(value).lower())
+
+
+def _parse_listsale_splits(html, sale_date):
+    """Parse ListSale by its labelled columns, never by a fixed record width.
+
+    Loctell can add display-only fields such as ``Operator``.  A fixed flat-cell
+    width shifts every later ticket, which can turn MDP into Empty Date and put
+    payment channels on the wrong sale.  Missing required headers are fatal:
+    publishing a guessed financial split is never acceptable.
+    """
+    table = next((t for t in re.findall(r"<table.*?</table>", html, re.DOTALL)
+                  if "Final" in t or "Payment" in t), None)
+    if not table:
+        raise RuntimeError("ListSale payment table is missing")
+
+    headers = [_clean(c) for c in re.findall(r"<th[^>]*>(.*?)</th>", table, re.DOTALL)]
+    header_index = {_listsale_header_key(name): pos for pos, name in enumerate(headers)}
+    columns = {}
+    missing = []
+    for field, label in _LISTSALE_REQUIRED_COLUMNS.items():
+        pos = header_index.get(_listsale_header_key(label))
+        if pos is None:
+            missing.append(label)
+        else:
+            columns[field] = pos
+    if missing:
+        raise RuntimeError(
+            "ListSale required header(s) missing: " + ", ".join(missing)
+            + "; received: " + ", ".join(headers)
+        )
+
+    required_last = max(columns.values())
+    record_width = len(headers)
+    if record_width <= required_last:
+        raise RuntimeError("ListSale header layout is shorter than its required columns")
+
+    # Loctell currently renders all daily tickets inside one HTML <tr>, followed
+    # by a separate total row.  The labelled header count, not <tr>, is the
+    # reliable record width.
+    cells = [_clean(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", table, re.DOTALL)]
+    splits = {}
+    for start in range(0, len(cells), record_width):
+        row = cells[start:start + record_width]
+        if len(row) <= required_last:
+            continue
+        ticket_no = row[columns["ticket_no"]].strip()
+        if not re.fullmatch(r"\d+", ticket_no):
+            continue
+        splits[_sale_split_key(sale_date, ticket_no)] = {
+            "total": _num(row[columns["total"]]),
+            "pay_type": row[columns["pay_type"]],
+            "cash": round(_num(row[columns["cash"]]), 2),
+            "credit": round(_num(row[columns["credit"]]), 2),
+            "upi": round(_num(row[columns["upi"]]), 2),
+            "mdp": round(_num(row[columns["mdp"]]), 3),
+        }
+    return splits
+
+
 def _is_excluded_customer_receipt(row):
     return str((row or {}).get("reference") or "") in EXCLUDED_CUSTOMER_RECEIPT_REFS
 
@@ -823,10 +896,12 @@ def fetch_sale_splits(sess, from_d, to_d):
     Captures real SPLIT payments (part cash + part UPI) that ListCustomerWiseReport
     collapses into one payment mode.  Ticket numbers are not globally unique
     (for example, 10086 occurs on 26-May and 30-Jun), so date is part of the
-    identity. Best-effort: a per-day failure is logged and skipped, never aborts
-    the sync.
+    identity. The ListSale layout is a financial source, so a failed fetch or
+    header validation aborts the build rather than silently publishing a bad
+    MDP/payment split.
     """
     splits = {}
+    errors = []
     cur = from_d
     while cur <= to_d:
         ds = cur.strftime("%d-%m-%Y")
@@ -844,24 +919,13 @@ def fetch_sale_splits(sess, from_d, to_d):
                 headers={"X-Requested-With": "XMLHttpRequest"}, timeout=35, verify=True,
             ).text
             html = json.loads(raw) if raw.lstrip().startswith('"') else raw
-            table = next((t for t in re.findall(r"<table.*?</table>", html, re.DOTALL)
-                          if "Final" in t or "Payment" in t), None)
-            if table:
-                cells = [_clean(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", table, re.DOTALL)]
-                REC = 22  # Sl,Date,Time,Ticket,Veh,Mat,Cust,EWt,LWt,NWt,Rate,Amt,Tpt,Roy,Total,PayType,Cash,Credit,UPI,Rmk,EDate,MDP
-                for i in range(0, len(cells) - REC + 1, REC):
-                    row = cells[i:i + REC]
-                    if not re.fullmatch(r"\d+", row[3]):
-                        break  # footer / total row -> end of data
-                    splits[_sale_split_key(cur, row[3])] = {
-                        "total": _num(row[14]), "pay_type": row[15],
-                        "cash": round(_num(row[16]), 2), "credit": round(_num(row[17]), 2), "upi": round(_num(row[18]), 2),
-                        "mdp": round(_num(row[21]), 3),  # real "MDP Ton" column from ListSale
-                    }
+            splits.update(_parse_listsale_splits(html, cur))
         except Exception as e:
-            print(f"  sale splits {ds}: {e}")
+            errors.append(f"{ds}: {e}")
         cur += timedelta(days=1)
         time.sleep(0.1)
+    if errors:
+        raise RuntimeError("ListSale split fetch/validation failed; build stopped: " + "; ".join(errors[:3]))
     return splits
 
 
@@ -4808,7 +4872,7 @@ def main():
                 _rejected += 1
         print(f"  sale splits captured for {_n}/{len(fresh_sales)} fresh tickets; rejected {_rejected} non-reconciling splits")
     except Exception as _e:
-        print(f"  sale splits unavailable: {_e}")
+        raise RuntimeError(f"ListSale split validation failed; refusing to publish sales: {_e}") from _e
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     print(f"  {len(all_sales)} sales tickets")
