@@ -1007,6 +1007,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
   <div class="card">
     <h3>Fuel Received <span id="fuel-received-period" style="font-size:12px;font-weight:400;color:#c2610c"></span></h3>
+    <div class="kpi-row" id="fuel-received-summary" style="margin:10px 0 14px"></div>
     <div class="tbl-wrap" id="fuel-received-tbl"></div>
     <div id="fuel-received-pager" class="no-print"></div>
   </div>
@@ -4138,6 +4139,8 @@ function renderFuelReceived(){
   html+='</tbody></table>';
   const table=document.getElementById('fuel-received-tbl');if(table)table.innerHTML=html;
   const pager=document.getElementById('fuel-received-pager');if(pager)pager.innerHTML=pagerHTML('fuelReceived',rows.length);
+  const totalQty=rows.reduce((sum,r)=>sum+_num(r.quantity),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.amount),0);
+  const summary=document.getElementById('fuel-received-summary');if(summary)summary.innerHTML=`<div class="kpi blue"><div class="kpi-label">Fuel Received</div><div class="kpi-value">${fmtNum(totalQty,2)} L</div></div><div class="kpi green"><div class="kpi-label">Total Value</div><div class="kpi-value">${fmtINR(totalAmount)}</div></div><div class="kpi navy"><div class="kpi-label">Receipts</div><div class="kpi-value">${rows.length}</div></div>`;
 }
 async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
