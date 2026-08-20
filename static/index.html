@@ -4112,7 +4112,12 @@ function _machineTableHtml(from,to,includeFuelIssueReading=false){
 async function loadMachines(dashboardFrom,dashboardTo){
   if(dashboardFrom&&dashboardTo){_machineDashboardRange.from=dashboardFrom;_machineDashboardRange.to=dashboardTo;}
   try{
-    const summary=await api('/api/machines/summary');
+    let summary;
+    try{summary=await api('/api/machines/summary');}
+    catch(summaryError){
+      const [odometer,fuel_issued,fuel_received]=await Promise.all([api('/api/machines/odometer'),api('/api/machines/fuel-issued'),api('/api/machines/fuel-received')]);
+      summary={odometer,fuel_issued,fuel_received};
+    }
     const rows=summary.odometer||[],fuelRows=summary.fuel_issued||[],fuelReceivedRows=summary.fuel_received||[];
     _allData.machines=rows;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
