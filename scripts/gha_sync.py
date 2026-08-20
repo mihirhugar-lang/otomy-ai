@@ -4530,6 +4530,13 @@ def write_snapshot_bundle(
     write_snapshot("/api/machines/odometer", odometer_readings)
     write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
     write_snapshot("/api/machines/fuel-received", fuel_received_rows)
+    # The Operations page reads this one static bundle, rather than three
+    # browser requests.  Keep the individual snapshots for compatibility.
+    write_snapshot("/api/machines/summary", {
+        "odometer": odometer_readings,
+        "fuel_issued": vmi_loader_fuel_issues,
+        "fuel_received": fuel_received_rows,
+    })
     write_snapshot("/api/customers/", customers_full)
     write_snapshot("/api/customers/?active_only=false", customers_full)
     write_snapshot(f"/api/customers/?active_only=false&as_of={today}", customers_full)
