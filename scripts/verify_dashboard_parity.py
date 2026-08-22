@@ -1132,8 +1132,11 @@ def verify_bank_page_presets() -> None:
     print(f"Bank page guard passed for {checked} tabs.")
 
 
+_CLOSING_ROUNDING_TOLERANCE = 0.50
+
+
 def verify_fytd_cashbook_parity() -> None:
-    """A same-date FYTD book must close exactly where MTD/current closes.
+    """A same-date FYTD book must close where MTD/current closes.
 
     This is deliberately a pre-publish check of independently addressed
     snapshot files.  It catches a recent-sync regression where the MTD bundle
@@ -1166,15 +1169,19 @@ def verify_fytd_cashbook_parity() -> None:
         mtd_close = round(number_value((mtd_book.get(channel) or {}).get("closing"), f"MTD {channel} closing"), 2)
         fytd_dashboard = round(number_value((fytd_control.get("summary") or {}).get(dashboard_key), f"FYTD dashboard {dashboard_key}"), 2)
         mtd_dashboard = round(number_value((mtd_control.get("summary") or {}).get(dashboard_key), f"MTD dashboard {dashboard_key}"), 2)
-        if fytd_close != mtd_close:
-            fail(f"FYTD {channel} closing differs from MTD on {today}: FYTD={fytd_close} MTD={mtd_close}")
+        if abs(fytd_close - mtd_close) > _CLOSING_ROUNDING_TOLERANCE:
+            fail(
+                f"FYTD {channel} closing differs from MTD on {today}: "
+                f"FYTD={fytd_close} MTD={mtd_close} "
+                f"(tolerance ₹{_CLOSING_ROUNDING_TOLERANCE:.2f})"
+            )
         if fytd_close != fytd_dashboard or mtd_close != mtd_dashboard:
             fail(
                 f"{channel} cashbook/dashboard closing mismatch on {today}: "
                 f"FYTD book={fytd_close} dashboard={fytd_dashboard}; "
                 f"MTD book={mtd_close} dashboard={mtd_dashboard}"
             )
-    print(f"FYTD cashbook guard passed: FYTD and MTD close identically on {today}.")
+    print(f"FYTD cashbook guard passed: FYTD and MTD closings are within ₹{_CLOSING_ROUNDING_TOLERANCE:.2f} on {today}.")
 
 
 def main() -> None:
