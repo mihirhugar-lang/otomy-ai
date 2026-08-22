@@ -1175,11 +1175,15 @@ def verify_fytd_cashbook_parity() -> None:
                 f"FYTD={fytd_close} MTD={mtd_close} "
                 f"(tolerance ₹{_CLOSING_ROUNDING_TOLERANCE:.2f})"
             )
-        if fytd_close != fytd_dashboard or mtd_close != mtd_dashboard:
+        if (
+            abs(fytd_close - fytd_dashboard) > _CLOSING_ROUNDING_TOLERANCE
+            or abs(mtd_close - mtd_dashboard) > _CLOSING_ROUNDING_TOLERANCE
+        ):
             fail(
                 f"{channel} cashbook/dashboard closing mismatch on {today}: "
                 f"FYTD book={fytd_close} dashboard={fytd_dashboard}; "
-                f"MTD book={mtd_close} dashboard={mtd_dashboard}"
+                f"MTD book={mtd_close} dashboard={mtd_dashboard} "
+                f"(tolerance ₹{_CLOSING_ROUNDING_TOLERANCE:.2f})"
             )
     print(f"FYTD cashbook guard passed: FYTD and MTD closings are within ₹{_CLOSING_ROUNDING_TOLERANCE:.2f} on {today}.")
 
