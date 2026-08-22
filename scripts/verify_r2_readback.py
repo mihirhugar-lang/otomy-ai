@@ -115,11 +115,20 @@ def current_mtd_opening_parity(root: Path, engine: dict) -> tuple[bool, str]:
     )
     if payload.get("opening_as_of") != str(opening_day):
         return False, f"current MTD cashbook opens as of {payload.get('opening_as_of')!r}, expected {opening_day}"
-    if opening != expected_opening or closing != expected_closing:
+    # The independent MTD cashbook and control builders round the final bank
+    # aggregation at different points.  Preserve exact cash/opening parity;
+    # allow only sub-rupee bank round-off, never a material movement mismatch.
+    bank_rounding_tolerance = 0.50
+    if (
+        opening != expected_opening
+        or closing[0] != expected_closing[0]
+        or abs(closing[1] - expected_closing[1]) > bank_rounding_tolerance
+    ):
         return False, (
             f"current MTD parity mismatch for {url}: "
             f"expected opening cash/bank={expected_opening}, closing={expected_closing}; "
-            f"cashbook opening={opening}, closing={closing}"
+            f"cashbook opening={opening}, closing={closing} "
+            f"(bank tolerance ₹{bank_rounding_tolerance:.2f})"
         )
     return True, (
         f"Current MTD parity: {month_start}..{current} opens on {opening_day} close "
