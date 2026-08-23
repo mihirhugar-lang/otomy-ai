@@ -3057,6 +3057,30 @@ function _dashUnavailable(){
   const el=document.getElementById('control-room');
   if(el)el.innerHTML='<div class="control-alert danger"><strong>Couldn\'t load dashboard data</strong><span>Your session may have expired. <button onclick="location.reload()" style="background:#fff;color:#1f2937;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;cursor:pointer;margin-left:8px;font-weight:600">Reload</button></span></div>';
 }
+async function _attachDashboardMasterRows(controlData,from,to){
+  // A frontend deployment can briefly precede its refreshed control snapshot.
+  // Use the same Customer/Vendor page sources until the canonical snapshot is
+  // available, keeping the selected dashboard range correct in that window.
+  if(Array.isArray(controlData?.customer_page_rows)&&Array.isArray(controlData?.vendor_page_rows))return controlData;
+  const [customers,vendors,payments,ledgerSummary]=await Promise.all([
+    api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`).catch(()=>null),
+    api(`/api/vendors/?active_only=false&as_of=${to}`).catch(()=>null),
+    api(`/api/vendors/payments/?from_date=${from}&to_date=${to}`).catch(()=>null),
+    api('/api/vendors/ledger-summary').catch(()=>null),
+  ]);
+  if(!Array.isArray(controlData.customer_page_rows)&&Array.isArray(customers))controlData.customer_page_rows=customers;
+  if(!Array.isArray(controlData.vendor_page_rows)&&Array.isArray(vendors)){
+    const paidByVendor=new Map();
+    (payments||[]).forEach(payment=>{const key=_vendorRangeKey(payment);paidByVendor.set(key,(paidByVendor.get(key)||0)+_num(payment.amount));});
+    const ledgers=ledgerSummary?.ledgers||{};
+    controlData.vendor_page_rows=vendors.map(row=>{
+      const entries=ledgers[String(row.id)]||[];
+      const purchased=entries.filter(entry=>entry.type==='purchase'&&String(entry.date||'').slice(0,10)>=from&&String(entry.date||'').slice(0,10)<=to).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0);
+      return {...row,range_purchased:purchased,range_paid:paidByVendor.get(_vendorRangeKey(row))||0};
+    });
+  }
+  return controlData;
+}
 async function loadDash(){
   const seq=++_dashLoadSeq;
   const d=document.getElementById('dash-date').value;
@@ -3067,6 +3091,7 @@ async function loadDash(){
     if(seq!==_dashLoadSeq)return;
     if(!controlData||!controlData.summary){_dashUnavailable();return;}
     _dashRetried=false;
+    await _attachDashboardMasterRows(controlData,f,t);
     renderDashSummary(controlData,d);
     await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
@@ -3078,6 +3103,7 @@ async function loadControlRoom(){
   const t=document.getElementById('dash-to').value||today();
   try{
     const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
+    await _attachDashboardMasterRows(data,f,t);
     await renderControlRoom(data);
   }catch(e){
     const el=document.getElementById('control-room');
