@@ -3246,7 +3246,7 @@ async function renderControlRoom(data){
       <td>${fmtINR(r.credit_sale_amount||0)}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="11" class="empty">No sales in this period</td></tr>';
-  const customerPageData=(data.customer_page_rows||[]).filter(row=>row.active!==false);
+  const customerPageData=(data.customer_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_payment_received)>0||_num(row.range_total_sales)>0));
   const customerPaymentTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_payment_received),0);
   const customerSalesTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_total_sales),0);
   const customerDue15Total=customerPageData.reduce((sum,row)=>sum+_num(row.credit_due_15_plus),0);
@@ -3257,7 +3257,7 @@ async function renderControlRoom(data){
     const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
     return `<tr><td>${esc(row.name||'Customer')}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(row.range_payment_received||0)}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_total_sales||0)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.credit_due_15_plus||0)}</td><td style="color:#ad1457;font-weight:700;text-align:right">${fmtINR(row.credit_due_30_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(outstanding)}</td></tr>`;
   }).join('')||'<tr><td colspan="6" class="empty">No customers</td></tr>';
-  const vendorPageData=(data.vendor_page_rows||[]).filter(row=>row.active!==false);
+  const vendorPageData=(data.vendor_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_purchased)>0||_num(row.range_paid)>0));
   const vendorTotals={
     range_purchased:vendorPageData.reduce((sum,row)=>sum+_num(row.range_purchased),0), range_paid:vendorPageData.reduce((sum,row)=>sum+_num(row.range_paid),0),
     total_purchases:vendorPageData.reduce((sum,row)=>sum+_num(row.total_purchases),0), total_payments:vendorPageData.reduce((sum,row)=>sum+_num(row.total_payments),0),
@@ -3365,8 +3365,7 @@ async function renderControlRoom(data){
       <div class="report-table-wrap">
         <table class="report-table payment-table">
           <thead><tr><th>Customer</th><th style="text-align:right">Received in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 15+ Days</th><th style="text-align:right">Credit Due 30+ Days</th><th style="text-align:right">Total Outstanding</th></tr></thead>
-          <tbody>${customerPaymentRows}</tbody>
-          <tfoot><tr><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr></tfoot>
+          <tbody><tr style="background:#e8eaf6;font-weight:800"><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr>${customerPaymentRows}</tbody>
         </table>
       </div>
       <div class="metric-note">Matches the Customer page: all real payments received in the selected range, with the selected-end customer balance.</div>
@@ -3388,8 +3387,7 @@ async function renderControlRoom(data){
       <div class="report-table-wrap">
         <table class="report-table payment-table">
           <thead><tr><th>Vendor</th><th style="text-align:right">Purchased in Range</th><th style="text-align:right">Paid in Range</th><th style="text-align:right">Purchases</th><th style="text-align:right">Payments Made</th><th style="text-align:right">Payable 0–15 Days</th><th style="text-align:right">Payable 16–30 Days</th><th style="text-align:right">Payable 31–45 Days</th><th style="text-align:right">Payable 45+ Days</th><th style="text-align:right">Payable</th></tr></thead>
-          <tbody>${vendorPaymentRows}</tbody>
-          <tfoot><tr><td><strong>Total (${vendorPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_purchased)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_paid)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_purchases)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_payments)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_0_15)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_16_30)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_31_45)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_45_plus)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.payable)}</strong></td></tr></tfoot>
+          <tbody><tr style="background:#e8eaf6;font-weight:800"><td><strong>Total (${vendorPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_purchased)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_paid)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_purchases)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_payments)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_0_15)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_16_30)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_31_45)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_45_plus)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.payable)}</strong></td></tr>${vendorPaymentRows}</tbody>
         </table>
       </div>
       <div class="metric-note">Matches the Vendor page: supplier payments made in the selected range, with the selected-end payable balance.</div>
