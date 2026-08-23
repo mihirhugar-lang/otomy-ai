@@ -2959,8 +2959,9 @@ async function printDashboardConsolidated(){
       <div class="card print-section"><h3>Customer Wise Sales — Consolidated</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Material</th><th>Total Tickets</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="2"><strong>Total (${sales.length})</strong></td><td><strong>${fmtNum(salesTickets,0)}</strong></td><td><strong>${fmtNum(salesQty,2)}</strong></td><td><strong>${fmtINR2(salesAmount)}</strong></td><td><strong>${fmtINR(salesBank)}</strong></td><td><strong>${fmtINR(salesCash)}</strong></td><td><strong>${fmtINR(salesCredit)}</strong></td></tr></tfoot></table></div></div>
       ${customerPayments}
       <div class="card print-section"><h3>Expenses — Consolidated by Category</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Expense Category</th><th>Entries</th><th>Cash</th><th>Bank / UPI</th><th>Total</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td><strong>Total (${expenses.length})</strong></td><td><strong>${fmtNum(expenses.reduce((s,r)=>s+r.entries,0),0)}</strong></td><td><strong>${fmtINR(expenseCash)}</strong></td><td><strong>${fmtINR(expenseBank)}</strong></td><td><strong>${fmtINR(expenseCash+expenseBank)}</strong></td></tr></tfoot></table></div></div>
-      ${vendorPayments}${machineReadings}
-      ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}`;
+      ${vendorPayments}
+      ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
+      ${machineReadings}`;
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
