@@ -4644,6 +4644,27 @@ def write_snapshot_bundle(
         receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
         payable_rows = positive_balance_rows(vendor_rows, "payable")
 
+        # The control-room payment blocks must mirror the Customer/Vendor
+        # pages exactly.  They remain deliberately separate from Credit
+        # Repayment, whose display removes same-period spot-sale settlements.
+        control["customer_page_rows"] = customer_rows
+        paid_by_vendor = {}
+        for payment in rows_between(vendor_payments, start, end):
+            identity = _vendor_identity(payment)
+            paid_by_vendor[identity] = paid_by_vendor.get(identity, 0.0) + _num(payment.get("amount"))
+        vendor_page_rows = []
+        for row in vendor_rows:
+            page_row = dict(row)
+            entries = (vendor_ledgers.get(str(row.get("id"))) or {}).get("entries") or []
+            page_row["range_purchased"] = round(sum(
+                _num(entry.get("credit", entry.get("amount")))
+                for entry in entries
+                if entry.get("type") == "purchase" and str(start) <= str(entry.get("date") or "")[:10] <= str(end)
+            ), 2)
+            page_row["range_paid"] = round(paid_by_vendor.get(_vendor_identity(row), 0.0), 2)
+            vendor_page_rows.append(page_row)
+        control["vendor_page_rows"] = vendor_page_rows
+
         if used_mapped_creditors:
             expected_payables = round(sum(
                 max(0.0, _num(row.get("balance", row.get("payable", 0.0))))
