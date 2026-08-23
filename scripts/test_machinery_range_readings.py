@@ -11,6 +11,7 @@ def readings(start, end):
             "start_reading": start + index,
             "end_reading": end + index,
             "difference": end - start,
+            "has_reading": True,
         }
         for index, name in enumerate(names)
     ]
@@ -34,5 +35,14 @@ except ValueError:
     pass
 else:
     raise AssertionError("odometer arithmetic guard did not reject a malformed row")
+
+marker_broken = merge_odometer_history([], fresh)
+marker_broken[0]["readings"][0]["has_reading"] = False
+try:
+    validate_odometer_history(marker_broken)
+except ValueError:
+    pass
+else:
+    raise AssertionError("odometer reading-marker guard did not reject a false zero marker")
 
 print("machinery range reading guard passed")

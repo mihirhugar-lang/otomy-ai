@@ -4188,8 +4188,13 @@ function _machineRangeRows(from,to){
   const names=[...preferred,...history.flatMap(day=>(day.readings||[]).map(row=>row.vehicle_type)).filter((name,index,list)=>name&&list.indexOf(name)===index)];
   return names.map(vehicle_type=>{
     const points=history.map(day=>(day.readings||[]).find(row=>row.vehicle_type===vehicle_type)).filter(Boolean);
-    const first=points.find(row=>row.start_reading!=null);
-    const last=points.slice().reverse().find(row=>row.end_reading!=null);
+    // Loctell emits an all-zero placeholder for a day with no odometer
+    // reading.  Such a row is not a range boundary: its own report begins at
+    // the first non-zero reading and finishes at the last non-zero reading.
+    const measured=points.filter(row=>row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)!==0||_num(row.end_reading)!==0)));
+    const rangePoints=measured.length?measured:points;
+    const first=rangePoints.find(row=>row.start_reading!=null);
+    const last=rangePoints.slice().reverse().find(row=>row.end_reading!=null);
     if(!first||!last)return {vehicle_type,end_reading:null,start_reading:null,difference:null};
     const start_reading=_num(first.start_reading),end_reading=_num(last.end_reading);
     return {vehicle_type,start_reading,end_reading,difference:Math.round((end_reading-start_reading)*100)/100};
