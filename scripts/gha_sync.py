@@ -1181,6 +1181,31 @@ def merge_odometer_history(existing, fresh):
     return [by_day[day] for day in sorted(by_day)]
 
 
+def validate_odometer_history(rows):
+    """Reject malformed cached readings before they can reach an Otomy range view."""
+    expected = {vehicle_type for vehicle_type, _registration in _ODOMETER_TARGETS}
+    seen_days = set()
+    for day_row in rows or []:
+        day = str((day_row or {}).get("date") or "")[:10]
+        try:
+            date.fromisoformat(day)
+        except ValueError as exc:
+            raise ValueError(f"invalid odometer history date: {day!r}") from exc
+        if day in seen_days:
+            raise ValueError(f"duplicate odometer history date: {day}")
+        seen_days.add(day)
+        readings = (day_row or {}).get("readings") or []
+        names = [str((row or {}).get("vehicle_type") or "") for row in readings]
+        if set(names) != expected or len(names) != len(expected):
+            raise ValueError(f"odometer history {day} does not contain exactly the five target machines")
+        for row in readings:
+            start, end, difference = row.get("start_reading"), row.get("end_reading"), row.get("difference")
+            if start is None or end is None or difference is None:
+                continue
+            if abs((_num(end) - _num(start)) - _num(difference)) > 0.01:
+                raise ValueError(f"odometer history {day} arithmetic mismatch for {row.get('vehicle_type')}")
+
+
 def fetch_odometer_history(sess, from_day, to_day, workers=8):
     """Daily Loctell odometer summaries, used client-side for any selected range.
 
@@ -5119,13 +5144,21 @@ def main():
             print(f"  machinery odometers unavailable: {exc}")
             odometer_readings = []
         try:
-            odometer_history = merge_odometer_history(previous_odometer_history, f_odometer_history.result())
+            candidate_odometer_history = merge_odometer_history(previous_odometer_history, f_odometer_history.result())
+            validate_odometer_history(candidate_odometer_history)
+            odometer_history = candidate_odometer_history
         except ErpFetchError as exc:
             print(f"  machinery odometer history unavailable; retaining prior history: {exc}")
             odometer_history = previous_odometer_history
+        except ValueError as exc:
+            print(f"  machinery odometer history guard failed; retaining prior history: {exc}")
+            odometer_history = previous_odometer_history
         # Today's aggregate is the same official source as the live panel and
         # must win if the parallel history refresh used an earlier read.
-        odometer_history = merge_odometer_history(odometer_history, [{"date": str(today), "readings": odometer_readings}])
+        if odometer_readings:
+            odometer_history = merge_odometer_history(odometer_history, [{"date": str(today), "readings": odometer_readings}])
+        if odometer_history:
+            validate_odometer_history(odometer_history)
         try:
             vmi_loader_fuel_issues = f_vmi_fuel.result()
         except ErpFetchError as exc:
