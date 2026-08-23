@@ -240,6 +240,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .report-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;border:1px solid #e7dcc7;border-radius:14px;overflow:hidden;background:#fffdf8}
 .report-table thead th{background:linear-gradient(135deg,#2b2118,#7c4a03);color:#fff;padding:10px 12px;font-size:11px;letter-spacing:.4px;text-transform:uppercase}
 .report-table tbody td{padding:10px 12px;border-bottom:1px solid #f1e7d3;vertical-align:top;line-height:1.45}
+#dash-customer-payments-card .dashboard-customer-payments-table{table-layout:fixed}
+#dash-customer-payments-card .dashboard-customer-payments-table th:first-child,#dash-customer-payments-card .dashboard-customer-payments-table td:first-child{width:22%;white-space:normal}
+#dash-customer-payments-card .dashboard-customer-payments-table th:not(:first-child),#dash-customer-payments-card .dashboard-customer-payments-table td:not(:first-child){width:13%;white-space:normal}
 .report-table tbody tr:nth-child(even){background:#fff8ee}
 .report-table tbody tr:hover{background:#ffefcf}
 .report-table tfoot td{background:#f6ead7;font-weight:800;padding:10px 12px;border-top:2px solid #b45309}
@@ -3249,14 +3252,16 @@ async function renderControlRoom(data){
   const customerPageData=(data.customer_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_payment_received)>0||_num(row.range_total_sales)>0));
   const customerPaymentTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_payment_received),0);
   const customerSalesTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_total_sales),0);
+  const customerDue0to15Total=customerPageData.reduce((sum,row)=>sum+Math.max(0,_num(row.total_outstanding)-_num(row.credit_due_15_plus)),0);
   const customerDue15Total=customerPageData.reduce((sum,row)=>sum+_num(row.credit_due_15_plus),0);
   const customerDue30Total=customerPageData.reduce((sum,row)=>sum+_num(row.credit_due_30_plus),0);
   const customerOutstandingTotal=customerPageData.reduce((sum,row)=>sum+Math.max(0,_num(row.total_outstanding)),0);
   const customerPaymentRows=customerPageData.map(row=>{
     const outstanding=_num(row.total_outstanding);
+    const due0to15=Math.max(0,outstanding-_num(row.credit_due_15_plus));
     const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
-    return `<tr><td>${esc(row.name||'Customer')}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(row.range_payment_received||0)}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_total_sales||0)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.credit_due_15_plus||0)}</td><td style="color:#ad1457;font-weight:700;text-align:right">${fmtINR(row.credit_due_30_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(outstanding)}</td></tr>`;
-  }).join('')||'<tr><td colspan="6" class="empty">No customers</td></tr>';
+    return `<tr><td>${esc(row.name||'Customer')}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(row.range_payment_received||0)}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_total_sales||0)}</td><td style="color:#b45309;font-weight:700;text-align:right">${fmtINR(due0to15)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.credit_due_15_plus||0)}</td><td style="color:#ad1457;font-weight:700;text-align:right">${fmtINR(row.credit_due_30_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(outstanding)}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">No customers</td></tr>';
   const vendorPageData=(data.vendor_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_purchased)>0||_num(row.range_paid)>0));
   const vendorTotals={
     range_purchased:vendorPageData.reduce((sum,row)=>sum+_num(row.range_purchased),0), range_paid:vendorPageData.reduce((sum,row)=>sum+_num(row.range_paid),0),
@@ -3363,9 +3368,9 @@ async function renderControlRoom(data){
     <div class="card print-section" id="dash-customer-payments-card">
       <h3>Customer Payments <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Customer Payments','dash-customer-payments-card')">Print / PDF</button></h3>
       <div class="report-table-wrap">
-        <table class="report-table payment-table">
-          <thead><tr><th>Customer</th><th style="text-align:right">Received in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 15+ Days</th><th style="text-align:right">Credit Due 30+ Days</th><th style="text-align:right">Total Outstanding</th></tr></thead>
-          <tbody><tr style="background:#e8eaf6;font-weight:800"><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr>${customerPaymentRows}</tbody>
+        <table class="report-table payment-table dashboard-customer-payments-table">
+          <thead><tr><th>Customer</th><th style="text-align:right">Received in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 0–15 Days</th><th style="text-align:right">Credit Due 15+ Days</th><th style="text-align:right">Credit Due 30+ Days</th><th style="text-align:right">Total Outstanding</th></tr></thead>
+          <tbody><tr style="background:#e8eaf6;font-weight:800"><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue0to15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr>${customerPaymentRows}</tbody>
         </table>
       </div>
       <div class="metric-note">Matches the Customer page: all real payments received in the selected range, with the selected-end customer balance.</div>
@@ -3605,24 +3610,26 @@ async function loadCustomers(){
       range_total_sales:r=>r.range_total_sales??0,
       range_credit_sales:r=>r.range_credit_sales??0,
       range_payment_received:r=>r.range_payment_received??0,
+      credit_due_0_15:r=>Math.max(0,_customerOutstandingAmount(r)-_num(r.credit_due_15_plus)),
       credit_due_15_plus:r=>r.credit_due_15_plus??0,
       credit_due_30_plus:r=>r.credit_due_30_plus??0,
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
     const activeRows=sortedRows(active,'customers',derived);
-    let html='<table><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Received in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    let html='<table class="customer-aging-table"><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Received in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_0_15','Credit Due 0–15 Days','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
     const totReceived=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
     const totSold=active.reduce((s,r)=>s+(r.range_total_sales??0),0);
+    const totDue0to15=active.reduce((s,r)=>s+derived.credit_due_0_15(r),0);
     const totDue15=active.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
     const totDue30=active.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
-    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${active.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
+    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${active.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#b45309">${fmtINR(totDue0to15)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#b45309;font-weight:700">${fmtINR(derived.credit_due_0_15(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!active.length)html+='<tr><td colspan="6" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="7" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
