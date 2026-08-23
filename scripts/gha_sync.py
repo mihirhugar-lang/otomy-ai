@@ -1158,6 +1158,10 @@ def fetch_odometer_readings(sess, from_day, to_day):
             "end_reading": round(end_reading, 2),
             "start_reading": round(start_reading, 2),
             "difference": round(end_reading - start_reading, 2),
+            # Loctell uses an all-zero row as a no-reading placeholder.  Keep
+            # that distinction so a selected range starts at the first actual
+            # reading, exactly as the Loctell report does.
+            "has_reading": bool(start_reading or end_reading),
         })
     return result
 
@@ -1204,6 +1208,10 @@ def validate_odometer_history(rows):
                 continue
             if abs((_num(end) - _num(start)) - _num(difference)) > 0.01:
                 raise ValueError(f"odometer history {day} arithmetic mismatch for {row.get('vehicle_type')}")
+            expected_has_reading = bool(_num(start) or _num(end))
+            has_reading = row.get("has_reading")
+            if has_reading is not None and has_reading is not expected_has_reading:
+                raise ValueError(f"odometer history {day} reading-marker mismatch for {row.get('vehicle_type')}")
 
 
 def fetch_odometer_history(sess, from_day, to_day, workers=8):
