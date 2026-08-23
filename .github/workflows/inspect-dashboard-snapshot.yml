@@ -87,6 +87,32 @@ jobs:
           print(f"Credit repayment bank/UPI (displayed): {repayment_bank_display:.2f}")
           print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
           print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
+          summary = data.get("summary") or {}
+          print(
+              "P&L: "
+              f"sales={num(summary.get('sales')):.2f} "
+              f"expenses={num(summary.get('expenses')):.2f} "
+              f"profit={num(summary.get('profit')):.2f}"
+          )
+          # A compact per-day and per-customer audit makes a small range
+          # difference traceable without exposing credentials or changing R2.
+          day_rows = data.get("daily_summary") or []
+          for row in day_rows:
+              print(
+                  "DAY "
+                  f"{row.get('date')}: sales={num(row.get('sales')):.2f} "
+                  f"expenses={num(row.get('expenses')):.2f} "
+                  f"profit={num(row.get('profit')):.2f}"
+              )
+          for row in sales:
+              if norm(row.get("customer_name")) == "CHETHAN":
+                  print(
+                      "CHETHAN: "
+                      f"sales={num(row.get('amount')):.2f} "
+                      f"credit_sales={num(row.get('credit_sale_amount')):.2f} "
+                      f"qty={num(row.get('qty_mt')):.2f} "
+                      f"tickets={row.get('tickets') or []}"
+                  )
           repayment_modes = {}
           for row in repayments:
               mode = str(row.get("mode") or "unknown")
