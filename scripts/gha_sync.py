@@ -5,7 +5,7 @@ and generates JSON files for otomy.ai. Runs on GitHub servers.
 No Mac or local database required.
 """
 import base64, json, re, html as htmllib, os, sys, time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -1119,21 +1119,21 @@ def _odometer_key(value):
     return " ".join(str(value or "").upper().split())
 
 
-def fetch_live_odometer_readings(sess, today):
-    """Today's five live machinery odometers from Loctell's official report.
-
-    This is intentionally not archived.  It is a current operating reading,
-    shown only for Jaw, Cone, VSI, Hitachi and VMI Loader.
-    """
+def fetch_odometer_readings(sess, from_day, to_day):
+    """Loctell's official start/end odometers for one inclusive date range."""
+    if from_day > to_day:
+        raise ErpFetchError("machinery odometer range start is after its end")
     now = datetime.now(IST)
-    start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
-    end = int(now.timestamp() * 1000)
+    start_at = datetime.combine(from_day, datetime.min.time(), tzinfo=IST)
+    end_at = now if to_day == now.date() else datetime.combine(to_day, datetime.max.time(), tzinfo=IST)
+    start = int(start_at.timestamp() * 1000)
+    end = int(end_at.timestamp() * 1000)
     try:
         rows = _request_json_with_retry(
             sess,
             f"{ERP_BASE}/restserver/rest/machinery/getOdometerReadingForAllVehicles/{start}/{end}",
             timeout=35,
-            label=f"machinery odometers {today}",
+            label=f"machinery odometers {from_day} to {to_day}",
         )
     except Exception as exc:
         raise ErpFetchError(f"machinery odometer fetch failed: {exc}") from exc
@@ -1160,6 +1160,59 @@ def fetch_live_odometer_readings(sess, today):
             "difference": round(end_reading - start_reading, 2),
         })
     return result
+
+
+def fetch_live_odometer_readings(sess, today):
+    """Backward-compatible current-day Loctell odometer read."""
+    return fetch_odometer_readings(sess, today, today)
+
+
+def merge_odometer_history(existing, fresh):
+    """Replace only refreshed daily Loctell ranges; retain prior day records."""
+    by_day = {}
+    for row in existing or []:
+        day = str((row or {}).get("date") or "")[:10]
+        if day:
+            by_day[day] = dict(row)
+    for row in fresh or []:
+        day = str((row or {}).get("date") or "")[:10]
+        if day:
+            by_day[day] = dict(row)
+    return [by_day[day] for day in sorted(by_day)]
+
+
+def fetch_odometer_history(sess, from_day, to_day, workers=8):
+    """Daily Loctell odometer summaries, used client-side for any selected range.
+
+    Loctell returns exact range start/end values but Otomy is static between
+    syncs.  A compact daily series lets the browser make the same calculation
+    as Loctell without one snapshot object per user-selected range.
+    """
+    days = []
+    cursor = from_day
+    while cursor <= to_day:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    if not days:
+        return []
+
+    def fetch_day(day):
+        return {"date": str(day), "readings": fetch_odometer_readings(_clone_sess(sess), day, day)}
+
+    result, errors = [], []
+    with ThreadPoolExecutor(max_workers=min(max(1, workers), len(days))) as pool:
+        futures = {pool.submit(fetch_day, day): day for day in days}
+        for future in as_completed(futures):
+            day = futures[future]
+            try:
+                result.append(future.result())
+            except Exception as exc:
+                errors.append(f"{day}: {exc}")
+    if not result and errors:
+        raise ErpFetchError("machinery odometer history fetch failed: " + "; ".join(errors[:3]))
+    if errors:
+        print(f"  machinery odometer history partial: {len(errors)} day(s) unavailable")
+    return sorted(result, key=lambda row: row["date"])
 
 
 def _loctell_ist_date(value):
@@ -4353,6 +4406,7 @@ def write_snapshot_bundle(
     parts_rows,
     machines_rows,
     odometer_readings,
+    odometer_history,
     vmi_loader_fuel_issues,
     fuel_received_rows,
     boulder_rows,
@@ -4528,12 +4582,14 @@ def write_snapshot_bundle(
     write_snapshot("/api/me", {"username": "otomy", "can_write": False})
     write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
     write_snapshot("/api/machines/odometer", odometer_readings)
+    write_snapshot("/api/machines/odometer-history", odometer_history)
     write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
     write_snapshot("/api/machines/fuel-received", fuel_received_rows)
     # The Operations page reads this one static bundle, rather than three
     # browser requests.  Keep the individual snapshots for compatibility.
     write_snapshot("/api/machines/summary", {
         "odometer": odometer_readings,
+        "odometer_history": odometer_history,
         "fuel_issued": vmi_loader_fuel_issues,
         "fuel_received": fuel_received_rows,
     })
@@ -4991,6 +5047,11 @@ def main():
                 return saved_summary, False
             raise
 
+    # A compact per-day odometer history lets Otomy calculate any selected
+    # range exactly like Loctell without publishing one R2 object per range.
+    previous_odometer_history = read_snapshot_list("/api/machines/odometer-history")
+    odometer_history_start = financial_year_start if sync_mode == "full" or not previous_odometer_history else max(sync_start, financial_year_start)
+
     # ── parallel fetch all independent ERP streams ────────────────────────────
     print("  Fetching all ERP streams in parallel...")
     with ThreadPoolExecutor(max_workers=10) as pool:
@@ -5008,6 +5069,7 @@ def main():
         f_debtors_yest = pool.submit(fetch_debtors,  _clone_sess(sess), yesterday)
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
         f_odometer = pool.submit(fetch_live_odometer_readings, _clone_sess(sess), today)
+        f_odometer_history = pool.submit(fetch_odometer_history, _clone_sess(sess), odometer_history_start, today, 5)
         f_vmi_fuel = pool.submit(fetch_vmi_loader_fuel_issued, _clone_sess(sess), financial_year_start, today)
         f_fuel_received = pool.submit(fetch_fuel_received, _clone_sess(sess), financial_year_start, today)
 
@@ -5056,6 +5118,14 @@ def main():
             # temporarily unavailable.
             print(f"  machinery odometers unavailable: {exc}")
             odometer_readings = []
+        try:
+            odometer_history = merge_odometer_history(previous_odometer_history, f_odometer_history.result())
+        except ErpFetchError as exc:
+            print(f"  machinery odometer history unavailable; retaining prior history: {exc}")
+            odometer_history = previous_odometer_history
+        # Today's aggregate is the same official source as the live panel and
+        # must win if the parallel history refresh used an earlier read.
+        odometer_history = merge_odometer_history(odometer_history, [{"date": str(today), "readings": odometer_readings}])
         try:
             vmi_loader_fuel_issues = f_vmi_fuel.result()
         except ErpFetchError as exc:
@@ -6001,6 +6071,7 @@ def main():
         parts_rows,
         machines_rows,
         odometer_readings,
+        odometer_history,
         vmi_loader_fuel_issues,
         fuel_received_rows,
         boulder_rows,
