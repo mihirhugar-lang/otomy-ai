@@ -73,6 +73,9 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 
 /* ── KPI Cards ── */
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+.customer-kpi-row{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.customer-kpi-row .kpi{min-width:0;padding:14px 10px}
+.customer-kpi-row .kpi-value{font-size:clamp(12px,1.05vw,18px)}
 #section-dashboard>.kpi-row{grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
 #section-dashboard>.kpi-row .kpi{min-width:0;padding:14px 10px}
 #section-dashboard>.kpi-row .kpi-value{font-size:clamp(14px,1.35vw,20px)}
@@ -296,6 +299,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .print-btn{margin-left:0;flex:0 0 auto;padding:7px 12px}
   .page-actions{margin-left:0;flex:0 0 100%;gap:6px}
  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+ .customer-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
  #section-dashboard>.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(76px,auto)}
   #ledger-summary,#ledger-average-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
   #ledger-average-panel{margin-top:12px}
@@ -831,12 +835,14 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     </div>
     <div class="page-actions no-print"><button class="print-btn" onclick="printPageReport('Customers — Outstanding Balances','section-customers')">Print / PDF</button><button class="print-btn" onclick="printThreeMonthActiveCustomers()">Active Customers (3 Months) Print / PDF</button></div>
   </div>
-  <div class="kpi-row">
-    <div class="kpi red"><div class="kpi-label">Total Outstanding</div><div class="kpi-value" id="c-total-out">—</div></div>
-    <div class="kpi"><div class="kpi-label">Total Customers</div><div class="kpi-value" id="c-total">—</div></div>
+  <div class="kpi-row customer-kpi-row">
+    <div class="kpi red"><div class="kpi-label">Credit Sold</div><div class="kpi-value" id="c-total-out">—</div></div>
     <div class="kpi navy"><div class="kpi-label">With Balance</div><div class="kpi-value" id="c-with-bal">—</div></div>
-    <div class="kpi green"><div class="kpi-label">Received in Range</div><div class="kpi-value" id="c-range-paid">—</div></div>
+    <div class="kpi green"><div class="kpi-label">Collected in Range</div><div class="kpi-value" id="c-range-paid">—</div></div>
     <div class="kpi blue"><div class="kpi-label">Sold in Range</div><div class="kpi-value" id="c-range-sold">—</div></div>
+    <div class="kpi green"><div class="kpi-label">Spot Sale</div><div class="kpi-value" id="c-spot-sale">—</div></div>
+    <div class="kpi blue"><div class="kpi-label">Credit Sale</div><div class="kpi-value" id="c-credit-sale">—</div></div>
+    <div class="kpi navy"><div class="kpi-label">Credit Received</div><div class="kpi-value" id="c-credit-received">—</div></div>
   </div>
   <div class="card">
     <h3>Customer List — Outstanding Balances</h3>
@@ -3616,11 +3622,13 @@ async function loadCustomers(){
     // Receivables are amounts customers need to pay us. Credit and zero rows
     // must not reduce this total, matching the Dashboard Receivables tile.
     let totOut=active.reduce((s,r)=>s+Math.max(_num(r.total_outstanding??r.outstanding??r.balance),0),0);
-    document.getElementById('c-total').textContent=active.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
     document.getElementById('c-with-bal').textContent=active.filter(r=>(r.total_outstanding??r.outstanding??r.balance??0)>0).length;
     document.getElementById('c-range-paid').textContent=fmtINR(customerRangeRows.reduce((s,r)=>s+customerCollection(r),0));
     document.getElementById('c-range-sold').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_total_sales),0));
+    document.getElementById('c-spot-sale').textContent=fmtINR(active.reduce((s,r)=>s+Math.max(0,_num(r.range_total_sales)-_num(r.range_credit_sales)),0));
+    document.getElementById('c-credit-sale').textContent=fmtINR(active.reduce((s,r)=>s+Math.max(0,_num(r.range_credit_sales)),0));
+    document.getElementById('c-credit-received').textContent=fmtINR(customerRangeRows.reduce((s,r)=>s+Math.max(0,_num(r.range_payment_received)),0));
     const derived={
       outstanding:r=>r.total_outstanding??r.outstanding??r.balance??0,
       material_sold:r=>r.material_sold||'No sale',
