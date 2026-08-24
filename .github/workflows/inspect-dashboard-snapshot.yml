@@ -38,12 +38,18 @@ jobs:
           cashbook="$RUNNER_TEMP/cashbook.json"
           aws s3 cp "s3://otomy-data/snapshot/api/$cashbook_key.json" "$cashbook" \
             --endpoint-url "$R2_ENDPOINT" --only-show-errors
-          python3 - "$snapshot" "$cashbook" <<'PY'
+          sales_url="/api/sales/?from_date=$FROM_DATE&to_date=$TO_DATE"
+          sales_key="$(URL="$sales_url" python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.environ["URL"].encode()).decode().rstrip("="))')"
+          sales_snapshot="$RUNNER_TEMP/sales.json"
+          aws s3 cp "s3://otomy-data/snapshot/api/$sales_key.json" "$sales_snapshot" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          python3 - "$snapshot" "$cashbook" "$sales_snapshot" <<'PY'
           import json
           import sys
 
           data = json.load(open(sys.argv[1]))
           cashbook = json.load(open(sys.argv[2]))
+          raw_sales = json.load(open(sys.argv[3]))
           num = lambda v: float(v or 0)
           norm = lambda v: str(v or "-").strip().upper()
           sales = data.get("customer_sales") or []
@@ -88,6 +94,14 @@ jobs:
           print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
           print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
           print(f"MDP tonnes: {num(totals.get('mdp_ton')):.3f}")
+          for row in raw_sales:
+              if num(row.get("mdp_ton")):
+                  print(
+                      "MDP TICKET: "
+                      f"{row.get('date')} ticket={row.get('ticket_no')} "
+                      f"customer={row.get('customer_name')} "
+                      f"material={row.get('material')} mdp={num(row.get('mdp_ton')):.3f}"
+                  )
           summary = data.get("summary") or {}
           print(
               "P&L: "
