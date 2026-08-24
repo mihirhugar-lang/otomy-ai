@@ -4223,7 +4223,8 @@ function _machineRangeRows(from,to){
   const withPriorStart=row=>{
     const priorEnd=priorEndFor(row.vehicle_type);
     if(priorEnd==null||row.end_reading==null)return row;
-    return {...row,start_reading:priorEnd,difference:Math.round((_num(row.end_reading)-priorEnd)*100)/100};
+    const measured=row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)||_num(row.end_reading)));
+    return {...row,start_reading:priorEnd,difference:measured?Math.round((_num(row.end_reading)-priorEnd)*100)/100:0};
   };
   if(!history.length)return fallback.map(withPriorStart);
   const preferred=['Jaw','Cone','VSI','Hitachi','VMI Loader'];
@@ -4244,7 +4245,8 @@ function _machineRangeRows(from,to){
     // range start so the displayed difference remains source-derived.
     const priorEnd=priorEndFor(vehicle_type);
     const start_reading=priorEnd==null?_num(first.start_reading):priorEnd,end_reading=_num(last.end_reading);
-    return {vehicle_type,start_reading,end_reading,difference:Math.round((end_reading-start_reading)*100)/100};
+    const lastMeasured=last.has_reading===true||(last.has_reading==null&&(_num(last.start_reading)||_num(last.end_reading)));
+    return {vehicle_type,start_reading,end_reading,difference:lastMeasured?Math.round((end_reading-start_reading)*100)/100:0};
   });
 }
 function _machineTableHtml(from,to,includeFuelIssueReading=false){
