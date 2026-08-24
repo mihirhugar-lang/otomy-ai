@@ -28,8 +28,8 @@ function shouldDispatchRecent(now = new Date()) {
 
 function isWeeklyFiftyDaySlot(now = new Date()) {
   const { weekday, hour, minute } = indiaClock(now);
-  // Sunday 00:30 IST follows the normal 00:00 overnight sync.  The shared
-  // GitHub concurrency lock serializes it safely if that run is still active.
+  // Sunday 00:30 IST follows the normal 00:00 overnight sync. The trigger
+  // skips it when another common-engine run has not completed.
   return weekday === "Sun" && hour === 0 && minute === 30;
 }
 
@@ -85,8 +85,40 @@ async function dispatchCommonEngine(env, mode, recentDays = 7) {
   }
 }
 
+async function hasActiveCommonEngineRun(env) {
+  if (!env.GITHUB_ACTIONS_DISPATCH_TOKEN) {
+    throw new Error("GITHUB_ACTIONS_DISPATCH_TOKEN is not configured");
+  }
+  const response = await fetch(
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/actions/workflows/${GITHUB_WORKFLOW}/runs?event=workflow_dispatch&per_page=20`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${env.GITHUB_ACTIONS_DISPATCH_TOKEN}`,
+        "User-Agent": "otomy-sync-trigger",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`GitHub run-status check failed (${response.status}): ${detail}`);
+  }
+  const payload = await response.json();
+  const activeStates = new Set(["queued", "pending", "waiting", "requested", "in_progress"]);
+  return (payload.workflow_runs || []).some((run) => activeStates.has(run.status));
+}
+
 export default {
   async scheduled(controller, env, _ctx) {
+    // GitHub keeps just one pending job for a concurrency group; a newer
+    // dispatch replaces that pending job. Skip this cron tick while any
+    // common-engine run is queued/running so a guarded manual or weekly
+    // historical repair cannot be silently discarded.
+    if (await hasActiveCommonEngineRun(env)) {
+      console.log(`Common engine already queued or running; skipping ${controller.cron} dispatch`);
+      return;
+    }
     if (isWeeklyFiftyDaySlot()) {
       const state = await readEngineState(env);
       if (state.state === "paused") {
