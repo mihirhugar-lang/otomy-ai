@@ -257,7 +257,10 @@ def _parse_listsale_splits(html, sale_date):
             "cash": round(_num(row[columns["cash"]]), 2),
             "credit": round(_num(row[columns["credit"]]), 2),
             "upi": round(_num(row[columns["upi"]]), 2),
-            "mdp": round(_num(row[columns["mdp"]]), 3),
+            # MDP is a physical tonnes reading.  Loctell can render a
+            # correction as "-5.0", but a physical MDP quantity is always
+            # non-negative; retain its magnitude for the operational total.
+            "mdp": round(abs(_num(row[columns["mdp"]])), 3),
         }
     return splits
 
@@ -722,7 +725,7 @@ def assert_fresh_sale_mdp_preserved(fresh_rows, merged_rows):
         merged = merged_by_key.get(key)
         expected = round(_num(row.get("mdp_ton")), 3)
         actual = round(_num((merged or {}).get("mdp_ton")), 3)
-        if merged is None or abs(actual - expected) > 0.0005:
+        if expected < 0 or actual < 0 or merged is None or abs(actual - expected) > 0.0005:
             mismatches.append(
                 f"{row.get('date')} ticket {row.get('ticket_no')}: "
                 f"Loctell={expected:.3f}, merged={actual:.3f}"
