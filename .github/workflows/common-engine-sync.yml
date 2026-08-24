@@ -296,8 +296,14 @@ jobs:
             while IFS= read -r key; do
               [ -n "$key" ] && include_args+=(--include "$key")
             done < "$recovery_backup_list"
-            aws s3 cp "s3://otomy-data" "s3://otomy-data/$recovery_prefix" \
-              --recursive "${include_args[@]}" \
+            # The complete prior bundle is already available locally from the
+            # protected baseline pull.  Upload the selected old objects from
+            # that verified copy instead of asking R2 to CopyObject thousands
+            # of cache snapshots server-side: CopyObject can transiently fail
+            # under large snapshot batches, which must never make us publish
+            # without a rollback pack.
+            aws s3 sync "$RUNNER_TEMP/otomy-r2-baseline" "s3://otomy-data/$recovery_prefix" \
+              "${include_args[@]}" \
               --endpoint-url "$R2_ENDPOINT" --only-show-errors
           fi
           # R2 is strongly consistent.  Writing this metadata object last
