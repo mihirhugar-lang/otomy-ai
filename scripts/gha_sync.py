@@ -699,6 +699,42 @@ def assert_fresh_source_rows_preserved(label, fresh_rows, merged_rows, key_fn):
     print(f"  {label} source-window coverage: {len(expected)} fresh rows preserved")
 
 
+def assert_fresh_sale_mdp_preserved(fresh_rows, merged_rows):
+    """Fail closed if an archive merge alters a freshly read ListSale MDP value.
+
+    MDP Ton is sourced from Loctell's labelled ListSale column, not inferred
+    from ticket quantity.  Row-count coverage alone cannot catch a stale
+    negative value surviving beside a fresh positive one, so compare every
+    refreshed ticket by the same stable date + ticket identity used in the
+    archive.  A later ERP edit is naturally collected by the next recent
+    window; this guard ensures the engine never loses it while merging.
+    """
+    merged_by_key = {
+        _archive_key("sales", row): row
+        for row in merged_rows or []
+        if isinstance(row, dict)
+    }
+    mismatches = []
+    for row in fresh_rows or []:
+        if not isinstance(row, dict):
+            continue
+        key = _archive_key("sales", row)
+        merged = merged_by_key.get(key)
+        expected = round(_num(row.get("mdp_ton")), 3)
+        actual = round(_num((merged or {}).get("mdp_ton")), 3)
+        if merged is None or abs(actual - expected) > 0.0005:
+            mismatches.append(
+                f"{row.get('date')} ticket {row.get('ticket_no')}: "
+                f"Loctell={expected:.3f}, merged={actual:.3f}"
+            )
+    if mismatches:
+        raise RuntimeError(
+            "Sales MDP source-window parity failed; refusing to publish: "
+            + "; ".join(mismatches[:5])
+        )
+    print(f"  Sales MDP source-window parity: {len(fresh_rows or [])} fresh tickets match ListSale")
+
+
 def assert_fytd_source_coverage(fy_start, as_of, sales, expenses):
     """Fail closed rather than publish an anchor-only FYTD snapshot.
 
@@ -5199,6 +5235,7 @@ def main():
         raise RuntimeError(f"ListSale split validation failed; refusing to publish sales: {_e}") from _e
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
+    assert_fresh_sale_mdp_preserved(fresh_sales, all_sales)
     print(f"  {len(all_sales)} sales tickets")
     # The fresh fetch is the authoritative current state for its window — drop archived
     # expense versions inside that window so an ERP edit (note added, amount corrected)
