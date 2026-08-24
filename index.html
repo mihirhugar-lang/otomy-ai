@@ -3257,7 +3257,11 @@ async function renderControlRoom(data){
       <td>${fmtINR(r.credit_sale_amount||0)}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="11" class="empty">No sales in this period</td></tr>';
-  const customerPageData=(data.customer_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_payment_received)>0||_num(row.range_total_sales)>0));
+  // Every genuine customer receipt belongs in collections, even if an older
+  // customer master was later marked inactive.  Credit repayment is real
+  // money received and must remain in this block; ERP Snapshot rows are
+  // already excluded when range_payment_received is built.
+  const customerPageData=(data.customer_page_rows||[]).filter(row=>_num(row.range_payment_received)>0||(row.active!==false&&_num(row.range_total_sales)>0));
   const customerPaymentTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_payment_received),0);
   const customerSalesTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_total_sales),0);
   const customerDue0to15Total=customerPageData.reduce((sum,row)=>sum+Math.max(0,_num(row.total_outstanding)-_num(row.credit_due_15_plus)),0);
@@ -3604,13 +3608,16 @@ async function loadCustomers(){
     const rows=await api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`);
     _customers=rows;
     const active=rows.filter(r=>r.active);
+    // Keep the debtor/balance KPIs based on active masters, but collections
+    // must include every genuine payment in the selected range.
+    const customerRangeRows=rows.filter(r=>r.active||_num(r.range_payment_received)>0);
     // Receivables are amounts customers need to pay us. Credit and zero rows
     // must not reduce this total, matching the Dashboard Receivables tile.
     let totOut=active.reduce((s,r)=>s+Math.max(_num(r.total_outstanding??r.outstanding??r.balance),0),0);
     document.getElementById('c-total').textContent=active.length;
     document.getElementById('c-total-out').textContent=fmtINR(totOut);
     document.getElementById('c-with-bal').textContent=active.filter(r=>(r.total_outstanding??r.outstanding??r.balance??0)>0).length;
-    document.getElementById('c-range-paid').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_payment_received),0));
+    document.getElementById('c-range-paid').textContent=fmtINR(customerRangeRows.reduce((s,r)=>s+_num(r.range_payment_received),0));
     document.getElementById('c-range-sold').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_total_sales),0));
     const derived={
       outstanding:r=>r.total_outstanding??r.outstanding??r.balance??0,
@@ -3623,14 +3630,15 @@ async function loadCustomers(){
       credit_due_30_plus:r=>r.credit_due_30_plus??0,
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
-    const activeRows=sortedRows(active,'customers',derived);
+    const activeRows=sortedRows(customerRangeRows,'customers',derived);
     let html='<table class="customer-aging-table"><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Received in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_0_15','Credit Due 0–15 Days','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
-    const totReceived=active.reduce((s,r)=>s+(r.range_payment_received??0),0);
-    const totSold=active.reduce((s,r)=>s+(r.range_total_sales??0),0);
-    const totDue0to15=active.reduce((s,r)=>s+derived.credit_due_0_15(r),0);
-    const totDue15=active.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
-    const totDue30=active.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
-    if(active.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${active.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#b45309">${fmtINR(totDue0to15)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totOut)}</td></tr>`;
+    const totReceived=customerRangeRows.reduce((s,r)=>s+(r.range_payment_received??0),0);
+    const totSold=customerRangeRows.reduce((s,r)=>s+(r.range_total_sales??0),0);
+    const totDue0to15=customerRangeRows.reduce((s,r)=>s+derived.credit_due_0_15(r),0);
+    const totDue15=customerRangeRows.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
+    const totDue30=customerRangeRows.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
+    const totalRangeOutstanding=customerRangeRows.reduce((s,r)=>s+Math.max(0,derived.outstanding(r)),0);
+    if(customerRangeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${customerRangeRows.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#b45309">${fmtINR(totDue0to15)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totalRangeOutstanding)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
