@@ -4182,13 +4182,37 @@ function _machineFuelStatsForRange(from,to){
   return {liters,reading:latest?.fuel_issue_reading??null};
 }
 function _machineRangeRows(from,to){
-  const fallback=_allData.machines||[];
+  // Loctell can spell one machine differently across report days (for example
+  // "JAW CRUSHER" vs "Jaw").  Treat these as one physical machine before
+  // choosing the range boundaries, otherwise the dashboard and Operations
+  // table render the same machine twice.
+  const canonicalName=value=>{
+    const raw=String(value||'').trim(),key=raw.toUpperCase().replace(/[^A-Z0-9]+/g,' ');
+    if(key.includes('JAW'))return 'Jaw';
+    if(key.includes('CONE'))return 'Cone';
+    if(key.includes('VSI'))return 'VSI';
+    if(key.includes('HITACHI'))return 'Hitachi';
+    if(key.includes('LOADER'))return 'VMI Loader';
+    return raw;
+  };
+  const readingScore=row=>Number(Boolean(row?.has_reading||_num(row?.start_reading)||_num(row?.end_reading)));
+  const canonicalRows=rows=>{
+    const selected=new Map();
+    (rows||[]).forEach(row=>{
+      const name=canonicalName(row?.vehicle_type);if(!name)return;
+      const candidate={...row,vehicle_type:name},current=selected.get(name);
+      if(!current||readingScore(candidate)>readingScore(current))selected.set(name,candidate);
+    });
+    return [...selected.values()];
+  };
+  const fallback=canonicalRows(_allData.machines||[]);
   const history=(_allData.machineHistory||[]).filter(day=>day.date>=from&&day.date<=to).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   if(!history.length)return fallback;
   const preferred=['Jaw','Cone','VSI','Hitachi','VMI Loader'];
-  const names=[...preferred,...history.flatMap(day=>(day.readings||[]).map(row=>row.vehicle_type)).filter((name,index,list)=>name&&list.indexOf(name)===index)];
+  const normalisedHistory=history.map(day=>({...day,readings:canonicalRows(day.readings)}));
+  const names=[...new Set([...preferred,...normalisedHistory.flatMap(day=>day.readings.map(row=>row.vehicle_type))])].filter(Boolean);
   return names.map(vehicle_type=>{
-    const points=history.map(day=>(day.readings||[]).find(row=>row.vehicle_type===vehicle_type)).filter(Boolean);
+    const points=normalisedHistory.map(day=>day.readings.find(row=>row.vehicle_type===vehicle_type)).filter(Boolean);
     // Loctell emits an all-zero placeholder for a day with no odometer
     // reading.  Such a row is not a range boundary: its own report begins at
     // the first non-zero reading and finishes at the last non-zero reading.
