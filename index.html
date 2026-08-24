@@ -652,6 +652,29 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .topbar-date{color:#c2610c !important;font-weight:700}
 /* ── Director Insights: visual-only analytical board ── */
 .insights-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}.insights-head h2{margin-bottom:4px}.insights-head p{margin:0;color:var(--muted);font:600 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insights-note{background:linear-gradient(90deg,#f0f7ff,#fff9ed);border:1px solid #d8e6f4;border-left:4px solid #2563a6;border-radius:12px;padding:10px 13px;margin:0 0 15px;color:#31506d;font:600 12px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insights-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.insight-card{background:linear-gradient(155deg,#fff,#fffdf8);border:1px solid #e6e8ed;border-top:4px solid #355f9d;border-radius:18px;padding:14px;box-shadow:0 9px 22px rgba(20,36,62,.06);min-width:0;overflow:hidden}.insight-card:nth-child(3n+2){border-top-color:#be7a11}.insight-card:nth-child(3n){border-top-color:#2f7d57}.insight-card h3{font-size:14px;color:#172a46;margin:0 0 3px}.insight-card p{font:600 11px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#788594;margin:0 0 9px;min-height:30px}.insight-chart{height:218px;position:relative}.insight-chart svg{display:block;width:100%;height:100%;overflow:visible}.insight-legend{display:flex;flex-wrap:wrap;gap:8px 12px;margin:0 0 5px;font:700 10px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#5d6876}.insight-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}.insight-empty{height:100%;display:grid;place-items:center;color:#98a2b3;font:700 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.insight-axis{stroke:#e7ebf0;stroke-width:1}.insight-label{font:700 9px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#7b8794}.insight-bar-label{font:700 10px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#526070}.insight-tip{cursor:crosshair}.insight-tip:hover{opacity:.72}@media(max-width:760px){.insights-grid{grid-template-columns:1fr;gap:11px}.insight-card{padding:12px;border-radius:15px}.insight-chart{height:198px}.insights-head{align-items:center}.insights-head p{font-size:10px}.insights-note{font-size:11px}.insights-head .print-btn{padding:7px 9px;font-size:10px}}
+/* Print/PDF must be a colour-faithful copy of the Tally web view.  This rule
+   deliberately comes last: compact-print selectors must never turn a
+   semantic red/green/blue number into generic dark text. */
+@media print{
+  #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
+  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:#fdfbf0!important;color:#12233f!important}
+  #print-area .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
+  #print-area .card h3{background:#1f4e79!important;color:#fff!important}
+  #print-area .kpi{background:linear-gradient(180deg,#fdfbf0 0%,#f2e7c9 100%)!important}
+  #print-area .kpi.green{background:#e8f5e9!important;border-color:#2e7d32!important;border-top-color:#2e7d32!important}
+  #print-area .kpi.blue{background:#e3f2fd!important;border-color:#1565c0!important;border-top-color:#1565c0!important}
+  #print-area .kpi.red{background:#ffebee!important;border-color:#c62828!important;border-top-color:#c62828!important}
+  #print-area .kpi.navy{background:#e8eaf6!important;border-color:#1a237e!important;border-top-color:#1a237e!important}
+  #print-area .kpi.purple{background:#f3e5f5!important;border-color:#6a1b9a!important;border-top-color:#6a1b9a!important}
+  #print-area .kpi.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18))!important;border-color:rgba(5,150,105,.55)!important}
+  #print-area [style*="color:#2e7d32"]{color:#2e7d32!important}
+  #print-area [style*="color:#c62828"]{color:#c62828!important}
+  #print-area [style*="color:#1565c0"]{color:#1565c0!important}
+  #print-area [style*="color:#1a237e"]{color:#1a237e!important}
+  #print-area [style*="color:#b45309"]{color:#b45309!important}
+  #print-area [style*="color:#ad1457"]{color:#ad1457!important}
+  #print-area [style*="color:#c2610c"]{color:#c2610c!important}
+}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
