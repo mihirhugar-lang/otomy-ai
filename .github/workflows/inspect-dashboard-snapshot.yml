@@ -87,6 +87,7 @@ jobs:
           print(f"Credit repayment bank/UPI (displayed): {repayment_bank_display:.2f}")
           print(f"GST Tax Money tile: {spot_bank + repayment_bank_display:.2f}")
           print(f"Rows: sales={len(sales)}, repayments={len(repayments)}")
+          print(f"MDP tonnes: {num(totals.get('mdp_ton')):.3f}")
           summary = data.get("summary") or {}
           print(
               "P&L: "
@@ -105,6 +106,13 @@ jobs:
                   f"profit={num(row.get('profit')):.2f}"
               )
           for row in sales:
+              if num(row.get("mdp_ton")):
+                  print(
+                      "MDP CUSTOMER: "
+                      f"{row.get('customer_name') or '-'} "
+                      f"mdp={num(row.get('mdp_ton')):.3f} "
+                      f"tickets={row.get('tickets') or []}"
+                  )
               if norm(row.get("customer_name")) == "CHETHAN":
                   print(
                       "CHETHAN: "
