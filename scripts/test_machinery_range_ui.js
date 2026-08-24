@@ -38,6 +38,7 @@ eval(source.slice(start, end));
 
 const rows = _machineRangeRows('2026-08-17', '2026-08-23');
 const byName = Object.fromEntries(rows.map(row => [row.vehicle_type, row]));
+if (rows.length !== 5) throw new Error(`expected exactly five canonical machines, got ${JSON.stringify(rows)}`);
 for (const [name, expected] of Object.entries({
   Jaw: [3418.2, 3444.8, 26.6],
   Cone: [3484.1, 3502.1, 18.0],
@@ -48,5 +49,16 @@ for (const [name, expected] of Object.entries({
   if (!row || row.start_reading !== expected[0] || row.end_reading !== expected[1] || row.difference !== expected[2]) {
     throw new Error(`${name} did not match the Loctell range result: ${JSON.stringify(row)}`);
   }
+}
+
+// Loctell occasionally varies a vehicle label. It must not create a second
+// physical machine in either the dashboard or Operations table.
+_allData.machineHistory[5].readings.push({
+  vehicle_type: 'JAW CRUSHER', start_reading: 3427.4, end_reading: 3436.2,
+  difference: 8.8, has_reading: true,
+});
+const aliasRows = _machineRangeRows('2026-08-17', '2026-08-23');
+if (aliasRows.length !== 5 || aliasRows.filter(row => row.vehicle_type === 'Jaw').length !== 1) {
+  throw new Error(`machine alias was rendered twice: ${JSON.stringify(aliasRows)}`);
 }
 console.log('machinery range UI guard passed');
