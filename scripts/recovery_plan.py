@@ -110,7 +110,12 @@ def build_recovery_plan(
     if (len(changed), len(deleted)) != (changed_count, deleted_count):
         raise ValueError("publish plan no longer matches the manifests used for recovery")
 
-    expired = set(retention_expired_deletions or set())
+    # The retention list is derived from the freshly generated local bundle.
+    # A cancelled/previous publish can leave a listed cache key already absent
+    # from the last verified manifest. It needs no live deletion and must not
+    # block an otherwise safe publish; only prior-live keys belong in this
+    # recovery plan.
+    expired = set(retention_expired_deletions or set()) & set(previous_files)
     if not expired <= deleted:
         raise ValueError("retention-expired recovery keys are not deleted by this publish plan")
 
