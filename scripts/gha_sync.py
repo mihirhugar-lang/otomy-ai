@@ -652,6 +652,7 @@ def load_archive_window(from_d, to_d):
     out = {
         "sales": [],
         "expenses": [],
+        "internal_transfers": [],
         "receipts": [],
         "vendor_payments": [],
         "cash": [],
@@ -1097,6 +1098,51 @@ def fetch_bank_entries(sess, from_d, to_d):
         print(f"  bank_entries: {e}")
         raise ErpFetchError(f"bank entries fetch failed; skipped Otomy write: {e}") from e
     return entries
+
+
+def fetch_internal_transfers(sess, from_d, to_d):
+    """Return only complete Loctell cash-to-bank contra pairs."""
+    try:
+        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
+        data = json.loads(_request_text_with_retry(
+            sess, f"{ERP_BASE}/crusher/ListInternalTransfer?start={fs}&end={ts}&type=1",
+            timeout=35, label=f"internal transfers {fs} to {ts}",
+        ))
+        cash_legs, bank_legs = [], []
+        for raw_row in data.get("data", []):
+            cells = [_clean(cell) for cell in raw_row]
+            if not cells or "TOTAL" in cells[0].upper():
+                continue
+            bank_name = cells[3] if len(cells) > 3 else ""
+            cash_ledger = cells[4] if len(cells) > 4 else ""
+            amount = max(_num(cells[5]) if len(cells) > 5 else 0, _num(cells[6]) if len(cells) > 6 else 0)
+            if amount <= 0 or (not bank_name and not cash_ledger):
+                continue
+            ids = [value for cell in raw_row for value in re.findall(r"\b\d{5,}\b", str(cell))]
+            leg = {"date": str(_parse_date(cells[0], to_d)), "bank_name": bank_name,
+                   "cash_ledger": cash_ledger, "amount": round(amount, 2),
+                   "remarks": cells[7] if len(cells) > 7 else "", "ids": ids}
+            (cash_legs if cash_ledger else bank_legs).append(leg)
+        result, used_cash = [], set()
+        for bank_leg in bank_legs:
+            index = next((idx for idx, cash_leg in enumerate(cash_legs)
+                if idx not in used_cash and cash_leg["date"] == bank_leg["date"]
+                and abs(cash_leg["amount"] - bank_leg["amount"]) < 0.01
+                and re.sub(r"\s+", " ", cash_leg["remarks"]).strip().upper()
+                    == re.sub(r"\s+", " ", bank_leg["remarks"]).strip().upper()), None)
+            if index is None:
+                continue
+            used_cash.add(index)
+            cash_leg = cash_legs[index]
+            ids = sorted(set(cash_leg["ids"] + bank_leg["ids"]))
+            record_id = "-".join(ids) or f"{bank_leg['date']}|{cash_leg['cash_ledger']}|{bank_leg['bank_name']}|{bank_leg['amount']:.2f}|{bank_leg['remarks']}"
+            result.append({"id": f"internal-transfer:{record_id}", "date": bank_leg["date"],
+                           "cash_ledger": cash_leg["cash_ledger"][:100], "bank_name": bank_leg["bank_name"][:100],
+                           "amount": bank_leg["amount"], "remarks": bank_leg["remarks"][:500]})
+        return result
+    except Exception as e:
+        print(f"  internal_transfers: {e}")
+        raise ErpFetchError(f"internal transfer fetch failed; skipped Otomy write: {e}") from e
 
 
 def fetch_boulders(sess, from_d, to_d):
@@ -2576,7 +2622,7 @@ def _merge_archive_rows(existing, incoming, section, *, drop_current_window=True
     if section == "expenses":
         existing = [row for row in existing if not _is_vendor_payment_expense(row)]
         incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-    if drop_current_window and section in {"sales", "expenses", "cash", "bank", "receipts", "vendor_payments"}:
+    if drop_current_window and section in {"sales", "expenses", "internal_transfers", "cash", "bank", "receipts", "vendor_payments"}:
         # Fresh fetch is authoritative for its window. Every section we re-pull in full over
         # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
         # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
@@ -2588,7 +2634,7 @@ def _merge_archive_rows(existing, incoming, section, *, drop_current_window=True
         # so the dropped [cutoff, today] window is always fully re-supplied.)
         _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
         existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
-    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "receipts", "bank", "cash", "vendor_payments"} else set()
+    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "internal_transfers", "receipts", "bank", "cash", "vendor_payments"} else set()
     merged = {}
     existing_expense_keys = set()
     for idx, row in enumerate(existing):
@@ -2692,6 +2738,7 @@ def write_archive_updates(
     today,
     all_sales,
     all_expenses,
+    internal_transfers,
     cash_rows,
     bank_rows,
     boulder_rows,
@@ -2706,6 +2753,7 @@ def write_archive_updates(
     for section, rows in (
         ("sales", all_sales),
         ("expenses", all_expenses),
+        ("internal_transfers", internal_transfers),
         ("vendor_payments", vendor_payments),
         ("cash", cash_rows),
         ("bank", bank_rows),
@@ -2789,6 +2837,7 @@ def write_archive_updates(
                 "month": month,
                 "sales": [],
                 "expenses": [],
+                "internal_transfers": [],
                 "receipts": [],
                 "vendor_payments": [],
                 "bank": [],
@@ -3178,7 +3227,7 @@ def _overlay_mode(corrs, e):
     return None
 
 
-def _overlay_balance(to_iso, sales, expenses, repayments):
+def _overlay_balance(to_iso, sales, expenses, repayments, internal_transfers=None):
     """Bank/cash as of to_iso: latest anchor + statement bank + corrected movements.
     Returns (bank, cash) or None if no overlay. Vendor payments live in expenses (not added again)."""
     ov = _balance_overlay()
@@ -3249,6 +3298,14 @@ def _overlay_balance(to_iso, sales, expenses, repayments):
                 cash -= _num(e.get("amount"))
             elif cutoff is None or d > cutoff:
                 bank -= _num(e.get("amount"))
+        for transfer in internal_transfers or []:
+            d = str(transfer.get("date", ""))[:10]
+            if not (frm <= d <= to_iso):
+                continue
+            # Contra: cash falls, bank rises; it never affects P&L or GST liability.
+            cash -= _num(transfer.get("amount"))
+            if cutoff is None or d > cutoff:
+                bank += _num(transfer.get("amount"))
     return round(bank, 2), round(cash, 2)
 
 
@@ -3265,6 +3322,7 @@ def build_ledger_view(
     movement_start,
     today,
     overlay_repayments=None,
+    internal_transfers=None,
 ):
     month_start = date(year, month, 1)
     display_end = min(today, (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1))
@@ -3284,6 +3342,7 @@ def build_ledger_view(
     vendor_payments_by_date = by_date(vendor_payments)
     boulders_by_date = by_date(boulder_rows)
     repayments_by_date = by_date(repayments)
+    transfers_by_date = by_date(internal_transfers or [])
 
     def repayment_channels(row):
         payment = _num(row.get("payment_received", row.get("amount")))
@@ -3315,6 +3374,9 @@ def build_ledger_view(
                 cash_balance -= _num(expense.get("amount"))
             else:
                 bank_balance -= _num(expense.get("amount"))
+        for transfer in transfers_by_date.get(key, []):
+            cash_balance -= _num(transfer.get("amount"))
+            bank_balance += _num(transfer.get("amount"))
         # Vendor payments are already booked as expenses; never subtract the vendor stream
         # again (that double-counts a vendor who is also an expense, e.g. ASHWATH SOLING).
         current += timedelta(days=1)
@@ -3338,6 +3400,9 @@ def build_ledger_view(
                     cash_balance -= _num(expense.get("amount"))
                 else:
                     bank_balance -= _num(expense.get("amount"))
+            for transfer in transfers_by_date.get(key, []):
+                cash_balance -= _num(transfer.get("amount"))
+                bank_balance += _num(transfer.get("amount"))
             # Vendor payments are already booked as expenses; never subtract the vendor
             # stream again (that double-counts a vendor who is also an expense).
 
@@ -3374,7 +3439,7 @@ def build_ledger_view(
             # Balance overlay must see the FULL repayment history from the anchor (mirrors the
             # tile), not just month-to-date — else pre-month receipts (e.g. 29-30 Jun) are missed
             # and the ledger cash/bank read low. `repayments` here is only mtd; use all-history.
-            _ov = _overlay_balance(key, sales, expenses, overlay_repayments if overlay_repayments is not None else repayments)
+            _ov = _overlay_balance(key, sales, expenses, overlay_repayments if overlay_repayments is not None else repayments, internal_transfers)
             row_bank = _ov[0] if _ov else round(bank_balance, 2)
             row_cash = _ov[1] if _ov else round(cash_balance, 2)
             rows.append({
@@ -3392,6 +3457,7 @@ def build_ledger_view(
                 "expenses": round(expense_total, 2),
                 "expense_cash": round(expense_cash, 2),
                 "expense_bank": round(expense_bank, 2),
+                "internal_transfer": round(sum(_num(row.get("amount")) for row in transfers_by_date.get(key, [])), 2),
                 "cash_balance_office": row_cash,
                 "bank_balance": row_bank,
                 "boulder_input_mt": round(boulder_input_mt, 2),
@@ -3423,7 +3489,7 @@ def build_ledger_view(
     return {"year": year, "month": month, "rows": rows, "totals": totals}
 
 
-def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
+def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, internal_transfers=None):
     """Build the canonical cash/bank books from the same rows as the ledger.
 
     The opening and closing figures come from the verified anchor/statement overlay. The visible
@@ -3485,6 +3551,10 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
         row for row in repayments or []
         if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
     ]
+    transfers_in_range = [
+        row for row in (internal_transfers or [])
+        if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
+    ]
     spot_cash, spot_bank = {}, {}
     for sale in sales_in_range:
         s_cash, _s_credit, s_upi = _sale_channels(sale)
@@ -3542,9 +3612,15 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening):
         party = (expense.get("description") or expense.get("notes") or "").strip()
         target = cash_rows if channel == "cash" else bank_rows
         target.append(_row(expense.get("date"), f"Expense: {label}", party, "expense", 0, amount))
+    for transfer in transfers_in_range:
+        amount = _num(transfer.get("amount"))
+        if amount <= 0:
+            continue
+        cash_rows.append(_row(transfer.get("date"), "Internal transfer to bank", transfer.get("bank_name"), "internal_transfer", 0, amount))
+        bank_rows.append(_row(transfer.get("date"), "Internal transfer from office cash", transfer.get("cash_ledger"), "internal_transfer", amount, 0))
 
     def _balance(as_of):
-        verified = _overlay_balance(str(as_of), sales, expenses, repayments)
+        verified = _overlay_balance(str(as_of), sales, expenses, repayments, internal_transfers)
         if verified is not None:
             return verified
         return (
@@ -4474,6 +4550,7 @@ def write_snapshot_bundle(
     financial_year_start,
     all_sales,
     all_expenses,
+    internal_transfers,
     labour_rows,
     parts_rows,
     machines_rows,
@@ -4814,7 +4891,8 @@ def write_snapshot_bundle(
         summary["payables"] = round(sum(row["balance"] for row in payable_rows), 2)
         control["top_receivables"] = receivable_rows[:5]
         control["top_payables"] = payable_rows[:5]
-        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments)
+        control["internal_transfers"] = rows_between(internal_transfers, start, end)
+        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments, internal_transfers)
         if overlay_balance:
             summary = control.setdefault("summary", {})
             summary["bank_balance"] = overlay_balance[0]
@@ -5137,6 +5215,7 @@ def main():
         # IOT removed — endpoint not used
         f_cash     = pool.submit(fetch_cash_ledger,  _clone_sess(sess), sync_start, today)
         f_bank     = pool.submit(fetch_bank_entries, _clone_sess(sess), sync_start, today)
+        f_transfers = pool.submit(fetch_internal_transfers, _clone_sess(sess), sync_start, today)
         f_debtors  = pool.submit(fetch_debtors,      _clone_sess(sess), today)
         f_debtors_yest = pool.submit(fetch_debtors,  _clone_sess(sess), yesterday)
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
@@ -5172,6 +5251,9 @@ def main():
         )
         fresh_bank, bank_fresh = fetch_rows_or_saved(
             f_bank, "bank entries", saved_stream_rows("bank", sync_start, today)
+        )
+        fresh_internal_transfers, transfers_fresh = fetch_rows_or_saved(
+            f_transfers, "internal transfers", saved_stream_rows("internal_transfers", sync_start, today)
         )
         debtors_today, debtors_today_fresh = fetch_result_or_saved(
             f_debtors, "today debtors", today, saved_debtors_snapshot
@@ -5249,6 +5331,9 @@ def main():
     if expenses_fresh:
         assert_fresh_source_rows_preserved("Expenses", fresh_expenses, all_expenses, _expense_content_key)
     print(f"  {len(all_expenses)} expenses")
+    _archive_transfers = [row for row in (archive_rows.get("internal_transfers") or []) if str(row.get("date"))[:10] not in _fresh_window]
+    all_internal_transfers = merge_rows_by_archive_key(_archive_transfers, fresh_internal_transfers, "internal_transfers")
+    print(f"  {len(all_internal_transfers)} internal cash-to-bank transfers")
     boulder_rows = merge_rows_by_archive_key(
         archive_rows.get("boulders"),
         fresh_b_rows or seed_endpoints.get("boulders_30d", []),
@@ -5718,7 +5803,7 @@ def main():
     operating_cash_balance = round(operating_cash_balance, 2)
 
     def operating_balance_for(as_of):
-        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments)
+        overlay = _overlay_balance(str(as_of), all_sales, all_expenses, all_repayments, all_internal_transfers)
         if overlay:
             return overlay
         return operating_bank_balance, operating_cash_balance
@@ -6076,6 +6161,7 @@ def main():
             movement_start,
             today,
             overlay_repayments=all_repayments,
+            internal_transfers=all_internal_transfers,
         )
         ledger_by_month[ledger_month.strftime("%Y-%m")] = ledger_payload
         if ledger_month.month == 12:
@@ -6088,6 +6174,7 @@ def main():
         today,
         archive_sales_for_write,
         all_expenses,
+        all_internal_transfers,
         cash_rows,
         bank_rows,
         boulder_rows,
@@ -6148,6 +6235,7 @@ def main():
         financial_year_start,
         all_sales,
         all_expenses,
+        all_internal_transfers,
         labour_rows,
         parts_rows,
         machines_rows,
@@ -6237,6 +6325,7 @@ def main():
                 all_expenses,
                 all_repayments,
                 opening,
+                all_internal_transfers,
             ),
         )
     pruned_count, pruned_bytes = prune_obsolete_derived_range_snapshots()

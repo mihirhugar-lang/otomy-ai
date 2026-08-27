@@ -3319,7 +3319,11 @@ async function renderControlRoom(data){
     return `<tr><td>${esc(row.name||'Vendor')}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_purchased||0)}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(row.range_paid||0)}</td><td style="text-align:right">${fmtINR(row.total_purchases||0)}</td><td style="text-align:right">${fmtINR(row.total_payments||0)}</td><td style="text-align:right">${fmtINR(row.age_0_15||0)}</td><td style="text-align:right">${fmtINR(row.age_16_30||0)}</td><td style="text-align:right">${fmtINR(row.age_31_45||0)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.age_45_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(payable)}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="empty">No vendors</td></tr>';
   const salesTotals=data.customer_sales_totals||{};
-  const totalBankReceived=_num(salesTotals.bank_received)+repaymentBankTotal;
+  // GST Tax Money is bank money available to pay GST: customer bank receipts
+  // plus native Loctell cash-to-bank contra deposits. The contra is not sales,
+  // an expense, a vendor payment, or a GST-liability calculation.
+  const internalTransferToBank=(data.internal_transfers||[]).reduce((sum,row)=>sum+_num(row.amount),0);
+  const totalBankReceived=_num(salesTotals.bank_received)+repaymentBankTotal+internalTransferToBank;
   const totalMdpTonne=_num(salesTotals.mdp_ton)||((data.customer_sales||[]).reduce((sum,row)=>sum+_num(row.mdp_ton),0));
   const isGSTCustomer=row=>/GST/i.test(String(row?.customer_name||''));
   const gstCustomerReceived=(data.customer_sales||[]).filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.cash_received)+_num(row.bank_received),0)+_repayShown.filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.display_payment_received),0);
