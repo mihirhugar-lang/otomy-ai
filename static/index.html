@@ -2461,7 +2461,10 @@ async function shareStyledMobilePdf(title, content, className=''){
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#fffdf8',scale:1,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    // A 3x, lossless source keeps numbers and thin table rules crisp when the
+    // downloaded PDF is zoomed, while retaining the direct file-share flow.
+    const pdfRenderScale=3;
+    const canvas=await window.html2canvas(pa,{backgroundColor:'#fffdf8',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
@@ -2496,7 +2499,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
       if(page)pdf.addPage('a4','landscape');
-      pdf.addImage(slice.toDataURL('image/jpeg',0.94),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');
+      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'NONE');
       y=end;
     }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
