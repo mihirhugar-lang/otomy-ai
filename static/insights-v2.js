@@ -40,7 +40,7 @@
     if(from<'2026-04-01'||from>to){host.replaceChildren(E('div',{class:'empty'},'Choose a valid period from 1 April 2026 onwards.'));return;}
     host.replaceChildren(E('div',{class:'empty'},'Building visual analysis…'));
     try{
-      const result=await Promise.all([api('/api/dashboard/control?from_date='+from+'&to_date='+to),ledgerRows(from,to),api('/api/customers/?active_only=false&from_date='+from+'&to_date='+to+'&as_of='+to).catch(()=>[])]);
+      const result=await Promise.all([api('/api/dashboard/control?from_date='+from+'&to_date='+to+'&include_detail_rows=false'),ledgerRows(from,to),api('/api/customers/?active_only=false&from_date='+from+'&to_date='+to+'&as_of='+to).catch(()=>[])]);
       const control=result[0]||{},ledger=result[1]||[],customers=result[2]||[],trend=ordered(control.trend||[]),mix=control.mix||{};
       const daily=ledger.map(r=>Object.assign({},r,{repay:N(r.credit_repayment_cash)+N(r.credit_repayment_bank),cashIn:N(r.spot_sale_cash)+N(r.credit_repayment_cash),bankIn:N(r.spot_sale_bank)+N(r.credit_repayment_bank),liquid:N(r.cash_balance_office)+N(r.bank_balance)}));
       const profit=r=>N(r.sale_amount)-N(r.expenses),creditNet=r=>N(r.credit_sale_amount)-N(r.repay),perTonne=(r,amount,liquidityOnly=false)=>liquidityOnly&&r.date<'2026-06-01'?null:(N(r.qty_mt)?N(amount)/N(r.qty_mt):null),perBoulder=(r,amount)=>N(r.boulder_input_mt)?N(amount)/N(r.boulder_input_mt):null;
