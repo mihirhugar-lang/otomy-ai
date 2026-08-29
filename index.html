@@ -2517,11 +2517,12 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Do not rasterise mobile reports. Safari/Chrome print HTML as vector text and lines,
-  // whereas the old canvas-to-JPEG path made an otherwise sharp report look blurry.
+  // Every mobile route receives a shareable PDF file. If rendering fails, preserve the former native print route.
   if(isMobilePrint()){
-    if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
-    else printViaIframe(title, content, className);
+    shareStyledMobilePdf(title, content, className).catch(()=>{
+      if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
+      else printViaIframe(title, content, className);
+    });
     return;
   }
   // Desktop and Android installed app: print the current document directly via the @media print rules.
