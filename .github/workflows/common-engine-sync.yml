@@ -41,7 +41,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A complete manifest/readback over the growing R2 cache can exceed the
+    # former 30-minute cap even after the engine and publish have succeeded.
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
