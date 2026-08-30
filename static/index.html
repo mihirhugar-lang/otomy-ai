@@ -677,6 +677,27 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   #print-area [style*="color:#ad1457"]{color:#ad1457!important}
   #print-area [style*="color:#c2610c"]{color:#c2610c!important}
 }
+/* The installed app captures its PDF with screen CSS, not @media print.
+   Keep that canvas colour-for-colour identical to the website's final print theme. */
+#print-area.pdf-capture,#print-area.pdf-capture *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
+#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:100vh!important;padding:6px!important}
+#print-area.pdf-capture .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
+#print-area.pdf-capture .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
+#print-area.pdf-capture .card h3{background:#1f4e79!important;color:#fff!important}
+#print-area.pdf-capture .kpi{background:linear-gradient(180deg,#fdfbf0 0%,#f2e7c9 100%)!important}
+#print-area.pdf-capture .kpi.green{background:#e8f5e9!important;border-color:#2e7d32!important;border-top-color:#2e7d32!important}
+#print-area.pdf-capture .kpi.blue{background:#e3f2fd!important;border-color:#1565c0!important;border-top-color:#1565c0!important}
+#print-area.pdf-capture .kpi.red{background:#ffebee!important;border-color:#c62828!important;border-top-color:#c62828!important}
+#print-area.pdf-capture .kpi.navy{background:#e8eaf6!important;border-color:#1a237e!important;border-top-color:#1a237e!important}
+#print-area.pdf-capture .kpi.purple{background:#f3e5f5!important;border-color:#6a1b9a!important;border-top-color:#6a1b9a!important}
+#print-area.pdf-capture .kpi.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18))!important;border-color:rgba(5,150,105,.55)!important}
+#print-area.pdf-capture [style*="color:#2e7d32"]{color:#2e7d32!important}
+#print-area.pdf-capture [style*="color:#c62828"]{color:#c62828!important}
+#print-area.pdf-capture [style*="color:#1565c0"]{color:#1565c0!important}
+#print-area.pdf-capture [style*="color:#1a237e"]{color:#1a237e!important}
+#print-area.pdf-capture [style*="color:#b45309"]{color:#b45309!important}
+#print-area.pdf-capture [style*="color:#ad1457"]{color:#ad1457!important}
+#print-area.pdf-capture [style*="color:#c2610c"]{color:#c2610c!important}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
@@ -2440,7 +2461,7 @@ async function shareStyledMobilePdf(title, content, className=''){
   if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
   const pa=document.getElementById('print-area');
   const oldStyle=pa.getAttribute('style');
-  pa.className=className;
+  pa.className=`${className} pdf-capture`;
   pa.innerHTML=content;
   pa.style.setProperty('display','block','important');
   pa.style.setProperty('position','fixed','important');
@@ -2448,8 +2469,8 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('top','0','important');
   pa.style.setProperty('width','1120px','important');
   pa.style.setProperty('max-width','none','important');
-  pa.style.setProperty('padding','12px','important');
-  pa.style.setProperty('background','#fffdf8','important');
+  pa.style.setProperty('padding','6px','important');
+  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
   pa.style.setProperty('overflow','visible','important');
   // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
   pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
@@ -2464,7 +2485,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     // A 3x, lossless source keeps numbers and thin table rules crisp when the
     // downloaded PDF is zoomed, while retaining the direct file-share flow.
     const pdfRenderScale=3;
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#fffdf8',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
@@ -2495,7 +2516,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       slice.width=canvas.width;
       slice.height=height;
       const ctx=slice.getContext('2d');
-      ctx.fillStyle='#fffdf8';
+      ctx.fillStyle='#243d61';
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
       if(page)pdf.addPage('a4','landscape');
@@ -2513,6 +2534,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
     setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
   }finally{
+    pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
 }
