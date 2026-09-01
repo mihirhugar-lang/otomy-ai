@@ -1908,6 +1908,7 @@ def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=Tr
                                     "description": (f"{material} — {vehicle}".strip(" —")) or "Sale",
                                     "debit": round(debit, 2), "credit": 0.0,
                                     "material": material, "vehicle_no": vehicle,
+                                    "customer_name": name, "erp_customer_id": cid,
                                     "qty_mt": _num(cells[5]) if len(cells) > 5 else 0.0,
                                     "rate_per_mt": _num(cells[6]) if len(cells) > 6 else 0.0})
                 if credit > 0:
@@ -1925,6 +1926,74 @@ def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=Tr
             if entries:
                 result[_norm_name(name)] = entries
     return result
+
+
+def _customer_identity_sale_key(row, amount_key):
+    """Loctell's stable sale fingerprint when ListCustomerWiseReport omits customer ID."""
+    return (
+        str(row.get("date") or "")[:10],
+        _norm_name(row.get("material")),
+        _norm_name(row.get("vehicle_no")),
+        round(_num(row.get(amount_key)), 2),
+    )
+
+
+def reconcile_fresh_credit_sale_identities(sales, debtors, ledger_sales):
+    """Resolve a renamed fresh credit-sale name only from one exact ERP ledger match.
+
+    ListCustomerWiseReport provides a display name while the detailed customer
+    ledger provides the immutable ERP customer ID.  A missing or ambiguous
+    match must abort publication: allowing it would split receivables between
+    an old and a renamed customer identity.
+    """
+    debtor_names = {_norm_name(row.get("name")) for row in debtors or []}
+    pending = [
+        sale for sale in sales or []
+        if _num(_sale_channels(sale)[1]) > 0.005
+        and _norm_name(sale.get("customer_name")) not in debtor_names
+    ]
+    if not pending:
+        return 0
+    candidates = {}
+    for entry in ledger_sales or []:
+        if _num(entry.get("debit")) <= 0.005:
+            continue
+        candidates.setdefault(_customer_identity_sale_key(entry, "debit"), []).append(entry)
+    resolved, problems = 0, []
+    for sale in pending:
+        key = _customer_identity_sale_key(sale, "credit_amount")
+        matches = candidates.get(key, [])
+        source_ids = {str(row.get("erp_customer_id") or "") for row in matches if row.get("erp_customer_id")}
+        if len(matches) == 1 and len(source_ids) == 1:
+            sale["customer_name"] = matches[0]["customer_name"]
+            sale["erp_customer_id"] = matches[0]["erp_customer_id"]
+            resolved += 1
+            continue
+        problems.append(
+            f"ticket {sale.get('ticket_no') or '?'} on {key[0]} "
+            f"({sale.get('customer_name') or 'blank'}): {len(matches)} ledger matches"
+        )
+    if problems:
+        raise RuntimeError("customer identity guard blocked R2 publish; " + "; ".join(problems[:5]))
+    return resolved
+
+
+def resolve_fresh_credit_sale_identities(sess, sales, debtors, from_d, to_d):
+    """Fetch detailed ledger evidence only when a fresh credit-sale name changed."""
+    debtor_names = {_norm_name(row.get("name")) for row in debtors or []}
+    needs_identity = any(
+        _num(_sale_channels(sale)[1]) > 0.005
+        and _norm_name(sale.get("customer_name")) not in debtor_names
+        for sale in sales or []
+    )
+    if not needs_identity:
+        return 0
+    ledgers = fetch_customer_ledgers_full(sess, debtors, from_d, to_d)
+    ledger_sales = [
+        entry for entries in ledgers.values() for entry in entries
+        if entry.get("type") == "sale"
+    ]
+    return reconcile_fresh_credit_sale_identities(sales, debtors, ledger_sales)
 
 
 def compute_repayments(debtors_prev, debtors_curr, as_of_date):
@@ -5403,6 +5472,15 @@ def main():
         print(f"  sale splits captured for {_n}/{len(fresh_sales)} fresh tickets; rejected {_rejected} non-reconciling splits")
     except Exception as _e:
         raise RuntimeError(f"ListSale split validation failed; refusing to publish sales: {_e}") from _e
+
+    try:
+        resolved_identities = resolve_fresh_credit_sale_identities(
+            sess, fresh_sales, debtors_today, sync_start, today
+        )
+        if resolved_identities:
+            print(f"  customer identities resolved from ERP ledgers: {resolved_identities}")
+    except Exception as _e:
+        raise RuntimeError(f"Customer identity validation failed; refusing to publish sales: {_e}") from _e
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     assert_fresh_sale_mdp_preserved(fresh_sales, all_sales)
