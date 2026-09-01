@@ -1201,6 +1201,8 @@ _ODOMETER_TARGETS = [
     ("VSI", "VSI"),
     ("Hitachi", "HITACHI"),
     ("VMI Loader", "VMI LOADER"),
+    ("Daneswary Soling Vehicles", "DANESWARY SOLING VEHICLES"),
+    ("Soling Manju Machines", "SOLING MANJU MACHINES"),
 ]
 
 
@@ -1260,17 +1262,40 @@ def fetch_live_odometer_readings(sess, today):
     return fetch_odometer_readings(sess, today, today)
 
 
+def normalize_odometer_readings(readings):
+    """Keep cached history aligned when configured machinery is added later.
+
+    A newly configured vehicle has no historical reading until Loctell returns
+    one.  Represent that fact with an explicit blank row rather than rejecting
+    the otherwise-valid historic five-machine records or inventing readings.
+    """
+    by_type = {
+        str((row or {}).get("vehicle_type") or ""): dict(row)
+        for row in readings or []
+        if str((row or {}).get("vehicle_type") or "")
+    }
+    result = []
+    for vehicle_type, _registration in _ODOMETER_TARGETS:
+        result.append(by_type.get(vehicle_type, {
+            "vehicle_type": vehicle_type,
+            "end_reading": None,
+            "start_reading": None,
+            "difference": None,
+        }))
+    return result
+
+
 def merge_odometer_history(existing, fresh):
-    """Replace only refreshed daily Loctell ranges; retain prior day records."""
+    """Replace refreshed days and normalize retained history to target machines."""
     by_day = {}
     for row in existing or []:
         day = str((row or {}).get("date") or "")[:10]
         if day:
-            by_day[day] = dict(row)
+            by_day[day] = {**dict(row), "readings": normalize_odometer_readings((row or {}).get("readings"))}
     for row in fresh or []:
         day = str((row or {}).get("date") or "")[:10]
         if day:
-            by_day[day] = dict(row)
+            by_day[day] = {**dict(row), "readings": normalize_odometer_readings((row or {}).get("readings"))}
     return [by_day[day] for day in sorted(by_day)]
 
 
@@ -1290,7 +1315,7 @@ def validate_odometer_history(rows):
         readings = (day_row or {}).get("readings") or []
         names = [str((row or {}).get("vehicle_type") or "") for row in readings]
         if set(names) != expected or len(names) != len(expected):
-            raise ValueError(f"odometer history {day} does not contain exactly the five target machines")
+            raise ValueError(f"odometer history {day} does not contain exactly the configured target machines")
         for row in readings:
             start, end, difference = row.get("start_reading"), row.get("end_reading"), row.get("difference")
             if start is None or end is None or difference is None:
