@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Small offline guard for Otomy's cumulative Loctell machinery reading history."""
-from gha_sync import merge_odometer_history, validate_odometer_history
+from gha_sync import _ODOMETER_TARGETS, merge_odometer_history, validate_odometer_history
 
 
 def readings(start, end):
-    names = ["Jaw", "Cone", "VSI", "Hitachi", "VMI Loader"]
+    names = [vehicle_type for vehicle_type, _registration in _ODOMETER_TARGETS]
     return [
         {
             "vehicle_type": name,
@@ -17,14 +17,15 @@ def readings(start, end):
     ]
 
 
-prior = [{"date": "2026-08-21", "readings": readings(100, 105)}]
+prior = [{"date": "2026-08-20", "readings": readings(95, 100)[:5]}]
 fresh = [
     {"date": "2026-08-21", "readings": readings(100, 106)},
     {"date": "2026-08-22", "readings": readings(106, 110)},
 ]
 history = merge_odometer_history(prior, fresh)
-assert [row["date"] for row in history] == ["2026-08-21", "2026-08-22"]
-assert history[0]["readings"][0]["end_reading"] == 106
+assert [row["date"] for row in history] == ["2026-08-20", "2026-08-21", "2026-08-22"]
+assert history[1]["readings"][0]["end_reading"] == 106
+assert history[0]["readings"][-1]["end_reading"] is None
 validate_odometer_history(history)
 
 broken = merge_odometer_history([], fresh)
