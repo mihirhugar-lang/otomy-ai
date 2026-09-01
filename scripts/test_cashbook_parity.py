@@ -190,6 +190,13 @@ class SourceWindowCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "FYTD source coverage failed.*2026-04.*2026-05"):
             engine.assert_fytd_source_coverage(fy_start, as_of, truncated, truncated)
 
+    def test_allows_an_empty_open_month_for_one_source(self):
+        engine = load_engine()
+        fy_start, as_of = date(2026, 4, 1), date(2026, 9, 1)
+        completed = [{"date": f"2026-{month:02d}-01"} for month in range(4, 9)]
+        sales = completed + [{"date": "2026-09-01"}]
+        engine.assert_fytd_source_coverage(fy_start, as_of, sales, completed)
+
     def test_keeps_distinct_same_amount_expense_bank_payments(self):
         engine = load_engine()
         base = {

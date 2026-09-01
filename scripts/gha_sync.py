@@ -744,13 +744,17 @@ def assert_fytd_source_coverage(fy_start, as_of, sales, expenses):
 
     A recent sync fetches a small Loctell delta, but its FYTD snapshots are
     served directly by the UI. Closing-balance parity alone cannot detect a
-    truncated source because a later balance anchor can make it tie.
+    truncated source because a later balance anchor can make it tie. Every
+    completed FY month must therefore contain source rows. The open month is
+    deliberately excluded: a valid new month can have sales but no expenses
+    (or the reverse), and fresh-window preservation guards its live rows.
     """
     fy_start = fy_start if isinstance(fy_start, date) else date.fromisoformat(str(fy_start)[:10])
     as_of = as_of if isinstance(as_of, date) else date.fromisoformat(str(as_of)[:10])
     expected_months = set()
     cursor = fy_start.replace(day=1)
-    while cursor <= as_of:
+    current_month = as_of.replace(day=1)
+    while cursor < current_month:
         expected_months.add(cursor.strftime("%Y-%m"))
         cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
     for label, rows in (("Sales", sales), ("Expenses", expenses)):
@@ -765,7 +769,7 @@ def assert_fytd_source_coverage(fy_start, as_of, sales, expenses):
                 f"FYTD source coverage failed for {label}: missing month(s) {', '.join(missing)}; "
                 "refusing to publish a truncated FYTD snapshot"
             )
-    print(f"  FYTD source coverage: {', '.join(sorted(expected_months))}")
+    print(f"  FYTD completed-month source coverage: {', '.join(sorted(expected_months)) or 'none'}")
 
 def archive_receipts_to_repayments(receipts):
     rows = []
