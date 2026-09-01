@@ -2302,6 +2302,7 @@ def build_control(sales, expenses, from_d, to_d,
             "description":  e["description"] or e["category"] or "Expense",
             "party":        "",
             "payment_mode": e["payment_mode"] or "",
+            "remarks":      e.get("notes") or "",
             "amount":       round(_num(e["amount"]), 2),
             # Preserve the exact decision behind summary.expenses.  The browser
             # receives no notes field, so it must not try to classify a row again.
@@ -2318,6 +2319,7 @@ def build_control(sales, expenses, from_d, to_d,
             "description": row.get("worker_name") or "Labour entry",
             "party": row.get("worker_name") or "",
             "payment_mode": "Paid" if row.get("paid") else "Unpaid",
+            "remarks": row.get("notes") or "",
             "amount": round(_num(row.get("amount")), 2),
             "is_operating_expense": not _is_director_payment(
                 row.get("worker_name"), row.get("worker_type"), row.get("notes"),
@@ -2332,6 +2334,7 @@ def build_control(sales, expenses, from_d, to_d,
             "description": row.get("part_name") or "Part / Repair",
             "party": row.get("supplier") or "",
             "payment_mode": "",
+            "remarks": row.get("notes") or "",
             "amount": round(_num(row.get("total_amount")), 2),
             "is_operating_expense": not _is_director_payment(
                 row.get("machine_name"), row.get("part_name"), row.get("supplier"),
@@ -3670,7 +3673,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
             return id_key, date_key
         return _customer_name_key(row), date_key
 
-    def _row(day, particulars, party, kind, incoming, outgoing, ticket_no=None, settlement_roundoff=0.0):
+    def _row(day, particulars, party, kind, incoming, outgoing, ticket_no=None, settlement_roundoff=0.0, remarks=""):
         return {
             "date": str(day)[:10],
             "particulars": particulars,
@@ -3679,6 +3682,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
             "in": round(_num(incoming), 2),
             "out": round(_num(outgoing), 2),
             "ticket_no": str(ticket_no or ""),
+            "remarks": remarks or "",
             # Informational only: the running book balance uses in/out above.
             # Negative means Loctell settled less than the gross invoice.
             "settlement_roundoff": round(_num(settlement_roundoff), 2),
@@ -3756,13 +3760,13 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
         label = (expense.get("category") or expense.get("description") or "Expense").strip()
         party = (expense.get("description") or expense.get("notes") or "").strip()
         target = cash_rows if channel == "cash" else bank_rows
-        target.append(_row(expense.get("date"), f"Expense: {label}", party, "expense", 0, amount))
+        target.append(_row(expense.get("date"), f"Expense: {label}", party, "expense", 0, amount, remarks=expense.get("notes") or ""))
     for transfer in transfers_in_range:
         amount = _num(transfer.get("amount"))
         if amount <= 0:
             continue
-        cash_rows.append(_row(transfer.get("date"), "Internal transfer to bank", transfer.get("bank_name"), "internal_transfer", 0, amount))
-        bank_rows.append(_row(transfer.get("date"), "Internal transfer from office cash", transfer.get("cash_ledger"), "internal_transfer", amount, 0))
+        cash_rows.append(_row(transfer.get("date"), "Internal transfer to bank", transfer.get("bank_name"), "internal_transfer", 0, amount, remarks=transfer.get("remarks") or ""))
+        bank_rows.append(_row(transfer.get("date"), "Internal transfer from office cash", transfer.get("cash_ledger"), "internal_transfer", amount, 0, remarks=transfer.get("remarks") or ""))
 
     def _balance(as_of):
         verified = _overlay_balance(str(as_of), sales, expenses, repayments, internal_transfers)
