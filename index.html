@@ -1061,7 +1061,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   </div>
 
   <div class="card">
-    <h3>Fuel Received <span id="fuel-received-period" style="font-size:12px;font-weight:400;color:#c2610c"></span></h3>
+    <h3>Fuel Ledger Book <span id="fuel-received-period" style="font-size:12px;font-weight:400;color:#c2610c"></span></h3>
     <div class="kpi-row" id="fuel-received-summary" style="margin:10px 0 14px"></div>
     <div class="tbl-wrap" id="fuel-received-tbl"></div>
     <div id="fuel-received-pager" class="no-print"></div>
@@ -1240,6 +1240,7 @@ async function snapshotFetch(url){
     '/api/machines/odometer',
     '/api/machines/fuel-issued',
     '/api/machines/fuel-received',
+    '/api/machines/fuel-balance',
     '/api/machines/summary',
     '/api/customers/',
     '/api/customers/outstanding',
@@ -2710,8 +2711,10 @@ function pdfFullTableForId(id){
   }
   if(id==='fuel-received-tbl'){
     const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
-    const rows=(_allData.fuelReceived||[]).filter(r=>r.date>=from&&r.date<=to);
-    return pdfTableBlock('Fuel Received',['Received Date','Supplier Name','Camp','Fuel Type','Quantity','Unit Price','Amount','Received By'],rows.map(r=>[r.received_date,r.supplier_name,r.camp,r.fuel_type,r.quantity,fmtINR(r.unit_price),fmtINR(r.amount),r.received_by]));
+    const ledger=_fuelLedger(from,to);
+    const totals=ledger.rows.reduce((sum,r)=>({received:sum.received+_num(r.received_litres),receiptAmount:sum.receiptAmount+_num(r.receipt_amount),spend:sum.spend+_num(r.spend_amount)}),{received:0,receiptAmount:0,spend:0});
+    const balance=_allData.fuelBalance||{};
+    return pdfTableBlock('Fuel Ledger Book',['Date','Details','Fuel Received','Unit Price','Receipt Amount','Fuel Spend'],[...ledger.rows.map(r=>[r.date,r.details,r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`,r.unit_price==null?'—':fmtINR(r.unit_price),r.receipt_amount==null?'—':fmtINR(r.receipt_amount),r.spend_litres==null?'—':`${r.spend_amount==null?'—':fmtINR(r.spend_amount)} (${fmtNum(r.spend_litres,2)} L)`]),['TOTAL','',`${fmtNum(totals.received,2)} L`,'',fmtINR(totals.receiptAmount),fmtINR(totals.spend)],['Loctell Fuel in Plant','',balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L`,'',balance.diesel_value==null?'—':fmtINR(balance.diesel_value),'']]);
   }
   if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
     const channel=id==='erp-cash-tbl'?'cash':'bank';
@@ -3009,7 +3012,7 @@ async function printDashboardConsolidated(){
     const expenseCash=expenses.reduce((s,r)=>s+r.cash,0),expenseBank=expenses.reduce((s,r)=>s+r.bank,0);
     await _ensureDashboardPrintBooks(f,t);
     const profit=document.getElementById('dash-profit-bar'),kpis=document.querySelector('#section-dashboard .kpi-row'),ownerControl=document.querySelector('#control-room .control-hero');
-    const customerPayments=_dashboardCardCopy('dash-customer-payments-card'),vendorPayments=_dashboardCardCopy('dash-vendor-payments-card'),machineReadings=_dashboardCardCopy('dash-machine-odometer-card');
+    const customerPayments=_dashboardCardCopy('dash-customer-payments-card'),vendorPayments=_dashboardCardCopy('dash-vendor-payments-card'),machineReadings=_dashboardCardCopy('dash-machine-odometer-card'),fuelLedger=_dashboardCardCopy('dash-fuel-ledger-card');
     const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Consolidated Report</h1><p>Period: ${esc(f)} to ${esc(t)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit?profit.outerHTML:''}${kpis?kpis.outerHTML:''}${ownerControl?ownerControl.outerHTML:''}
       <div class="card print-section"><h3>Credit Repayment — Consolidated by Customer</h3><div class="report-table-wrap"><table class="report-table consolidated-repayment-table"><thead><tr><th>Customer</th><th>Bank / UPI</th><th>Cash</th><th>Credit Repayment</th><th>Sale Adjusted</th><th>Latest Balance To Pay</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td><strong>Total (${repayments.length})</strong></td><td><strong>${fmtINR(repaymentBank)}</strong></td><td><strong>${fmtINR(repaymentCash)}</strong></td><td><strong>${fmtINR(repaymentPayment)}</strong></td><td><strong>${fmtINR(repaymentAdjusted)}</strong></td><td><strong>${fmtINR(repaymentBalance)}</strong></td></tr></tfoot></table></div></div>
       <div class="card print-section"><h3>Customer Wise Sales — Consolidated</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Material</th><th>Total Tickets</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="2"><strong>Total (${sales.length})</strong></td><td><strong>${fmtNum(salesTickets,0)}</strong></td><td><strong>${fmtNum(salesQty,2)}</strong></td><td><strong>${fmtINR2(salesAmount)}</strong></td><td><strong>${fmtINR(salesBank)}</strong></td><td><strong>${fmtINR(salesCash)}</strong></td><td><strong>${fmtINR(salesCredit)}</strong></td></tr></tfoot></table></div></div>
@@ -3017,7 +3020,7 @@ async function printDashboardConsolidated(){
       <div class="card print-section"><h3>Expenses — Consolidated by Category</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Expense Category</th><th>Entries</th><th>Cash</th><th>Bank / UPI</th><th>Total</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td><strong>Total (${expenses.length})</strong></td><td><strong>${fmtNum(expenses.reduce((s,r)=>s+r.entries,0),0)}</strong></td><td><strong>${fmtINR(expenseCash)}</strong></td><td><strong>${fmtINR(expenseBank)}</strong></td><td><strong>${fmtINR(expenseCash+expenseBank)}</strong></td></tr></tfoot></table></div></div>
       ${vendorPayments}
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
-      ${machineReadings}`;
+      ${machineReadings}${fuelLedger}`;
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
@@ -3473,6 +3476,7 @@ async function renderControlRoom(data){
     <div class="card print-section" id="dash-bank-book-card"><h3 class="cashbook-title">🏦 Bank Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Bank Book','dash-bank-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-bank-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section" id="dash-cash-book-card"><h3 class="cashbook-title">💵 Cash Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Cash Book','dash-cash-book-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-cash-book" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section" id="dash-machine-odometer-card"><h3 class="cashbook-title">⚙️ Live Machinery Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Live Machinery Readings','dash-machine-odometer-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-machine-odometer" style="max-height:520px;overflow:auto"></div></div>
+    <div class="card print-section" id="dash-fuel-ledger-card"><h3 class="cashbook-title">⛽ Fuel Ledger Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Fuel Ledger Book','dash-fuel-ledger-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-fuel-ledger" style="max-height:520px;overflow:auto"></div></div>
   `;
   await renderDashboardCashBooks(data.period.from,data.period.to);
   loadMachines(data.period.from,data.period.to);
@@ -4246,9 +4250,9 @@ function _machineFuelForRange(from,to){
 function _machineFuelIssueReadingForRange(from,to){
   return _machineFuelStatsForRange(from,to).reading;
 }
-function _machineFuelStatsForRange(from,to){
+function _machineFuelStatsForRange(from,to,vehicleType=''){
   if(!from||!to)return {liters:null,reading:null};
-  const rows=(_allData.machineFuel||[]).filter(row=>row.date>=from&&row.date<=to);
+  const rows=(_allData.machineFuel||[]).filter(row=>row.date>=from&&row.date<=to&&(!vehicleType||row.vehicle_type===vehicleType));
   const liters=Math.round(rows.reduce((sum,row)=>sum+_num(row.fuel_issued),0)*100)/100;
   const latest=rows.slice().sort((a,b)=>String(a.issued_at||a.date).localeCompare(String(b.issued_at||b.date))).pop();
   return {liters,reading:latest?.fuel_issue_reading??null};
@@ -4324,12 +4328,8 @@ function _machineRangeRows(from,to){
 function _machineTableHtml(from,to,includeFuelIssueReading=false){
   const rows=_machineRangeRows(from,to),cur=_page.machines||1,size=pageSizeFor('machines',rows.length),slice=rows.slice((cur-1)*size,cur*size);
   const reading=v=>v==null?'—':fmtNum(v,2);
-  const fuel=_machineFuelForRange(from,to);
-  const fuelReading=_machineFuelIssueReadingForRange(from,to);
-  const fuelText=fuel==null?'—':`${fmtNum(fuel,2)} L`;
-  const fuelReadingText=reading(fuelReading);
   let html='<table><thead><tr><th>Vehicle Type</th><th>End Reading</th><th>Start Reading</th><th>Difference</th><th>Fuel Issued (L)</th>'+(includeFuelIssueReading?'<th>Fuel Issue Reading</th>':'')+'</tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td><strong>${esc(r.vehicle_type)}</strong></td><td>${reading(r.end_reading)}</td><td>${reading(r.start_reading)}</td><td><strong>${reading(r.difference)}</strong></td><td>${r.vehicle_type==='VMI Loader'?fuelText:'—'}</td>${includeFuelIssueReading?`<td>${r.vehicle_type==='VMI Loader'?fuelReadingText:'—'}</td>`:''}</tr>`;});
+  slice.forEach(r=>{const fuel=_machineFuelStatsForRange(from,to,r.vehicle_type),fuelText=fuel.liters==null?'—':`${fmtNum(fuel.liters,2)} L`,fuelReadingText=reading(fuel.reading);html+=`<tr><td><strong>${esc(r.vehicle_type)}</strong></td><td>${reading(r.end_reading)}</td><td>${reading(r.start_reading)}</td><td><strong>${reading(r.difference)}</strong></td><td>${fuelText}</td>${includeFuelIssueReading?`<td>${fuelReadingText}</td>`:''}</tr>`;});
   if(!slice.length)html+=`<tr><td colspan="${includeFuelIssueReading?6:5}" class="empty">No live Loctell machinery readings available</td></tr>`;
   return html+'</tbody></table>';
 }
@@ -4342,15 +4342,15 @@ async function loadMachines(dashboardFrom,dashboardTo){
     let summary;
     try{summary=await api(`/api/machines/summary${rangeQuery}`);}
     catch(summaryError){
-      const [odometer,fuel_issued,fuel_received]=await Promise.all([api(`/api/machines/odometer${rangeQuery}`),api('/api/machines/fuel-issued'),api('/api/machines/fuel-received')]);
-      summary={odometer,fuel_issued,fuel_received};
+      const [odometer,fuel_issued,fuel_received,fuel_balance]=await Promise.all([api(`/api/machines/odometer${rangeQuery}`),api('/api/machines/fuel-issued'),api('/api/machines/fuel-received'),api('/api/machines/fuel-balance')]);
+      summary={odometer,fuel_issued,fuel_received,fuel_balance};
     }
-    const rows=summary.odometer||[],history=summary.odometer_history||[],fuelRows=summary.fuel_issued||[],fuelReceivedRows=summary.fuel_received||[];
-    _allData.machines=rows;_allData.machineHistory=history;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
+    const rows=summary.odometer||[],history=summary.odometer_history||[],fuelRows=summary.fuel_issued||[],fuelReceivedRows=summary.fuel_received||[],fuelBalance=summary.fuel_balance||{};
+    _allData.machines=rows;_allData.machineHistory=history;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
   }catch(e){
-    ['machines-tbl','dash-machine-odometer'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
+    ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
   }
 }
 function renderMachines(){
@@ -4363,18 +4363,56 @@ function renderMachines(){
   const dash=document.getElementById('dash-machine-odometer');if(dash)dash.innerHTML=_machineTableHtml(_machineDashboardRange.from,_machineDashboardRange.to);
   const pager=document.getElementById('machines-pager');if(pager)pager.innerHTML=pagerHTML('machines',rows.length);
   renderFuelReceived();
+  renderDashboardFuelLedger(_machineDashboardRange.from,_machineDashboardRange.to);
+}
+function _fuelLedger(from,to){
+  const diesel=row=>String(row.fuel_type||'DIESEL').toUpperCase()==='DIESEL';
+  const trackingFrom=String((_allData.fuelBalance||{}).spend_tracking_from||'9999-12-31');
+  const events=[
+    ...(_allData.fuelReceived||[]).filter(diesel).map(row=>({kind:'receipt',date:row.date,order:String(row.received_at||row.received_date||row.date).replace('[Etc/UTC]','+00:00'),row})),
+    ...(_allData.machineFuel||[]).filter(row=>diesel(row)&&row.date>=trackingFrom).map(row=>({kind:'issue',date:row.date,order:String(row.issued_at||row.date).replace('[Etc/UTC]','+00:00'),row})),
+  ].sort((a,b)=>a.order.localeCompare(b.order)||(a.kind==='receipt'?-1:1));
+  let balanceLitres=0,balanceValue=0,closingLitres=0,closingValue=0;
+  const rows=[];
+  events.forEach(event=>{
+    let entry;
+    if(event.kind==='receipt'){
+      const quantity=_num(event.row.quantity),amount=_num(event.row.amount);
+      balanceLitres+=quantity;balanceValue+=amount;
+      entry={date:event.date,details:`Received from ${event.row.supplier_name||'—'}`,received_litres:quantity,unit_price:_num(event.row.unit_price),receipt_amount:amount,spend_litres:null,spend_amount:null};
+    }else{
+      const liters=_num(event.row.fuel_issued),rate=balanceLitres>0.0001?balanceValue/balanceLitres:null,spend=rate==null?null:Math.round(liters*rate*100)/100;
+      balanceLitres-=liters;if(spend!=null)balanceValue-=spend;
+      entry={date:event.date,details:`Issued to ${event.row.vehicle_type||'Machine'}`,received_litres:null,unit_price:rate==null?null:Math.round(rate*100)/100,receipt_amount:null,spend_litres:liters,spend_amount:spend};
+    }
+    entry.balance_litres=Math.round(balanceLitres*100)/100;entry.balance_value=Math.round(balanceValue*100)/100;
+    if(event.date<=to){closingLitres=entry.balance_litres;closingValue=entry.balance_value;}
+    if(event.date>=from&&event.date<=to)rows.push(entry);
+  });
+  return {rows,closing_litres:closingLitres,closing_value:closingValue,tracking_from:trackingFrom};
 }
 function renderFuelReceived(){
   const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
-  const rows=(_allData.fuelReceived||[]).filter(r=>r.date>=from&&r.date<=to),cur=_page.fuelReceived||1,size=pageSizeFor('fuelReceived',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  let html='<table><thead><tr><th>Received Date</th><th>Supplier Name</th><th>Camp</th><th>Fuel Type</th><th>Quantity</th><th>Unit Price</th><th>Amount</th><th>Received By</th></tr></thead><tbody>';
-  slice.forEach(r=>{html+=`<tr><td>${esc(r.received_date)}</td><td><strong>${esc(r.supplier_name)}</strong></td><td>${esc(r.camp)}</td><td>${esc(r.fuel_type)}</td><td>${fmtNum(r.quantity,2)}</td><td>${fmtINR(r.unit_price)}</td><td><strong>${fmtINR(r.amount)}</strong></td><td>${esc(r.received_by)}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="8" class="empty">No fuel received in the selected period</td></tr>';
-  html+='</tbody></table>';
+  const ledger=_fuelLedger(from,to),rows=ledger.rows,cur=_page.fuelReceived||1,size=pageSizeFor('fuelReceived',rows.length),slice=rows.slice((cur-1)*size,cur*size);
+  const totalQty=rows.reduce((sum,r)=>sum+_num(r.received_litres),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.receipt_amount),0),totalSpend=rows.reduce((sum,r)=>sum+_num(r.spend_amount),0),balance=_allData.fuelBalance||{};
+  const plantText=balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L${balance.diesel_value==null?'':` · ${fmtINR(balance.diesel_value)} (${fmtINR(balance.diesel_unit_price)}/L)`}`;
+  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th></tr></thead><tbody>';
+  slice.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`— (${fmtNum(r.spend_litres,2)} L)`:`<strong>${fmtINR(r.spend_amount)} <span style="font-weight:400">(${fmtNum(r.spend_litres,2)} L)</span></strong>`;html+=`<tr><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="6" class="empty">No diesel ledger entries in the selected period</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtINR(totalSpend)}</strong></td></tr><tr><td colspan="5"><strong>Loctell Fuel Dashboard — Fuel in Plant</strong></td><td><strong>${plantText}</strong></td></tr></tfoot></table>`;
   const table=document.getElementById('fuel-received-tbl');if(table)table.innerHTML=html;
   const pager=document.getElementById('fuel-received-pager');if(pager)pager.innerHTML=pagerHTML('fuelReceived',rows.length);
-  const totalQty=rows.reduce((sum,r)=>sum+_num(r.quantity),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.amount),0);
-  const summary=document.getElementById('fuel-received-summary');if(summary)summary.innerHTML=`<div class="kpi blue"><div class="kpi-label">Fuel Received</div><div class="kpi-value">${fmtNum(totalQty,2)} L</div></div><div class="kpi green"><div class="kpi-label">Total Value</div><div class="kpi-value">${fmtINR(totalAmount)}</div></div><div class="kpi navy"><div class="kpi-label">Receipts</div><div class="kpi-value">${rows.length}</div></div>`;
+  const summary=document.getElementById('fuel-received-summary');if(summary)summary.innerHTML=`<div class="kpi blue"><div class="kpi-label">Fuel Received</div><div class="kpi-value">${fmtNum(totalQty,2)} L</div></div><div class="kpi green"><div class="kpi-label">Fuel Spend (from ${esc(ledger.tracking_from)})</div><div class="kpi-value">${fmtINR(totalSpend)}</div></div><div class="kpi navy"><div class="kpi-label">Fuel in Plant (Loctell)</div><div class="kpi-value">${balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L`}</div><div class="metric-note">${balance.diesel_value==null?'Value unavailable':`${fmtINR(balance.diesel_value)} at ${fmtINR(balance.diesel_unit_price)}/L`}</div></div>`;
+}
+function renderDashboardFuelLedger(from,to){
+  const table=document.getElementById('dash-fuel-ledger');if(!table||!from||!to)return;
+  const ledger=_fuelLedger(from,to),rows=ledger.rows,balance=_allData.fuelBalance||{};
+  const totalQty=rows.reduce((sum,r)=>sum+_num(r.received_litres),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.receipt_amount),0),totalSpend=rows.reduce((sum,r)=>sum+_num(r.spend_amount),0);
+  const plantText=balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L${balance.diesel_value==null?'':` · ${fmtINR(balance.diesel_value)} (${fmtINR(balance.diesel_unit_price)}/L)`}`;
+  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th></tr></thead><tbody>';
+  rows.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`— (${fmtNum(r.spend_litres,2)} L)`:`<strong>${fmtINR(r.spend_amount)} <span style="font-weight:400">(${fmtNum(r.spend_litres,2)} L)</span></strong>`;html+=`<tr><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td></tr>`;});
+  if(!rows.length)html+='<tr><td colspan="6" class="empty">No diesel ledger entries in the selected period</td></tr>';
+  table.innerHTML=html+`</tbody><tfoot><tr><td colspan="2"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtINR(totalSpend)}</strong></td></tr><tr><td colspan="5"><strong>Loctell Fuel Dashboard — Fuel in Plant</strong></td><td><strong>${plantText}</strong></td></tr></tfoot></table>`;
 }
 async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 

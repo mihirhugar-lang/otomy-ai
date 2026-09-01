@@ -1204,6 +1204,7 @@ _ODOMETER_TARGETS = [
     ("Daneswary Soling Vehicles", "DANESWARY SOLING VEHICLES"),
     ("Soling Manju Machines", "SOLING MANJU MACHINES"),
 ]
+_FUEL_SPEND_TRACKING_FROM = date(2026, 9, 1)
 
 
 def _odometer_key(value):
@@ -1379,8 +1380,8 @@ def _loctell_ist_date(value):
         return None
 
 
-def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
-    """Actual VMI Loader fuel issues from Loctell's Fuel Issued report.
+def fetch_machine_fuel_issues(sess, financial_year_start, today):
+    """Actual configured-machine fuel issues from Loctell's Fuel Issued report.
 
     The frontend totals these source rows for the currently selected period.
     It never derives fuel from an expense row or a manual adjustment.
@@ -1395,15 +1396,20 @@ def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
     try:
         payload = _request_json_with_retry(
             sess, url, params={"page": 0, "size": 2000}, timeout=35,
-            label=f"VMI Loader fuel issues {financial_year_start} to {today}",
+            label=f"machine fuel issues {financial_year_start} to {today}",
         )
     except Exception as exc:
-        raise ErpFetchError(f"VMI Loader fuel-issued fetch failed: {exc}") from exc
+        raise ErpFetchError(f"machine fuel-issued fetch failed: {exc}") from exc
 
+    vehicle_type_by_registration = {
+        _odometer_key(registration): vehicle_type
+        for vehicle_type, registration in _ODOMETER_TARGETS
+    }
     result = []
     for row in (payload.get("data", []) if isinstance(payload, dict) else []):
         vehicle = row.get("vehicle") or {}
-        if _odometer_key(vehicle.get("regNumber")) != "VMI LOADER":
+        vehicle_type = vehicle_type_by_registration.get(_odometer_key(vehicle.get("regNumber")))
+        if vehicle_type is None:
             continue
         issued_on = _loctell_ist_date(row.get("createdDate"))
         if issued_on is None:
@@ -1411,9 +1417,10 @@ def fetch_vmi_loader_fuel_issued(sess, financial_year_start, today):
         result.append({
             "date": str(issued_on),
             "issued_at": str(row.get("createdDate") or ""),
-            "vehicle_type": "VMI Loader",
+            "vehicle_type": vehicle_type,
             "fuel_issued": round(abs(_num(row.get("qty"))), 2),
             "fuel_issue_reading": round(_num(row.get("odometerReading")), 2) if row.get("odometerReading") is not None else None,
+            "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "DIESEL"),
         })
     return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
@@ -1450,6 +1457,7 @@ def fetch_fuel_received(sess, financial_year_start, today):
         rate = _num(row.get("rate"))
         result.append({
             "date": str(received_on),
+            "received_at": str(row.get("createdDate") or ""),
             "received_date": received_label,
             "supplier_name": row.get("supplierName") or "—",
             "camp": row.get("campName") or "—",
@@ -1460,6 +1468,45 @@ def fetch_fuel_received(sess, financial_year_start, today):
             "received_by": (row.get("createdBy") or {}).get("userFullName") or "—",
         })
     return sorted(result, key=lambda row: row["received_date"], reverse=True)
+
+
+def fetch_fuel_dashboard_balance(sess):
+    """Loctell Fuel Dashboard's authoritative current diesel stock."""
+    now = datetime.now(IST)
+    start = now - timedelta(days=6)  # Same default range as /fuels/dashboard.
+    url = (
+        f"{ERP_BASE}/restserver/rest/fuel/getFuelDashboardData/"
+        f"{int(start.timestamp() * 1000)}/{int(now.timestamp() * 1000)}"
+    )
+    try:
+        payload = _request_json_with_retry(
+            sess, url, timeout=35, label="fuel dashboard balance"
+        )
+    except Exception as exc:
+        raise ErpFetchError(f"fuel dashboard balance fetch failed: {exc}") from exc
+    stock_rows = payload.get("stockData", []) if isinstance(payload, dict) else []
+    return {
+        "diesel_litres": round(sum(_num((row or {}).get("diesel")) for row in stock_rows), 2),
+        "as_of": now.isoformat(),
+        "source": "Loctell Fuel Dashboard",
+        "spend_tracking_from": str(_FUEL_SPEND_TRACKING_FROM),
+    }
+
+
+def fuel_balance_with_value(balance, fuel_received):
+    """Value ERP stock at the latest official diesel receipt rate."""
+    result = dict(balance or {})
+    latest = next((row for row in fuel_received or [] if row.get("fuel_type") == "DIESEL" and _num(row.get("unit_price")) > 0), None)
+    if latest is None:
+        result.update({"diesel_unit_price": None, "diesel_value": None, "price_as_of": None})
+        return result
+    rate = round(_num(latest.get("unit_price")), 2)
+    result.update({
+        "diesel_unit_price": rate,
+        "diesel_value": round(_num(result.get("diesel_litres")) * rate, 2),
+        "price_as_of": latest.get("date"),
+    })
+    return result
 
 
 def fetch_boulder_rows(sess, from_d, to_d):
@@ -4587,6 +4634,7 @@ def write_snapshot_bundle(
     odometer_history,
     vmi_loader_fuel_issues,
     fuel_received_rows,
+    fuel_balance,
     boulder_rows,
     iot_rows,
     cash_rows,
@@ -4763,6 +4811,7 @@ def write_snapshot_bundle(
     write_snapshot("/api/machines/odometer-history", odometer_history)
     write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
     write_snapshot("/api/machines/fuel-received", fuel_received_rows)
+    write_snapshot("/api/machines/fuel-balance", fuel_balance)
     # The Operations page reads this one static bundle, rather than three
     # browser requests.  Keep the individual snapshots for compatibility.
     write_snapshot("/api/machines/summary", {
@@ -4770,6 +4819,7 @@ def write_snapshot_bundle(
         "odometer_history": odometer_history,
         "fuel_issued": vmi_loader_fuel_issues,
         "fuel_received": fuel_received_rows,
+        "fuel_balance": fuel_balance,
     })
     write_snapshot("/api/customers/", customers_full)
     write_snapshot("/api/customers/?active_only=false", customers_full)
@@ -5250,8 +5300,9 @@ def main():
         f_creditors = pool.submit(fetch_creditors,   _clone_sess(sess), today)
         f_odometer = pool.submit(fetch_live_odometer_readings, _clone_sess(sess), today)
         f_odometer_history = pool.submit(fetch_odometer_history, _clone_sess(sess), odometer_history_start, today, 5)
-        f_vmi_fuel = pool.submit(fetch_vmi_loader_fuel_issued, _clone_sess(sess), financial_year_start, today)
+        f_vmi_fuel = pool.submit(fetch_machine_fuel_issues, _clone_sess(sess), financial_year_start, today)
         f_fuel_received = pool.submit(fetch_fuel_received, _clone_sess(sess), financial_year_start, today)
+        f_fuel_balance = pool.submit(fetch_fuel_dashboard_balance, _clone_sess(sess))
 
         fresh_sales, sales_fresh = fetch_rows_or_saved(
             f_sales, "sales", saved_stream_rows("sales", sync_start, today, "sales_all.json")
@@ -5321,7 +5372,7 @@ def main():
             vmi_loader_fuel_issues = f_vmi_fuel.result()
         except ErpFetchError as exc:
             # Do not carry a stale fuel total into a new selected range.
-            print(f"  VMI Loader fuel issues unavailable: {exc}")
+            print(f"  machine fuel issues unavailable: {exc}")
             vmi_loader_fuel_issues = []
         try:
             fuel_received_rows = f_fuel_received.result()
@@ -5329,6 +5380,11 @@ def main():
             # This report is displayed as an operational source table only.
             print(f"  fuel received report unavailable: {exc}")
             fuel_received_rows = []
+        try:
+            fuel_balance = fuel_balance_with_value(f_fuel_balance.result(), fuel_received_rows)
+        except ErpFetchError as exc:
+            print(f"  fuel dashboard balance unavailable: {exc}")
+            fuel_balance = {}
 
     # Capture per-ticket payment split (ERP ListSale Final Cash/Credit/UPI) onto fresh sales.
     try:
@@ -6272,6 +6328,7 @@ def main():
         odometer_history,
         vmi_loader_fuel_issues,
         fuel_received_rows,
+        fuel_balance,
         boulder_rows,
         iot_rows,
         cash_rows,
