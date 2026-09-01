@@ -3370,6 +3370,7 @@ async function renderControlRoom(data){
     return `<tr>
       <td>${esc(r.date)}</td>
       <td>${esc(particulars)}</td>
+      <td>${esc(r.remarks||'—')}</td>
       <td>${esc(r.party||'—')}</td>
       <td>${esc(r.payment_mode||'—')}</td>
       <td style="text-align:right">${isCash?fmtINR(amt):''}</td>
@@ -3455,10 +3456,10 @@ async function renderControlRoom(data){
       <h3 class="cashbook-title">🧾 Expenses (Cash &amp; Bank) <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Expenses (Cash &amp; Bank)','dash-expenses-card')">Print / PDF</button></h3>
       <div class="tbl-wrap" style="max-height:520px;overflow:auto">
         <table class="cashbook-table">
-          <thead><tr><th>Date</th><th>Particulars</th><th>Party</th><th>Mode</th><th style="text-align:right">Cash</th><th style="text-align:right">Bank / UPI</th></tr></thead>
+          <thead><tr><th>Date</th><th>Particulars</th><th>Remarks</th><th>Party</th><th>Mode</th><th style="text-align:right">Cash</th><th style="text-align:right">Bank / UPI</th></tr></thead>
           <tbody>${expenseList}</tbody>
-          <tfoot><tr><td colspan="4"><strong>Total</strong></td><td style="text-align:right"><strong>${fmtINR(expCashTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(expBankTotal)}</strong></td></tr>
-          <tr><td colspan="4"><strong>Grand Total (Cash + Bank)</strong></td><td colspan="2" style="text-align:right"><strong>${fmtINR(expGrandTotal)}</strong></td></tr></tfoot>
+          <tfoot><tr><td colspan="5"><strong>Total</strong></td><td style="text-align:right"><strong>${fmtINR(expCashTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(expBankTotal)}</strong></td></tr>
+          <tr><td colspan="5"><strong>Grand Total (Cash + Bank)</strong></td><td colspan="2" style="text-align:right"><strong>${fmtINR(expGrandTotal)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Director share / drawings (Prashant &amp; Kumar) are excluded — capital withdrawals, not company expenses. Ties to Operating Expenses.</div>
@@ -3542,9 +3543,9 @@ function renderExpenses(){
   const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'—'}).name:'—'};
   const rows=sortedRows(_allData.expenses,'expenses',derived),cur=_page.expenses,size=pageSizeFor('expenses',rows.length),start=(cur-1)*size,end=start+size,slice=rows.slice(start,end);
   let tot=0;_allData.expenses.forEach(r=>{tot+=r.amount;});
-  let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
-  if(_allData.expenses.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="4">TOTAL (all ${_allData.expenses.length})</td><td>${fmtINR(tot)}</td><td></td></tr>`;
-  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
+  let html='<table><thead><tr>'+thSort('expenses','date','Date')+thSort('expenses','category','Category')+thSort('expenses','vendor','Vendor')+thSort('expenses','description','Description')+thSort('expenses','notes','Remarks')+thSort('expenses','amount','Amount')+thSort('expenses','payment_mode','Mode')+'</tr></thead><tbody>';
+  if(_allData.expenses.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td colspan="5">TOTAL (all ${_allData.expenses.length})</td><td>${fmtINR(tot)}</td><td></td></tr>`;
+  slice.forEach(r=>{html+=`<tr><td>${r.date}</td><td>${r.category}</td><td>${derived.vendor(r)}</td><td>${r.description}</td><td>${r.notes||'—'}</td><td>${fmtINR(r.amount)}</td><td>${r.payment_mode}</td></tr>`;});
   if(!slice.length)html+='<tr><td colspan="7" class="empty">No expenses</td></tr>';
   html+='</tbody></table>';
   document.getElementById('exp-tbl').innerHTML=html;
@@ -4612,16 +4613,16 @@ function _cashBookHTML(book,channel){
   const spotLabel=channel==='cash'?'Spot Sale (Cash)':'Spot Sale (Bank/UPI)';
   const spotTotal=rows.reduce((s,r)=>s+_rowSpot(r),0);
   const roundoffTotal=rows.reduce((s,r)=>s+_num(r.settlement_roundoff),0);
-  let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Ticket</th><th>Party / Customer</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">'+spotLabel+'</th><th style="text-align:right" title="Informational only — does not change cash or bank balance">Settlement Adj.</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
-  html+=`<tr style="background:#f6efd6"><td>${esc((book&&book.opening_as_of)||'')}</td><td colspan="3"><em>Opening Balance</em></td><td></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
+  let html='<table class="cashbook-table"><thead><tr><th>Date</th><th>Particulars</th><th>Ticket</th><th>Party / Customer</th><th>Remarks</th><th style="text-align:right">'+inLabel+'</th><th style="text-align:right">'+outLabel+'</th><th style="text-align:right">'+spotLabel+'</th><th style="text-align:right" title="Informational only — does not change cash or bank balance">Settlement Adj.</th><th style="text-align:right">Balance</th></tr></thead><tbody>';
+  html+=`<tr style="background:#f6efd6"><td>${esc((book&&book.opening_as_of)||'')}</td><td colspan="4"><em>Opening Balance</em></td><td></td><td></td><td></td><td></td><td style="text-align:right;font-weight:700">${fmtINR(side.opening||0)}</td></tr>`;
   rows.forEach(r=>{
     const adj=r.adjustment?' style="background:#fff6e0;font-style:italic"':'';
     const sp=_rowSpot(r);
     const settlement=_num(r.settlement_roundoff);
-    html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.ticket_no||'—')}</td><td>${esc(r.party||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;color:#1565c0">${sp>0?fmtINR(sp):''}</td><td style="text-align:right;color:${settlement<0?'#c62828':'#2e7d32'}">${settlement?fmtINR(settlement):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
+    html+=`<tr${adj}><td>${esc(r.date)}</td><td>${esc(r.particulars||'')}</td><td>${esc(r.ticket_no||'—')}</td><td>${esc(r.party||'—')}</td><td>${esc(r.remarks||'—')}</td><td style="text-align:right;color:#2e7d32">${r.in>0?fmtINR(r.in):''}</td><td style="text-align:right;color:#c62828">${r.out>0?fmtINR(r.out):''}</td><td style="text-align:right;color:#1565c0">${sp>0?fmtINR(sp):''}</td><td style="text-align:right;color:${settlement<0?'#c62828':'#2e7d32'}">${settlement?fmtINR(settlement):''}</td><td style="text-align:right;font-weight:600">${fmtINR(r.balance)}</td></tr>`;
   });
-  if(!rows.length)html+='<tr><td colspan="9" class="empty">No movements in this range</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="4"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;color:#1565c0"><strong>${fmtINR(spotTotal)}</strong></td><td style="text-align:right;color:${roundoffTotal<0?'#c62828':'#2e7d32'}"><strong>${roundoffTotal?fmtINR(roundoffTotal):''}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
+  if(!rows.length)html+='<tr><td colspan="10" class="empty">No movements in this range</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="5"><strong>Closing Balance (${rows.length} movements)</strong></td><td style="text-align:right;color:#2e7d32"><strong>${fmtINR(side.total_in||0)}</strong></td><td style="text-align:right;color:#c62828"><strong>${fmtINR(side.total_out||0)}</strong></td><td style="text-align:right;color:#1565c0"><strong>${fmtINR(spotTotal)}</strong></td><td style="text-align:right;color:${roundoffTotal<0?'#c62828':'#2e7d32'}"><strong>${roundoffTotal?fmtINR(roundoffTotal):''}</strong></td><td style="text-align:right;font-weight:800">${fmtINR(side.closing||0)}</td></tr></tfoot></table>`;
   return html;
 }
 function renderCashBook(channel,tblId,pagerId){
