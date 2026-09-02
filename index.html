@@ -4438,16 +4438,20 @@ function _fuelLedger(from,to){
     ...(_allData.fuelReceived||[]).filter(diesel).map(row=>({kind:'receipt',date:row.date,order:String(row.received_at||row.received_date||row.date).replace('[Etc/UTC]','+00:00'),row})),
     ...(_allData.machineFuel||[]).filter(row=>diesel(row)&&row.date>=trackingFrom).map(row=>({kind:'issue',date:row.date,order:String(row.issued_at||row.date).replace('[Etc/UTC]','+00:00'),row})),
   ].sort((a,b)=>a.order.localeCompare(b.order)||(a.kind==='receipt'?-1:1));
-  let balanceLitres=0,balanceValue=0,closingLitres=0,closingValue=0;
+  let balanceLitres=0,balanceValue=0,closingLitres=0,closingValue=0,latestReceiptRate=null;
   const rows=[];
   events.forEach(event=>{
     let entry;
     if(event.kind==='receipt'){
-      const quantity=_num(event.row.quantity),amount=_num(event.row.amount);
+      const quantity=_num(event.row.quantity),amount=_num(event.row.amount),listedRate=_num(event.row.unit_price);
+      const receiptRate=listedRate>0?listedRate:(quantity>0&&amount>0?amount/quantity:null),displayedRate=receiptRate==null?null:Math.round(receiptRate*100)/100;
       balanceLitres+=quantity;balanceValue+=amount;
-      entry={date:event.date,details:`Received from ${event.row.supplier_name||'—'}`,received_litres:quantity,unit_price:_num(event.row.unit_price),receipt_amount:amount,spend_litres:null,spend_amount:null};
+      latestReceiptRate=displayedRate==null?latestReceiptRate:displayedRate;
+      entry={date:event.date,details:`Received from ${event.row.supplier_name||'—'}`,received_litres:quantity,unit_price:displayedRate,receipt_amount:amount,spend_litres:null,spend_amount:null};
     }else{
-      const liters=_num(event.row.fuel_issued),rate=balanceLitres>0.0001?balanceValue/balanceLitres:null,spend=rate==null?null:Math.round(liters*rate*100)/100;
+      // An issue is valued at the latest official Loctell diesel receipt rate,
+      // matching the visible Fuel Received Unit Price rather than a blended rate.
+      const liters=_num(event.row.fuel_issued),rate=latestReceiptRate,spend=rate==null?null:Math.round(liters*rate*100)/100;
       balanceLitres-=liters;if(spend!=null)balanceValue-=spend;
       entry={date:event.date,details:`Issued to ${event.row.vehicle_type||'Machine'}`,received_litres:null,unit_price:rate==null?null:Math.round(rate*100)/100,receipt_amount:null,spend_litres:liters,spend_amount:spend};
     }
