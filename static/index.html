@@ -658,7 +658,9 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
    deliberately comes last: compact-print selectors must never turn a
    semantic red/green/blue number into generic dark text. */
 @media print{
-  html,body{background:linear-gradient(160deg,#31507c,#243d61)!important}
+  /* The blue report canvas belongs to #print-area only.  Painting html/body
+     also colours a printer-created trailing sheet with no report content. */
+  html,body{background:#fff!important}
   #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
   #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
   #print-area .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
