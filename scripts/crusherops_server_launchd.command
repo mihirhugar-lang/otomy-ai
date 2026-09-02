@@ -15,4 +15,4 @@ if [ ! -d "$VENV" ]; then
 fi
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') CrusherOps server starting" >> "$LOG_DIR/server_launchd.log"
-exec "$VENV/bin/uvicorn" main:app --host 0.0.0.0 --port 8765
+exec "$VENV/bin/uvicorn" main:app --host 127.0.0.1 --port 8765

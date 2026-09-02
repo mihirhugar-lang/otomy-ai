@@ -23,10 +23,12 @@ from database import (
     Vendor,
     VendorBalanceSnapshot,
     VendorPayment,
+    VendorLedgerEntry,
     BankAccount,
     BankTransaction,
     ERPBankEntry,
     CashLedgerEntry,
+    InternalTransfer,
     IOTMovement,
 )
 from routers.erp_sync import load_config, erp_auth, sale_channels
@@ -343,6 +345,18 @@ def _payment_channel(raw: str) -> str:
     return "bank"
 
 
+def _ledger_payment_channel(cells) -> str:
+    """Resolve the payment channel from a complete Loctell ledger row.
+
+    A named electronic-payment reference such as CARD/UPI or ICICI is more
+    specific than Loctell's occasional generic ``CASH`` mode label.
+    """
+    text = " ".join(str(value or "") for value in (cells or [])).upper()
+    if re.search(r"\b(?:CARD\s*/\s*UPI|UPI|NEFT|RTGS|IMPS|ICICI)\b", text):
+        return "bank"
+    return _payment_channel(cells[13] if len(cells or []) > 13 else "")
+
+
 def _erp_receipt_note_amount(notes: str, key: str) -> Optional[float]:
     match = re.search(rf"{re.escape(key)}=([\d.]+)", notes or "")
     if not match:
@@ -466,10 +480,39 @@ def _control_balances_as_of(db: Session, as_of: date, allow_live: bool = False) 
     return _local_receivables_as_of(db, as_of), _local_payables_as_of(db, as_of)
 
 
-def _is_director_payment(*values) -> bool:
-    text = " ".join(str(value or "") for value in values).upper()
-    return "PRASHANT" in text or "KUMAR" in text
+# Before this date, exclude ONLY genuine director drawings (category "... SIR SHARE"),
+# NOT company expenses a director merely fronted (notes like "KUMAR SIR PAID ..."), which
+# stay operating expenses. From June 2026 onward the prior name-anywhere rule is kept
+# unchanged (those months are already reconciled).
+_DIRECTOR_SHARE_ONLY_BEFORE = date(2026, 6, 1)
+_CREDIT_LIQUIDITY_START = date(2026, 6, 1)
+# Payments to these personal accounts are Prashant's director drawings.  Keep
+# this deliberately exact: a generic "Sidd"/"N J" rule could misclassify a
+# normal supplier or employee payment.
+_PRASHANT_DIRECTOR_SHARE_PAYEES = (
+    "N J SHUSHRUTHA",
+    "NJ SHUSHRUTHA",
+    "SRI SIDDA",
+)
 
+
+def _is_director_payment(*values, when=None) -> bool:
+    text = " ".join(str(value or "") for value in values).upper()
+    # The owner has confirmed these are Prashant director-share payments,
+    # irrespective of payment channel or the historical pre-June wording.
+    if any(payee in text for payee in _PRASHANT_DIRECTOR_SHARE_PAYEES):
+        return True
+    # Director 1/2 are directors, not shareholders — their spend is a normal
+    # expense, never a shareholder drawing (even if a note names Kumar/Prashant).
+    if values and "DIRECTOR" in str(values[0] or "").upper():
+        return False
+    if not ("PRASHANT" in text or "KUMAR" in text):
+        return False
+    # Apr-May 2026 (and earlier): only actual drawings ("... SIR SHARE") count as a
+    # director payment; "KUMAR SIR PAID" company expenses remain operating expenses.
+    if when is not None and when < _DIRECTOR_SHARE_ONLY_BEFORE:
+        return "SHARE" in text
+    return True
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 _BAL_CFG_CACHE = None
@@ -631,12 +674,13 @@ def _fetch_erp_credit_repayments(start: date, end: date, allow_live: bool = True
                     total_debit += debit
                 if credit > 0:
                     total_credit += credit
-                    if _payment_channel(mode) == "cash":
+                    channel = _ledger_payment_channel(cols)
+                    if channel == "cash":
                         cash_received += credit
                     else:
                         bank_received += credit
                     payment_dates.append(cols[0] or str(end))
-                    modes.append(_mode_bucket(mode))
+                    modes.append("Cash" if channel == "cash" else "Bank")
                     references.append(mode or "Payment")
 
             credit_repayment = round(total_credit - total_debit, 2)
@@ -778,13 +822,15 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
 
     sales = db.query(Sale).filter(Sale.date >= scan_start, Sale.date <= scan_end).all()
     expenses = db.query(Expense).filter(Expense.date >= scan_start, Expense.date <= scan_end).all()
-    labour = db.query(Labour).filter(Labour.date >= scan_start, Labour.date <= scan_end).all()
-    parts = db.query(Part).filter(Part.date >= scan_start, Part.date <= scan_end).all()
     boulders = db.query(BoulderInput).filter(BoulderInput.date >= month_start, BoulderInput.date <= display_end).all()
     receipts = db.query(CustomerReceipt).filter(
         CustomerReceipt.date >= scan_start,
         CustomerReceipt.date <= scan_end,
         CustomerReceipt.mode != "ERP Snapshot",
+    ).all()
+    transfers = db.query(InternalTransfer).filter(
+        InternalTransfer.entry_date >= scan_start,
+        InternalTransfer.entry_date <= scan_end,
     ).all()
     def bucket(rows, key):
         out = {}
@@ -794,9 +840,8 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
 
     sales_by_date = bucket(sales, "date")
     expenses_by_date = bucket(expenses, "date")
-    labour_by_date = bucket(labour, "date")
-    parts_by_date = bucket(parts, "date")
     receipts_by_date = bucket(receipts, "date")
+    transfers_by_date = bucket(transfers, "entry_date")
     boulders_by_date = bucket(boulders, "date")
 
     def balances_as_of(as_of: date) -> tuple[float, float]:
@@ -820,7 +865,18 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
 
         current = movement_start
         while current <= as_of:
-            for sale in sales_by_date.get(current, []):
+            day_sales = sales_by_date.get(current, [])
+            # Same-day spot overlap: a spot sale's payment can also surface as a ledger receipt;
+            # subtract the same-customer, same-channel overlap so it isn't double-counted
+            # (mirrors the Cash-in-office / Bank tile in operating_cash_balance).
+            spot_cash_by, spot_bank_by = {}, {}
+            for sale in day_sales:
+                s_cash, _c, s_upi = sale_channels(sale)
+                if s_cash and cash_open(sale.date):
+                    spot_cash_by[sale.customer_id] = spot_cash_by.get(sale.customer_id, 0.0) + s_cash
+                if s_upi and bank_open(sale.date):
+                    spot_bank_by[sale.customer_id] = spot_bank_by.get(sale.customer_id, 0.0) + s_upi
+            for sale in day_sales:
                 s_cash, _s_credit, s_upi = sale_channels(sale)
                 if s_cash and cash_open(sale.date):
                     cash_balance += s_cash
@@ -830,9 +886,13 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
                 amount = _receipt_payment_amount(receipt)
                 if _payment_channel(receipt.mode or "Cash") == "cash":
                     if cash_open(receipt.date):
-                        cash_balance += amount
+                        overlap = min(amount, spot_cash_by.get(receipt.customer_id, 0.0))
+                        spot_cash_by[receipt.customer_id] = spot_cash_by.get(receipt.customer_id, 0.0) - overlap
+                        cash_balance += amount - overlap
                 elif bank_open(receipt.date):
-                    bank_balance += amount
+                    overlap = min(amount, spot_bank_by.get(receipt.customer_id, 0.0))
+                    spot_bank_by[receipt.customer_id] = spot_bank_by.get(receipt.customer_id, 0.0) - overlap
+                    bank_balance += amount - overlap
             for expense in expenses_by_date.get(current, []):
                 ch = _mode_override_channel(
                     expense.amount,
@@ -840,10 +900,19 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
                     expense.date.isoformat(),
                 ) or _payment_channel(expense.payment_mode or "Cash")
                 if ch == "cash":
+                    # Cash paid from the company office is a real cash outflow, including
+                    # director-share drawings.  Classification changes P&L only.
                     if cash_open(expense.date):
                         cash_balance -= _amount(expense.amount)
                 elif bank_open(expense.date):
                     bank_balance -= _amount(expense.amount)
+            for transfer in transfers_by_date.get(current, []):
+                # Contra: this changes where liquidity is held, never profit.
+                sign = -1 if transfer.direction != "bank_to_cash" else 1
+                if cash_open(transfer.entry_date):
+                    cash_balance += sign * _amount(transfer.amount)
+                if bank_open(transfer.entry_date):
+                    bank_balance -= sign * _amount(transfer.amount)
             current += timedelta(days=1)
         return round(bank_balance, 2), round(cash_balance, 2)
 
@@ -857,10 +926,9 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
         bank_balance, cash_balance = balances_as_of(current)
         day_sales = sales_by_date.get(current, [])
         day_expenses = expenses_by_date.get(current, [])
-        day_labour = labour_by_date.get(current, [])
-        day_parts = parts_by_date.get(current, [])
         day_boulders = boulders_by_date.get(current, [])
         day_receipts = receipts_by_date.get(current, [])
+        day_transfers = transfers_by_date.get(current, [])
         erp_input = _fetch_erp_input_summary(current, current, allow_live=False)
         boulder_tonnes = (
             erp_input["total_tonnes"]
@@ -875,26 +943,58 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
         sale_amount = sum(_sale_total(sale) for sale in day_sales)
         sale_splits = [sale_channels(sale) for sale in day_sales]
         spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
+        spot_sale_cash = sum(s_cash for s_cash, _s_credit, _s_upi in sale_splits)
+        spot_sale_bank = sum(s_upi for _s_cash, _s_credit, s_upi in sale_splits)
         credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
-        credit_repayment = sum(_receipt_payment_amount(receipt) for receipt in day_receipts)
-        expense_total = (
-            sum(_amount(expense.amount) for expense in day_expenses)
-            + sum(_amount(row.amount) for row in day_labour)
-            + sum(_amount(row.total_amount) for row in day_parts)
+        qty_mt = sum(_amount(sale.qty_mt) for sale in day_sales)
+        credit_repayment_cash = sum(
+            _receipt_payment_amount(receipt)
+            for receipt in day_receipts
+            if _payment_channel(receipt.mode or "Cash") == "cash"
         )
+        credit_repayment_bank = sum(
+            _receipt_payment_amount(receipt)
+            for receipt in day_receipts
+            if _payment_channel(receipt.mode or "Cash") != "cash"
+        )
+        credit_repayment = credit_repayment_cash + credit_repayment_bank
+        expense_cash = 0.0
+        expense_bank = 0.0
+        for expense in day_expenses:
+            channel = _mode_override_channel(
+                expense.amount,
+                f"{expense.category or ''} {expense.description or ''} {expense.notes or ''}",
+                expense.date.isoformat(),
+            ) or _payment_channel(expense.payment_mode or "Cash")
+            if channel == "cash":
+                expense_cash += _amount(expense.amount)
+            else:
+                expense_bank += _amount(expense.amount)
+        # Daily Book expenses come only from the ERP Expense source, where every row has a
+        # Cash or Bank payment mode. Legacy Labour and Parts records are intentionally excluded.
+        expense_total = expense_cash + expense_bank
         rows.append(
             {
                 "date": str(current),
                 "sale_trips": len(day_sales),
                 "sale_amount": round(sale_amount, 2),
                 "spot_sale_amount": round(spot_sale_amount, 2),
+                "spot_sale_cash": round(spot_sale_cash, 2),
+                "spot_sale_bank": round(spot_sale_bank, 2),
                 "credit_sale_amount": round(credit_sale_amount, 2),
+                "qty_mt": round(qty_mt, 2),
                 "credit_repayment": round(credit_repayment, 2),
+                "credit_repayment_cash": round(credit_repayment_cash, 2),
+                "credit_repayment_bank": round(credit_repayment_bank, 2),
                 "expenses": round(expense_total, 2),
+                "expense_cash": round(expense_cash, 2),
+                "expense_bank": round(expense_bank, 2),
+                "internal_transfer": round(sum(_amount(row.amount) for row in day_transfers), 2),
                 "cash_balance_office": round(cash_balance, 2),
                 "bank_balance": round(bank_balance, 2),
                 "boulder_input_mt": round(boulder_tonnes, 2),
                 "boulder_trips": round(boulder_trips, 2),
+                "stock_in_plant_mt": round(boulder_tonnes - qty_mt, 2),
             }
         )
     return rows
@@ -905,6 +1005,7 @@ def control_room(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     live_erp: bool = False,
+    include_detail_rows: bool = True,
     db: Session = Depends(get_db),
 ):
     """Owner-level business control room for crusher/quarry decisions."""
@@ -916,6 +1017,9 @@ def control_room(
 
     sales = db.query(Sale).filter(Sale.date >= start, Sale.date <= end).all()
     expenses = db.query(Expense).filter(Expense.date >= start, Expense.date <= end).all()
+    internal_transfers = db.query(InternalTransfer).filter(
+        InternalTransfer.entry_date >= start, InternalTransfer.entry_date <= end
+    ).all()
     labour = db.query(Labour).filter(Labour.date >= start, Labour.date <= end).all()
     parts = db.query(Part).filter(Part.date >= start, Part.date <= end).all()
     vendor_payments = db.query(VendorPayment).filter(VendorPayment.date >= start, VendorPayment.date <= end).all()
@@ -939,20 +1043,38 @@ def control_room(
         sum(
             _amount(e.amount)
             for e in expenses
-            if _is_director_payment(e.category, e.description, e.payment_mode, e.notes)
+            if _is_director_payment(e.category, e.description, e.payment_mode, e.notes, when=e.date)
         )
         + sum(
             _amount(l.amount)
             for l in labour
-            if _is_director_payment(l.worker_name, l.worker_type, l.notes)
+            if _is_director_payment(l.worker_name, l.worker_type, l.notes, when=l.date)
         )
         + sum(
             _amount(p.total_amount)
             for p in parts
-            if _is_director_payment(p.machine_name, p.part_name, p.supplier, p.notes)
+            if _is_director_payment(p.machine_name, p.part_name, p.supplier, p.notes, when=p.date)
         )
     )
     operating_outflow = total_outflow - director_expense_total
+    # These tiles report only operating expenses with an actual payment channel
+    # in Loctell.  Labour/parts legacy entries have no cash/bank field, so they
+    # remain in total operating expense/profit but are not invented into either
+    # channel tile.
+    operating_expense_cash = 0.0
+    operating_expense_bank = 0.0
+    for expense in expenses:
+        if _is_director_payment(expense.category, expense.description, expense.payment_mode, expense.notes, when=expense.date):
+            continue
+        channel = _mode_override_channel(
+            expense.amount,
+            f"{expense.category or ''} {expense.description or ''} {expense.notes or ''}",
+            expense.date.isoformat(),
+        ) or _payment_channel(expense.payment_mode or "Cash")
+        if channel == "cash":
+            operating_expense_cash += _amount(expense.amount)
+        else:
+            operating_expense_bank += _amount(expense.amount)
     local_boulder_tonnes = sum(_amount(b.total_tonnes) for b in boulders)
     local_boulder_trips = sum(_amount(b.trips) for b in boulders)
     erp_input = _fetch_erp_input_summary(start, end, allow_live=live_erp)
@@ -988,6 +1110,10 @@ def control_room(
     movement_vendor_payments = db.query(VendorPayment).filter(
         VendorPayment.date >= movement_start,
         VendorPayment.date <= movement_end,
+    ).all()
+    movement_transfers = db.query(InternalTransfer).filter(
+        InternalTransfer.entry_date >= movement_start,
+        InternalTransfer.entry_date <= movement_end,
     ).all()
     operating_bank_balance = opening["bank_balance"]
     operating_cash_balance = opening["cash_balance_office"]
@@ -1044,10 +1170,18 @@ def control_room(
             expense.date.isoformat(),
         ) or _payment_channel(expense.payment_mode or "Cash")
         if ch == "cash":
+            # Cash paid from the company office is a real cash outflow, including
+            # director-share drawings.  Classification changes P&L only.
             if _cash_open(expense.date):
                 operating_cash_balance -= _amount(expense.amount)
         elif _bank_open(expense.date):
             operating_bank_balance -= _amount(expense.amount)
+    for transfer in movement_transfers:
+        sign = -1 if transfer.direction != "bank_to_cash" else 1
+        if _cash_open(transfer.entry_date):
+            operating_cash_balance += sign * _amount(transfer.amount)
+        if _bank_open(transfer.entry_date):
+            operating_bank_balance -= sign * _amount(transfer.amount)
     # NOTE: vendor/supplier payments are already captured in loctell crusher-expenses,
     # so they are NOT subtracted again here (doing so double-counts). Matches otomy's expenses-only rule.
 
@@ -1079,7 +1213,19 @@ def control_room(
                 "description": expense.description or expense.category or "Expense",
                 "party": vendor_map.get(expense.vendor_id, ""),
                 "payment_mode": expense.payment_mode or "",
+                "remarks": expense.notes or "",
                 "amount": round(_amount(expense.amount), 2),
+                # The Owner Control Room must use this backend decision, rather
+                # than trying to reproduce it after notes have been omitted from
+                # the detail row.  It is the exact inclusion rule used by the
+                # Operating Expenses and Profit tiles above.
+                "is_operating_expense": not _is_director_payment(
+                    expense.category,
+                    expense.description,
+                    expense.payment_mode,
+                    expense.notes,
+                    when=expense.date,
+                ),
             }
         )
     for labour_entry in labour:
@@ -1091,7 +1237,14 @@ def control_room(
                 "description": labour_entry.worker_name or "Labour entry",
                 "party": labour_entry.worker_name or "",
                 "payment_mode": "Paid" if labour_entry.paid else "Unpaid",
+                "remarks": labour_entry.notes or "",
                 "amount": round(_amount(labour_entry.amount), 2),
+                "is_operating_expense": not _is_director_payment(
+                    labour_entry.worker_name,
+                    labour_entry.worker_type,
+                    labour_entry.notes,
+                    when=labour_entry.date,
+                ),
             }
         )
     for part in parts:
@@ -1103,7 +1256,15 @@ def control_room(
                 "description": part.part_name or "Part / Repair",
                 "party": part.supplier or "",
                 "payment_mode": "",
+                "remarks": part.notes or "",
                 "amount": round(_amount(part.total_amount), 2),
+                "is_operating_expense": not _is_director_payment(
+                    part.machine_name,
+                    part.part_name,
+                    part.supplier,
+                    part.notes,
+                    when=part.date,
+                ),
             }
         )
     expense_rows.sort(key=lambda row: (row["date"], row["amount"]), reverse=True)
@@ -1164,6 +1325,7 @@ def control_room(
                 "cash_received": 0.0,
                 "paid_against_sale": 0.0,
                 "credit_sale_amount": 0.0,
+                "mdp_ton": 0.0,
                 "tickets": [],
             },
         )
@@ -1172,6 +1334,7 @@ def control_room(
         group["ticket_count"] += 1
         group["qty_mt"] += _amount(sale.qty_mt)
         group["amount"] += sale_amount
+        group["mdp_ton"] += _amount(getattr(sale, "mdp_ton", 0.0))
         # Split each sale into its real channels (handles SPLIT payments).
         s_cash, s_credit, s_upi = sale_channels(sale)
         group["credit_sale_amount"] += s_credit
@@ -1201,6 +1364,9 @@ def control_room(
                 "tickets": group["tickets"],
                 "qty_mt": round(group["qty_mt"], 2),
                 "amount": round(group["amount"], 2),
+                "mdp_ton": round(group["mdp_ton"], 3),
+                "price_per_mt": round(group["amount"] / group["qty_mt"], 2) if group["qty_mt"] else 0.0,
+                "avg_mdp_ton": round(group["mdp_ton"] / group["ticket_count"], 3) if group["ticket_count"] else 0.0,
                 "bank_received": round(group["bank_received"], 2),
                 "cash_received": round(group["cash_received"], 2),
                 "paid_against_sale": round(group["paid_against_sale"], 2),
@@ -1208,6 +1374,32 @@ def control_room(
             }
         )
     customer_sales_rows.sort(key=lambda row: row["amount"], reverse=True)
+
+    # Credit liquidity KPIs are deliberately limited to the clean Loctell
+    # period.  They use actual tender splits and gross cash received, never
+    # balance-overlay/workbook adjustments.  A positive net-credit figure
+    # means cash is still locked with customers; a negative figure means old
+    # credit was released during the selected period.
+    credit_liquidity_available = start >= _CREDIT_LIQUIDITY_START and total_qty > 0
+    credit_sale_total = round(sum(row["credit_sale_amount"] for row in customer_sales_rows), 2)
+    credit_recovery_total = round(
+        sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments),
+        2,
+    )
+    net_credit_change = round(credit_sale_total - credit_recovery_total, 2)
+    if credit_liquidity_available:
+        credit_sale_per_tonne = round(credit_sale_total / total_qty, 2)
+        credit_recovery_per_tonne = round(credit_recovery_total / total_qty, 2)
+        credit_locked_per_tonne = round(net_credit_change / total_qty, 2)
+        cash_converted_profit_per_tonne = round(
+            (selected_period_profit_director_adjusted - net_credit_change) / total_qty,
+            2,
+        )
+    else:
+        credit_sale_per_tonne = None
+        credit_recovery_per_tonne = None
+        credit_locked_per_tonne = None
+        cash_converted_profit_per_tonne = None
 
     machine_order = ["Jaw", "Cone", "VSI", "Hitachi", "JCB", "Loader"]
     machine_summary_map = {
@@ -1292,6 +1484,56 @@ def control_room(
     if not alerts:
         alerts.append({"level": "good", "title": "No major control alert", "detail": "Data looks stable for the selected period."})
 
+    # These rows deliberately reuse the Customer and Vendor page calculations.
+    # They are a separate "all payments" view, not the dashboard's Credit
+    # Repayment calculation (which removes same-period spot-sale settlements).
+    # Keeping the page sources authoritative prevents a third balance formula
+    # from drifting in the control room.
+    customer_page_rows = []
+    vendor_page_rows = []
+    if include_detail_rows:
+        from routers.customers import list_customers
+        from routers.vendors import list_vendors
+
+        for row in list_customers(
+            active_only=False, as_of=end, from_date=start, to_date=end, db=db
+        ):
+            customer_page_rows.append({
+                "id": row.id,
+                "name": row.name,
+                "active": row.active,
+                "range_payment_received": round(_amount(row.range_payment_received), 2),
+                "range_total_sales": round(_amount(row.range_total_sales), 2),
+                "range_credit_sales": round(_amount(row.range_credit_sales), 2),
+                "credit_due_15_plus": round(_amount(row.credit_due_15_plus), 2),
+                "credit_due_30_plus": round(_amount(row.credit_due_30_plus), 2),
+                "total_outstanding": round(_amount(row.total_outstanding or row.outstanding or row.balance), 2),
+            })
+        paid_by_vendor = {}
+        for payment in vendor_payments:
+            paid_by_vendor[payment.vendor_id] = paid_by_vendor.get(payment.vendor_id, 0.0) + _amount(payment.amount)
+        purchased_by_vendor = {}
+        for entry in db.query(VendorLedgerEntry).filter(
+            VendorLedgerEntry.entry_date >= start,
+            VendorLedgerEntry.entry_date <= end,
+            VendorLedgerEntry.entry_type == "purchase",
+        ).all():
+            purchased_by_vendor[entry.vendor_id] = purchased_by_vendor.get(entry.vendor_id, 0.0) + _amount(entry.amount)
+        for row in list_vendors(active_only=False, as_of=end, db=db):
+            vendor_page_rows.append({
+                "id": row.id,
+                "name": row.name,
+                "active": row.active,
+                "range_purchased": round(purchased_by_vendor.get(row.id, 0.0), 2),
+                "range_paid": round(paid_by_vendor.get(row.id, 0.0), 2),
+                "total_purchases": round(_amount(row.total_purchases), 2),
+                "total_payments": round(_amount(row.total_payments), 2),
+                "age_0_15": round(_amount(row.age_0_15), 2),
+                "age_16_30": round(_amount(row.age_16_30), 2),
+                "age_31_45": round(_amount(row.age_31_45), 2),
+                "age_45_plus": round(_amount(row.age_45_plus), 2),
+                "payable": round(_amount(row.payable), 2),
+            })
     return {
         "period": {"from": str(start), "to": str(end), "days": days},
         "summary": {
@@ -1299,6 +1541,8 @@ def control_room(
             "cash_collected": round(cash_collected, 2),
             "credit_sales": round(credit_sales, 2),
             "expenses": round(director_adjusted_outflow, 2),
+            "operating_expense_cash": round(operating_expense_cash, 2),
+            "operating_expense_bank": round(operating_expense_bank, 2),
             "expenses_before_director_adjustment": round(total_outflow, 2),
             "profit": round(profit, 2),
             "margin_pct": _safe_pct(profit, total_sales),
@@ -1320,6 +1564,14 @@ def control_room(
                 sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments),
                 2,
             ),
+            "credit_liquidity_available": credit_liquidity_available,
+            "credit_sale_per_tonne": credit_sale_per_tonne,
+            "credit_recovery_per_tonne": credit_recovery_per_tonne,
+            "credit_locked_per_tonne": credit_locked_per_tonne,
+            "cash_converted_profit_per_tonne": cash_converted_profit_per_tonne,
+            "credit_sale_for_liquidity": credit_sale_total,
+            "credit_recovery_for_liquidity": credit_recovery_total,
+            "net_credit_change_for_liquidity": net_credit_change,
             "selected_period_profit_per_tonne": round(selected_period_profit_per_tonne, 2),
             "selected_period_profit_director_adjusted": round(selected_period_profit_director_adjusted, 2),
             "selected_period_director_adjusted_profit_per_tonne": round(selected_period_director_adjusted_profit_per_tonne, 2),
@@ -1343,6 +1595,7 @@ def control_room(
             "ticket_count": sum(row["ticket_count"] for row in customer_sales_rows),
             "qty_mt": round(sum(row["qty_mt"] for row in customer_sales_rows), 2),
             "amount": round(sum(row["amount"] for row in customer_sales_rows), 2),
+            "mdp_ton": round(sum(row["mdp_ton"] for row in customer_sales_rows), 3),
             "bank_received": round(sum(row["bank_received"] for row in customer_sales_rows), 2),
             "cash_received": round(sum(row["cash_received"] for row in customer_sales_rows), 2),
             "paid_against_sale": round(sum(row["paid_against_sale"] for row in customer_sales_rows), 2),
@@ -1353,6 +1606,17 @@ def control_room(
         "customer_repayments_payment_total": round(sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments), 2),
         "customer_repayments_bank_total": round(sum(row.get("bank_received", 0.0) for row in customer_repayments), 2),
         "customer_repayments_cash_total": round(sum(row.get("cash_received", 0.0) for row in customer_repayments), 2),
+        # Bank funding available for GST payment. This is a contra movement,
+        # not GST turnover or a tax-liability calculation.
+        "internal_transfers": [
+            {"date": str(row.entry_date), "cash_ledger": row.cash_ledger or "", "direction": row.direction,
+             "bank_name": row.bank_name or "", "amount": round(_amount(row.amount), 2),
+             "remarks": row.remarks or ""}
+            for row in internal_transfers
+        ],
+        "customer_page_rows": customer_page_rows,
+        "vendor_page_rows": vendor_page_rows,
+        "detail_rows_ready": include_detail_rows,
         "machine_summary": machine_summary_rows,
         "expense_rows": expense_rows,
         "trend": trend,
@@ -1376,11 +1640,19 @@ def ledger_view(
         "sale_trips": sum(row["sale_trips"] for row in rows),
         "sale_amount": round(sum(row["sale_amount"] for row in rows), 2),
         "spot_sale_amount": round(sum(row["spot_sale_amount"] for row in rows), 2),
+        "spot_sale_cash": round(sum(row.get("spot_sale_cash", 0) for row in rows), 2),
+        "spot_sale_bank": round(sum(row.get("spot_sale_bank", 0) for row in rows), 2),
+        "qty_mt": round(sum(row.get("qty_mt", 0) for row in rows), 2),
         "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
         "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
+        "credit_repayment_cash": round(sum(row.get("credit_repayment_cash", 0) for row in rows), 2),
+        "credit_repayment_bank": round(sum(row.get("credit_repayment_bank", 0) for row in rows), 2),
         "expenses": round(sum(row["expenses"] for row in rows), 2),
+        "expense_cash": round(sum(row.get("expense_cash", 0) for row in rows), 2),
+        "expense_bank": round(sum(row.get("expense_bank", 0) for row in rows), 2),
         "boulder_input_mt": round(sum(row["boulder_input_mt"] for row in rows), 2),
         "boulder_trips": round(sum(row["boulder_trips"] for row in rows), 2),
+        "stock_in_plant_mt": round(sum(row.get("stock_in_plant_mt", 0) for row in rows), 2),
     }
     if rows:
         totals["cash_balance_office"] = rows[-1]["cash_balance_office"]
@@ -1417,6 +1689,7 @@ def latest_data_date(db: Session = Depends(get_db)):
         db.query(func.max(Labour.date)).scalar(),
         db.query(func.max(Part.date)).scalar(),
         db.query(func.max(CashLedgerEntry.entry_date)).scalar(),
+        db.query(func.max(InternalTransfer.entry_date)).scalar(),
         db.query(func.max(func.date(IOTMovement.movement_dt))).scalar(),
     ):
         if value:

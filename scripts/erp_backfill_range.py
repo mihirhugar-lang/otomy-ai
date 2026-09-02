@@ -3,9 +3,7 @@
 
 import argparse
 import fcntl
-import html as htmllib
 import json
-import re
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -20,8 +18,17 @@ SYNC_LOCK_PATH = Path("/tmp/crusherops_erp_sync_15min.lock")
 
 sys.path.insert(0, str(APP_DIR))
 
-from database import IOTMovement, SessionLocal  # noqa: E402
-from routers.erp_sync import ERP_BASE, erp_auth, load_config, run_sync  # noqa: E402
+from database import SessionLocal  # noqa: E402
+from routers.erp_sync import (
+    ERP_BASE,
+    erp_auth,
+    fetch_creditors,
+    fetch_debtors,
+    load_config,
+    run_sync,
+    store_customer_balance_snapshot,
+    store_vendor_balance_snapshot,
+)  # noqa: E402
 
 
 def parse_date(value: str) -> date:
@@ -71,103 +78,43 @@ def summarize_result(result: dict) -> int:
         + int(result.get("bank_imported", 0))
         + int(result.get("cash_imported", 0))
         + int(result.get("iot_imported", 0))
+        + int(result.get("boulders_imported", 0))
     )
 
 
 def clean_html(value) -> str:
-    return re.sub(r"<[^>]+>", "", htmllib.unescape(str(value))).strip()
+    return str(value or "").strip()
 
 
-def fetch_iot_day_strict(sess, erp_base: str, day: date, attempts: int = 3) -> list:
-    ds = day.strftime("%d-%m-%Y")
-    url = (
-        f"{erp_base}/iot/ListIOTSaleLinkReport"
-        f"?startDt={ds}&endDt={ds}&startTime=12:00:00 AM&endTime=11:59:59 PM"
-        f"&crusherId=-1&type=1"
-    )
-    last_exc = None
-    for attempt in range(1, attempts + 1):
-        try:
-            data = json.loads(sess.get(url, timeout=90, verify=True).text)
-            movements = []
-            for row in data.get("data", []):
-                raw0 = htmllib.unescape(str(row[0])) if len(row) > 0 else ""
-                dt_raw = re.split(r"<", raw0)[0].strip()
-                lbl_m = re.search(r">\s*([^<]+?)\s*</a>", raw0)
-                linked = lbl_m.group(1).strip() if lbl_m else "PLANT ENTRY"
-                ticket = clean_html(row[1]) if len(row) > 1 else ""
-                vehicle = clean_html(row[2]) if len(row) > 2 else ""
-                mat = clean_html(row[3]) if len(row) > 3 else ""
-                party = clean_html(row[4]) if len(row) > 4 else ""
-                qty = clean_html(row[5]) if len(row) > 5 else ""
-                crusher = clean_html(row[6]) if len(row) > 6 else ""
-                img_html = htmllib.unescape(str(row[8])) if len(row) > 8 else ""
-                img_urls = re.findall(r'https?://[^\s"\'<>]+\.(?:png|jpg|jpeg)', img_html)
-                img_url = img_urls[0] if img_urls else ""
-                mv_dt = None
-                for fmt in (
-                    "%d-%m-%Y %I:%M:%S %p",
-                    "%d-%m-%Y %I:%M %p",
-                    "%d-%m-%Y %H:%M:%S",
-                    "%d-%m-%Y %H:%M",
-                ):
-                    try:
-                        mv_dt = datetime.strptime(re.sub(r"\s+", " ", dt_raw).strip(), fmt)
-                        break
-                    except Exception:
-                        pass
-                if not mv_dt:
-                    continue
-                movements.append(
-                    {
-                        "movement_dt": mv_dt,
-                        "linked_type": linked[:50],
-                        "ticket_no": ticket[:30],
-                        "vehicle_no": vehicle[:30],
-                        "material": mat[:50],
-                        "party": party[:200],
-                        "qty": qty[:20],
-                        "crusher": crusher[:100],
-                        "img_url": img_url[:500],
-                    }
-                )
-            return movements
-        except Exception as exc:
-            last_exc = exc
-            if attempt < attempts:
-                time.sleep(2 * attempt)
-    raise RuntimeError(f"IOT {ds}: {last_exc}")
-
-
-def import_iot_daily(db, sess, erp_base: str, from_d: date, to_d: date, attempts: int, log) -> tuple:
-    imported = 0
-    errors = []
+def backfill_daily_balance_snapshots(db, sess, erp_base: str, from_d: date, to_d: date, log) -> dict:
+    result = {
+        "days": 0,
+        "customer_balance_snapshots": 0,
+        "vendor_balance_snapshots": 0,
+        "errors": [],
+    }
     cur = from_d
     while cur <= to_d:
         try:
-            for movement in fetch_iot_day_strict(sess, erp_base, cur, attempts=attempts):
-                exists = (
-                    db.query(IOTMovement)
-                    .filter(
-                        IOTMovement.movement_dt == movement["movement_dt"],
-                        IOTMovement.ticket_no == movement["ticket_no"],
-                        IOTMovement.vehicle_no == movement["vehicle_no"],
-                    )
-                    .first()
-                )
-                if exists:
-                    continue
-                db.add(IOTMovement(**movement))
-                imported += 1
+            debtors = fetch_debtors(sess, erp_base, cur)
+            creditors = fetch_creditors(sess, erp_base, cur)
+            if debtors:
+                result["customer_balance_snapshots"] += store_customer_balance_snapshot(db, cur, debtors)
+            else:
+                result["errors"].append(f"Debtors {cur}: no rows")
+            if creditors:
+                result["vendor_balance_snapshots"] += store_vendor_balance_snapshot(db, cur, creditors)
+            else:
+                result["errors"].append(f"Creditors {cur}: no rows")
             db.commit()
+            result["days"] += 1
         except Exception as exc:
             db.rollback()
-            message = str(exc)
-            errors.append(message)
-            log(f"IOT ERROR: {message}")
+            message = f"Balance snapshots {cur}: {exc}"
+            result["errors"].append(message)
+            log(message)
         cur += timedelta(days=1)
-        time.sleep(0.1)
-    return imported, errors
+    return result
 
 
 def main() -> int:
@@ -176,9 +123,9 @@ def main() -> int:
     parser.add_argument("--to", dest="to_date", required=True, type=parse_date)
     parser.add_argument("--chunk-days", type=int, default=7)
     parser.add_argument("--include-balances-every-chunk", action="store_true")
+    parser.add_argument("--daily-balance-snapshots", action="store_true")
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--iot-attempts", type=int, default=3)
     args = parser.parse_args()
 
     if args.chunk_days < 1:
@@ -246,6 +193,8 @@ def main() -> int:
             chunk_started = time.time()
 
             try:
+                chunk_balance_result = None
+                sync_do_balances = is_last_chunk or (do_balances and not args.daily_balance_snapshots)
                 result = run_sync(
                     sess,
                     erp_base,
@@ -256,21 +205,20 @@ def main() -> int:
                     do_bank=True,
                     do_cash=True,
                     do_iot=False,
-                    do_debtors=do_balances,
-                    do_creditors=do_balances,
+                    do_boulders=True,
+                    do_debtors=sync_do_balances,
+                    do_creditors=sync_do_balances,
                     db=db,
                 )
-                iot_imported, iot_errors = import_iot_daily(
-                    db,
-                    sess,
-                    erp_base,
-                    chunk_from,
-                    chunk_to,
-                    attempts=args.iot_attempts,
-                    log=log,
-                )
-                result["iot_imported"] = iot_imported
-                result["errors"].extend(iot_errors)
+                if args.daily_balance_snapshots:
+                    chunk_balance_result = backfill_daily_balance_snapshots(
+                        db, sess, erp_base, chunk_from, chunk_to, log
+                    )
+                    result.update({
+                        "customer_balance_snapshots": chunk_balance_result["customer_balance_snapshots"],
+                        "vendor_balance_snapshots": chunk_balance_result["vendor_balance_snapshots"],
+                    })
+                    result["errors"].extend(chunk_balance_result["errors"])
                 new_rows = summarize_result(result)
                 total_new_rows += new_rows
                 duration = round(time.time() - chunk_started, 1)

@@ -18,6 +18,7 @@ class SaleIn(BaseModel):
     material: str
     qty_mt: float
     rate_per_mt: float
+    transport_charge: Optional[float] = 0.0
     payment_mode: str = "Credit"
     vehicle_no: Optional[str] = ""
     notes: Optional[str] = ""
@@ -39,6 +40,14 @@ class SaleIn(BaseModel):
 class SaleOut(SaleIn):
     id: int
     amount: float
+    # Preserve the ERP ListSale payment split in every sales response. The bank,
+    # ledger, customer, and dashboard views all use these stored values for
+    # SPLIT tickets; omitting them here makes the Sales page disagree with the
+    # other views and causes exports to reconstruct the wrong bank amount.
+    cash_amount: Optional[float] = 0.0
+    credit_amount: Optional[float] = 0.0
+    upi_amount: Optional[float] = 0.0
+    sale_time: Optional[str] = None
     erp_synced: Optional[bool] = False
 
 
@@ -67,15 +76,18 @@ def list_sales(date_filter: Optional[date] = None, from_date: Optional[date] = N
 @router.get("/summary")
 def sales_summary(date_filter: date, db: Session = Depends(get_db)):
     rows = db.query(Sale).filter(Sale.date == date_filter).all()
-    total_amount = sum(r.amount for r in rows)
-    cash_amount = sum(r.amount for r in rows if r.payment_mode == "Cash")
-    credit_amount = sum(r.amount for r in rows if r.payment_mode != "Cash")
+    def sale_total(row: Sale) -> float:
+        return float(row.amount or 0) + float(getattr(row, "transport_charge", 0.0) or 0.0)
+
+    total_amount = sum(sale_total(r) for r in rows)
+    cash_amount = sum(sale_total(r) for r in rows if r.payment_mode == "Cash")
+    credit_amount = sum(sale_total(r) for r in rows if r.payment_mode != "Cash")
     by_material = {}
     for r in rows:
         if r.material not in by_material:
             by_material[r.material] = {"qty_mt": 0, "amount": 0}
         by_material[r.material]["qty_mt"] += r.qty_mt
-        by_material[r.material]["amount"] += r.amount
+        by_material[r.material]["amount"] += sale_total(r)
     return {
         "total_amount": total_amount,
         "cash_amount": cash_amount,
@@ -92,6 +104,7 @@ class SalePatch(BaseModel):
     material: Optional[str] = None
     qty_mt: Optional[float] = None
     rate_per_mt: Optional[float] = None
+    transport_charge: Optional[float] = None
     payment_mode: Optional[str] = None
     vehicle_no: Optional[str] = None
     notes: Optional[str] = None

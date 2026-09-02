@@ -211,9 +211,9 @@ async def _start_background_sync():
         except Exception as e:
             print(f"[auto_sync] Historical sync error: {e}")
 
-    # ── Rolling 15-minute sync loop ────────────────────────────────────────────
+    # ── Rolling 10-minute sync loop ────────────────────────────────────────────
     while True:
-        await asyncio.sleep(15 * 60)       # 15 minutes
+        await asyncio.sleep(10 * 60)       # 10 minutes
         cfg = erp_sync_router.load_config()
         username = cfg.get("erp_username", "")
         password = cfg.get("erp_password", "")
@@ -236,6 +236,8 @@ async def _start_background_sync():
                          result["iot_imported"])
                 if total > 0:
                     print(f"[auto_sync] {total} new records synced.")
+                if result.get("errors"):
+                    print(f"[auto_sync] completed with errors: {result['errors']}")
             finally:
                 db.close()
         except Exception as e:
@@ -263,6 +265,8 @@ app.include_router(erp_sync_router.router)
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
+    if not _load_access_auth():
+        return RedirectResponse("/", status_code=302)
     return """
 <!DOCTYPE html>
 <html lang="en">
@@ -349,7 +353,10 @@ def logout():
 @app.get("/api/me")
 def current_user(request: Request):
     cfg = _load_access_auth()
-    username = _session_username(cfg, request.cookies.get("crusherops_session", "")) if cfg else ""
+    if not cfg:
+        # Login disabled — report authenticated so the dashboard loads without a gate.
+        return {"authenticated": True, "username": "", "can_write": True}
+    username = _session_username(cfg, request.cookies.get("crusherops_session", ""))
     return {
         "authenticated": bool(username),
         "username": username,
@@ -368,7 +375,8 @@ def generate_audit(from_date: date, to_date: date):
 @app.get("/", response_class=HTMLResponse)
 def root():
     with open(os.path.join(STATIC_DIR, "index.html")) as f:
-        return f.read()
+        # no-store so a dashboard code update is never masked by a stale cached page
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 @app.get("/service-worker.js")
@@ -516,4 +524,4 @@ def get_worker_types():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8765, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8765, reload=True)

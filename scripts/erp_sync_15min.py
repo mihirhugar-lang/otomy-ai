@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone 15-minute Loctell ERP sync for CrusherOps.
+"""Standalone 10-minute Loctell ERP sync for CrusherOps.
 
 Runs without the FastAPI server and uses a lock file to avoid overlapping runs.
 """
@@ -30,8 +30,8 @@ def log(message: str) -> None:
 
 
 def main() -> int:
-    lookback_days = int(os.environ.get("CRUSHEROPS_SYNC_LOOKBACK_DAYS", "2"))
-    receipt_lookback_days = int(os.environ.get("CRUSHEROPS_RECEIPT_LOOKBACK_DAYS", "2"))
+    lookback_days = int(os.environ.get("CRUSHEROPS_SYNC_LOOKBACK_DAYS", "7"))
+    receipt_lookback_days = int(os.environ.get("CRUSHEROPS_RECEIPT_LOOKBACK_DAYS", str(lookback_days)))
     lock_file = LOCK_PATH.open("w")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -67,6 +67,7 @@ def main() -> int:
             do_bank=True,
             do_cash=True,
             do_iot=True,
+            do_boulders=True,
             do_debtors=True,
             do_creditors=True,
             receipt_from_d=receipt_from_d,
@@ -78,6 +79,7 @@ def main() -> int:
             + result.get("bank_imported", 0)
             + result.get("cash_imported", 0)
             + result.get("iot_imported", 0)
+            + result.get("boulders_imported", 0)
         )
         log(f"DONE: new_rows={total} result={json.dumps(result, sort_keys=True)} duration={time.time() - started:.1f}s")
         return 0 if not result.get("errors") else 2

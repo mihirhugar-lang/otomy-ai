@@ -5,7 +5,30 @@ from datetime import date, datetime
 import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "crusherops.db")
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+engine = create_engine(
+    f"sqlite:///{DB_PATH}",
+    connect_args={"check_same_thread": False, "timeout": 30},
+    pool_size=20,
+    max_overflow=40,
+    pool_timeout=15,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
+
+from sqlalchemy import event as _sa_event
+
+
+@_sa_event.listens_for(engine, "connect")
+def _sqlite_pragmas(dbapi_conn, _rec):
+    # WAL lets readers (the dashboard) run while the background sync writes,
+    # so slow ERP syncs no longer starve dashboard queries.
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA busy_timeout=30000")
+    cur.execute("PRAGMA synchronous=NORMAL")
+    cur.close()
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -27,6 +50,7 @@ class Sale(Base):
     qty_mt = Column(Float)          # quantity in metric tonnes
     rate_per_mt = Column(Float)     # rate per metric tonne
     amount = Column(Float)
+    transport_charge = Column(Float, default=0)
     payment_mode = Column(String(20), default="Credit")  # Cash / Credit
     vehicle_no = Column(String(30))
     notes = Column(Text)
@@ -37,7 +61,13 @@ class Sale(Base):
     hsn_code = Column(String(10), default="2517")
     gst_rate = Column(Float, default=5.0)
     mdp_ton = Column(Float, nullable=True)        # MDP ton from ERP weighbridge
+    sale_time = Column(String(20), nullable=True) # time of sale (HH:MM AM/PM) from ERP
     erp_synced = Column(Boolean, default=False, index=True)
+    # Payment split from ERP ListSale (Final Cash / Final Credit / Final UPI).
+    # All three 0 => not captured yet -> consumers fall back to payment_mode.
+    cash_amount = Column(Float, default=0)
+    credit_amount = Column(Float, default=0)
+    upi_amount = Column(Float, default=0)
 
 
 class Expense(Base):
@@ -212,6 +242,43 @@ class VendorPayment(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+class VendorLedgerEntry(Base):
+    """Immutable Loctell supplier bill/payment row used for payable aging."""
+    __tablename__ = "vendor_ledger_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False, index=True)
+    entry_date = Column(Date, nullable=False, index=True)
+    entry_type = Column(String(12), nullable=False, index=True)  # purchase / payment
+    amount = Column(Float, nullable=False)
+    description = Column(Text, default="")
+    source_key = Column(String(180), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class CustomerBalanceSnapshot(Base):
+    __tablename__ = "customer_balance_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    as_of = Column(Date, nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    name = Column(String(200), nullable=False, index=True)
+    erp_customer_id = Column(Integer, nullable=True, index=True)
+    billed = Column(Float, default=0)
+    received = Column(Float, default=0)
+    outstanding = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+class VendorBalanceSnapshot(Base):
+    __tablename__ = "vendor_balance_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    as_of = Column(Date, nullable=False, index=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True, index=True)
+    name = Column(String(200), nullable=False, index=True)
+    erp_supplier_id = Column(String(80), nullable=True, index=True)
+    payable = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 class ERPBankEntry(Base):
     """Raw bank transaction rows from ERP ListBankTransaction."""
     __tablename__ = "erp_bank_entries"
@@ -237,6 +304,21 @@ class CashLedgerEntry(Base):
     ledger_name = Column(String(100))
     raw_cols    = Column(Text)
     created_at  = Column(DateTime, default=datetime.now)
+
+
+class InternalTransfer(Base):
+    """Loctell cash-ledger <-> bank-account contra entries."""
+    __tablename__ = "internal_transfers"
+    id           = Column(Integer, primary_key=True, index=True)
+    entry_date   = Column(Date, nullable=False, index=True)
+    cash_ledger  = Column(String(100), default="")
+    bank_name    = Column(String(100), default="")
+    direction    = Column(String(20), nullable=False, default="cash_to_bank")
+    amount       = Column(Float, nullable=False, default=0)
+    remarks      = Column(Text, default="")
+    source_key   = Column(String(180), nullable=False, unique=True, index=True)
+    raw_cols     = Column(Text, default="")
+    created_at   = Column(DateTime, default=datetime.now)
 
 
 class IOTMovement(Base):
@@ -267,6 +349,13 @@ def init_db():
             conn.execute(text("ALTER TABLE sales ADD COLUMN mdp_ton FLOAT"))
         if "erp_synced" not in sale_cols:
             conn.execute(text("ALTER TABLE sales ADD COLUMN erp_synced BOOLEAN DEFAULT 0"))
+        if "transport_charge" not in sale_cols:
+            conn.execute(text("ALTER TABLE sales ADD COLUMN transport_charge FLOAT DEFAULT 0"))
+        for _split_col in ("cash_amount", "credit_amount", "upi_amount"):
+            if _split_col not in sale_cols:
+                conn.execute(text(f"ALTER TABLE sales ADD COLUMN {_split_col} FLOAT DEFAULT 0"))
+        if "sale_time" not in sale_cols:
+            conn.execute(text("ALTER TABLE sales ADD COLUMN sale_time VARCHAR(20)"))
         expense_cols = {c["name"] for c in inspector.get_columns("expenses")}
         if "erp_synced" not in expense_cols:
             conn.execute(text("ALTER TABLE expenses ADD COLUMN erp_synced BOOLEAN DEFAULT 1"))
@@ -279,6 +368,9 @@ def init_db():
             conn.execute(text("ALTER TABLE customers ADD COLUMN erp_credit_balance FLOAT DEFAULT 0"))
         if "erp_balance_as_of" not in customer_cols:
             conn.execute(text("ALTER TABLE customers ADD COLUMN erp_balance_as_of DATE"))
+        transfer_cols = {c["name"] for c in inspector.get_columns("internal_transfers")} if "internal_transfers" in inspector.get_table_names() else set()
+        if transfer_cols and "direction" not in transfer_cols:
+            conn.execute(text("ALTER TABLE internal_transfers ADD COLUMN direction VARCHAR(20) DEFAULT 'cash_to_bank'"))
 
         # Performance indexes
         for sql in [
@@ -290,6 +382,8 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_part_date_machine ON parts(date, machine_name)",
             "CREATE INDEX IF NOT EXISTS idx_machine_date_name ON machine_readings(date, machine_name)",
             "CREATE INDEX IF NOT EXISTS idx_vendor_payment_ref ON vendor_payments(reference)",
+            "CREATE INDEX IF NOT EXISTS idx_customer_balance_snapshot_date_name ON customer_balance_snapshots(as_of, name)",
+            "CREATE INDEX IF NOT EXISTS idx_vendor_balance_snapshot_date_name ON vendor_balance_snapshots(as_of, name)",
         ]:
             conn.execute(text(sql))
 

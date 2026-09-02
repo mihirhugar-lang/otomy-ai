@@ -11,7 +11,15 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db, Sale, Expense, Customer
+from database import get_db, Sale, Expense, Customer, Vendor, CustomerReceipt, VendorPayment
+from shared_compliance import (
+    build_audit_ca,
+    build_compliance_dataset,
+    build_gstr1 as build_compliance_gstr1,
+    build_gstr2b_reconciliation,
+    build_gstr3b,
+    build_tally_xml,
+)
 
 router = APIRouter(prefix="/api/exports", tags=["exports"])
 
@@ -39,6 +47,66 @@ def _save_config(cfg: dict) -> None:
     os.makedirs(os.path.dirname(_CONFIG_PATH), exist_ok=True)
     with open(_CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+def _fy_start(as_of: date) -> date:
+    return date(as_of.year if as_of.month >= 4 else as_of.year - 1, 4, 1)
+
+
+def _compliance_dataset(
+    db: Session,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> dict:
+    end = to_date or date.today()
+    start = from_date or _fy_start(end)
+    if end < start:
+        raise HTTPException(status_code=400, detail="to_date must be on or after from_date")
+    sales = (
+        db.query(Sale)
+        .filter(Sale.date >= start, Sale.date <= end)
+        .order_by(Sale.date, Sale.id)
+        .all()
+    )
+    expenses = (
+        db.query(Expense)
+        .filter(Expense.date >= start, Expense.date <= end)
+        .order_by(Expense.date, Expense.id)
+        .all()
+    )
+    receipts = (
+        db.query(CustomerReceipt)
+        .filter(CustomerReceipt.date >= start, CustomerReceipt.date <= end)
+        .order_by(CustomerReceipt.date, CustomerReceipt.id)
+        .all()
+    )
+    vendor_payments = (
+        db.query(VendorPayment)
+        .filter(VendorPayment.date >= start, VendorPayment.date <= end)
+        .order_by(VendorPayment.date, VendorPayment.id)
+        .all()
+    )
+    return build_compliance_dataset(
+        sales,
+        expenses,
+        receipts,
+        db.query(Customer).order_by(Customer.name).all(),
+        db.query(Vendor).order_by(Vendor.name).all(),
+        vendor_payments,
+        _load_config(),
+        start,
+        end,
+    )
+
+
+def _month_window(year: int, month: int) -> tuple[date, date]:
+    from calendar import monthrange
+
+    try:
+        first = date(int(year), int(month), 1)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid GST return period")
+    return first, date(first.year, first.month, monthrange(first.year, first.month)[1])
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +170,7 @@ def export_tally_sales(
         cgst_rate = gst_rate / 2
         sgst_rate = gst_rate / 2
 
-        amount = s.amount or 0.0
+        amount = (s.amount or 0.0) + (getattr(s, "transport_charge", 0.0) or 0.0)
         # Amounts are GST-inclusive
         taxable = round(amount / (1 + gst_rate / 100), 2)
         cgst_amt = round(taxable * cgst_rate / 100, 2)
@@ -271,7 +339,7 @@ def export_gstr1(year: int, month: int, db: Session = Depends(get_db)):
 
     for s in sales:
         gst_rate = s.gst_rate or 5.0
-        amount = s.amount or 0.0
+        amount = (s.amount or 0.0) + (getattr(s, "transport_charge", 0.0) or 0.0)
         taxable = round(amount / (1 + gst_rate / 100), 2)
         cgst = round(taxable * (gst_rate / 2) / 100, 2)
         sgst = round(taxable * (gst_rate / 2) / 100, 2)
@@ -373,4 +441,96 @@ def export_gstr1(year: int, month: int, db: Session = Depends(get_db)):
         content=json.dumps(gstr1, indent=2),
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared compliance dataset and new GST / AUDIT CA exports
+# ---------------------------------------------------------------------------
+
+@router.get("/compliance/dataset")
+def export_compliance_dataset(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """One canonical April-1-to-today dataset for both replacement pages."""
+    return _compliance_dataset(db, from_date, to_date)
+
+
+@router.get("/compliance/summary")
+def export_compliance_summary(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    dataset = _compliance_dataset(db, from_date, to_date)
+    audit = build_audit_ca(dataset)
+    return {
+        "engine": dataset["engine"],
+        "period": dataset["period"],
+        "company": dataset["company"],
+        "totals": dataset["totals"],
+        "daily": dataset["daily"],
+        "checks": dataset["checks"],
+        "audit": audit,
+    }
+
+
+@router.get("/gst/gstr1")
+def export_compliance_gstr1(year: int, month: int, db: Session = Depends(get_db)):
+    start, end = _month_window(year, month)
+    payload = build_compliance_gstr1(_compliance_dataset(db, start, end), year, month)
+    return Response(
+        content=json.dumps(payload, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="GSTR1_{year}_{month:02d}.json"'},
+    )
+
+
+@router.get("/gst/gstr3b")
+def export_compliance_gstr3b(year: int, month: int, db: Session = Depends(get_db)):
+    start, end = _month_window(year, month)
+    payload = build_gstr3b(_compliance_dataset(db, start, end), year, month)
+    return Response(
+        content=json.dumps(payload, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="GSTR3B_{year}_{month:02d}.json"'},
+    )
+
+
+@router.get("/gst/gstr2b")
+def export_compliance_gstr2b(year: int, month: int, db: Session = Depends(get_db)):
+    start, end = _month_window(year, month)
+    payload = build_gstr2b_reconciliation(_compliance_dataset(db, start, end), year, month)
+    return Response(
+        content=json.dumps(payload, indent=2, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="GSTR2B_reconciliation_{year}_{month:02d}.json"'},
+    )
+
+
+@router.get("/audit-ca/summary")
+def export_audit_ca_summary(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    return build_audit_ca(_compliance_dataset(db, from_date, to_date))
+
+
+@router.get("/audit-ca/tally.xml")
+def export_audit_ca_tally(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    dataset = _compliance_dataset(db, from_date, to_date)
+    xml_body = build_tally_xml(dataset)
+    start = dataset["period"]["from"]
+    end = dataset["period"]["to"]
+    return Response(
+        content=xml_body,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="Tally_Audit_CA_{start}_{end}.xml"'},
     )
