@@ -419,7 +419,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   html,body{background:#fff!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;display:block!important;overflow:visible!important}
   body > :not(#print-area){display:none!important}
   #print-area,#print-area *{visibility:visible}
-  #print-area{display:block!important;position:static!important;left:auto;top:auto;width:auto!important;max-width:100%!important;margin:0!important;padding:0!important;color:#111827;overflow:visible!important}
+  #print-area{display:block!important;position:static!important;left:auto;top:auto;width:auto!important;max-width:100%!important;margin:0!important;padding:0!important;min-height:0!important;height:auto!important;color:#111827;overflow:visible!important}
+  /* Do not let the final card/table margin create a separate empty PDF page. */
+  #print-area > :last-child{margin-bottom:0!important;break-after:avoid-page!important;page-break-after:avoid!important}
   .no-print{display:none!important}
   #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   #print-area table{width:100%;border-collapse:collapse;font-size:10px}
@@ -658,7 +660,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 @media print{
   html,body{background:linear-gradient(160deg,#31507c,#243d61)!important}
   #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:100vh!important;padding:6px!important}
+  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
   #print-area .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
   #print-area .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
   #print-area .card h3{background:#1f4e79!important;color:#fff!important}
@@ -680,7 +682,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 /* The installed app captures its PDF with screen CSS, not @media print.
    Keep that canvas colour-for-colour identical to the website's final print theme. */
 #print-area.pdf-capture,#print-area.pdf-capture *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:100vh!important;padding:6px!important}
+#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
 #print-area.pdf-capture .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
 #print-area.pdf-capture .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
 #print-area.pdf-capture .card h3{background:#1f4e79!important;color:#fff!important}
@@ -2496,16 +2498,22 @@ async function shareStyledMobilePdf(title, content, className=''){
     // Use all rows, including headers and totals, so no customer name or amount is cut at a page edge.
     const paRect=pa.getBoundingClientRect();
     const verticalScale=canvas.width/Math.max(paRect.width,1);
+    const contentBottom=Math.max(0,...[...pa.children]
+      .filter(node=>node.tagName!=='STYLE')
+      .map(node=>node.getBoundingClientRect().bottom-paRect.top));
+    // html2canvas includes any viewport-sized canvas and trailing margins.  Only
+    // capture through the final printed element plus the six-pixel print padding.
+    const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil((contentBottom+6)*verticalScale)));
     const rowBounds=[...pa.querySelectorAll('tr')].map(row=>{
       const box=row.getBoundingClientRect();
       return {top:Math.round((box.top-paRect.top)*verticalScale),bottom:Math.round((box.bottom-paRect.top)*verticalScale)};
-    }).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<canvas.height);
+    }).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<contentHeight);
     const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
-    for(let y=0,page=0;y<canvas.height;page++){
-      const target=Math.min(y+sliceHeight,canvas.height);
+    for(let y=0,page=0;y<contentHeight;page++){
+      const target=Math.min(y+sliceHeight,contentHeight);
       // Keep a full page whenever the target lies in whitespace. Move only when it intersects a table row.
       let end=target;
-      while(end<canvas.height){
+      while(end<contentHeight){
         const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);
         if(!crossing.length)break;
         const beforeRow=Math.min(...crossing.map(row=>row.top));
