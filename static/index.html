@@ -649,9 +649,10 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 #sales-tbl,#transport-ledger-tbl,#ledger-tbl{max-height:520px;overflow:auto}
 #sales-tbl table thead th,#transport-ledger-tbl table thead th,#ledger-tbl table thead th{position:sticky;top:0;z-index:2}
 .sales-table .ledger-total-row td{background:#f2e7c9!important;border-top:2px solid #1f4e79!important;border-bottom:1px solid #c9b98f!important;font-weight:700!important}
-/* Every ledger total remains visible inside its own scroll box. */
-.tbl-wrap > table tfoot,.report-table-wrap > table tfoot{position:sticky;bottom:0;z-index:4}
-.tbl-wrap > table tfoot td,.report-table-wrap > table tfoot td{padding:10px 13px!important;font-size:13px!important;box-shadow:0 -2px 5px rgba(31,78,121,.18)}
+/* Every ledger total remains visible at the bottom of its own table block. */
+.tbl-wrap,.report-table-wrap{position:relative}
+.tbl-wrap table tfoot,.report-table-wrap table tfoot{position:sticky;bottom:0;z-index:4}
+.tbl-wrap table tfoot td,.report-table-wrap table tfoot td{padding:10px 13px!important;font-size:13px!important;box-shadow:0 -2px 5px rgba(31,78,121,.18)}
 #transport-ledger-card{width:100%}
 #transport-ledger-card .page-header{display:block;position:relative}
 #transport-ledger-card .page-header>div:first-child{width:100%}
@@ -721,6 +722,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 #print-area.pdf-capture [style*="color:#ad1457"]{color:#ad1457!important}
 #print-area.pdf-capture [style*="color:#c2610c"]{color:#c2610c!important}
 @media print{#print-area table thead,#print-area table tfoot{position:static!important}}
+#print-area.pdf-capture table tfoot{position:static!important}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
