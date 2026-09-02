@@ -114,10 +114,10 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .tbl-wrap.no-side-scroll table{min-width:0;table-layout:auto}
 .tbl-wrap.no-side-scroll th,.tbl-wrap.no-side-scroll td{white-space:normal;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}
-.sales-table{min-width:960px}
+.sales-table{width:max-content;min-width:960px}
 .sales-table th,.sales-table td{white-space:nowrap}
-.sales-table td:nth-child(2){min-width:150px;white-space:normal}
-/* Proportional widths: every column hugs its content except Customer (col 2), which absorbs the slack — no huge gaps, and the footer lines up (footer no longer uses colspan). Numbers right-aligned. */
+.sales-table th:nth-child(2),.sales-table td:nth-child(2){width:190px;min-width:150px;max-width:220px;white-space:normal}
+/* Content-width ledger: the Customer column is readable but cannot absorb unused desktop width. */
 .sales-table th:not(:nth-child(2)),.sales-table td:not(:nth-child(2)){width:1%}
 .sales-table th:nth-child(n+4):nth-child(-n+12),.sales-table td:nth-child(n+4):nth-child(-n+12){text-align:right}
 /* Ledger View: same content-hugging + right-aligned numbers so columns look proportional and the last metric columns don't drift off to the side */
@@ -646,8 +646,26 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 .report-table thead th{position:sticky;top:0;z-index:1}
 .report-table{overflow:visible !important}
 /* Sale & Ledger page tables behave like dashboard blocks: fixed-height scroll box + sticky header + side scrollbar */
-#sales-tbl,#ledger-tbl{max-height:520px;overflow:auto}
-#sales-tbl table thead th,#ledger-tbl table thead th{position:sticky;top:0;z-index:2}
+#sales-tbl,#transport-ledger-tbl,#ledger-tbl{max-height:520px;overflow:auto}
+#sales-tbl table thead th,#transport-ledger-tbl table thead th,#ledger-tbl table thead th{position:sticky;top:0;z-index:2}
+.sales-table .ledger-total-row td{background:#f2e7c9!important;border-top:2px solid #1f4e79!important;border-bottom:1px solid #c9b98f!important;font-weight:700!important}
+/* Every ledger total remains visible inside its own scroll box. */
+.tbl-wrap > table tfoot,.report-table-wrap > table tfoot{position:sticky;bottom:0;z-index:4}
+.tbl-wrap > table tfoot td,.report-table-wrap > table tfoot td{padding:10px 13px!important;font-size:13px!important;box-shadow:0 -2px 5px rgba(31,78,121,.18)}
+#transport-ledger-card{width:100%}
+#transport-ledger-card .page-header{display:block;position:relative}
+#transport-ledger-card .page-header>div:first-child{width:100%}
+#transport-ledger-card .page-header h3{padding-right:128px!important}
+#transport-ledger-card .page-header .print-btn{position:absolute;right:0;top:0}
+@media(max-width:760px){#transport-ledger-card .page-header .print-btn{position:static;margin-top:8px}#transport-ledger-card .page-header h3{padding-right:12px!important}}
+#transport-ledger-tbl .sales-table{width:100%;min-width:960px;table-layout:fixed}
+#transport-ledger-tbl .sales-table th:nth-child(1),#transport-ledger-tbl .sales-table td:nth-child(1){width:10%}
+#transport-ledger-tbl .sales-table th:nth-child(2),#transport-ledger-tbl .sales-table td:nth-child(2){width:21%;max-width:none}
+#transport-ledger-tbl .sales-table th:nth-child(3),#transport-ledger-tbl .sales-table td:nth-child(3){width:10%}
+#transport-ledger-tbl .sales-table th:nth-child(4),#transport-ledger-tbl .sales-table td:nth-child(4){width:8%;text-align:right}
+#transport-ledger-tbl .sales-table th:nth-child(5),#transport-ledger-tbl .sales-table td:nth-child(5),#transport-ledger-tbl .sales-table th:nth-child(6),#transport-ledger-tbl .sales-table td:nth-child(6),#transport-ledger-tbl .sales-table th:nth-child(7),#transport-ledger-tbl .sales-table td:nth-child(7){width:12%;text-align:right}
+#transport-ledger-tbl .sales-table th:nth-child(8),#transport-ledger-tbl .sales-table td:nth-child(8){width:9%}
+#transport-ledger-tbl .sales-table th:nth-child(9),#transport-ledger-tbl .sales-table td:nth-child(9){width:6%}
 /* Date fields shown in orange across every page (from/to/day/month pickers, their labels, topbar date) */
 .preset-dates input{color:#c2610c !important;font-weight:700}
 .preset-dates label{color:#c2610c !important;font-weight:700}
@@ -702,6 +720,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 #print-area.pdf-capture [style*="color:#b45309"]{color:#b45309!important}
 #print-area.pdf-capture [style*="color:#ad1457"]{color:#ad1457!important}
 #print-area.pdf-capture [style*="color:#c2610c"]{color:#c2610c!important}
+@media print{#print-area table thead,#print-area table tfoot{position:static!important}}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
 <script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
@@ -829,6 +848,13 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     </div>
     <div class="tbl-wrap" id="sales-tbl"></div>
     <div id="sales-pager" class="no-print"></div>
+  </div>
+  <div class="card" id="transport-ledger-card">
+    <div class="page-header" style="margin-bottom:8px">
+      <div><h3 style="margin:0">Transport Ledger</h3><div class="metric-note">Filtered from Sales Records for the selected date range. Transport charges below ₹100 (including ₹1/₹2 price adjustments) are excluded.</div></div>
+      <button class="print-btn no-print" onclick="printTransportLedger()">Print / PDF</button>
+    </div>
+    <div class="tbl-wrap" id="transport-ledger-tbl"><div class="empty">Loading transport ledger…</div></div>
   </div>
 </div>
 
@@ -1848,6 +1874,8 @@ const _sort={
 };
 const PAGE_SIZE=100;
 const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],bankstmt:[]};
+const TRANSPORT_LEDGER_MINIMUM=100;
+let _transportLedgerRows=[];
 let _currentCustLedger=null,_currentVendLedger=null;
 
 function _rangeDaysForKey(key){
@@ -2701,6 +2729,11 @@ function pdfFullTableForId(id){
       return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR2(_saleTotal(r)),ch.cash?fmtINR(ch.cash):'-',ch.upi?fmtINR(ch.upi):'-',ch.credit?fmtINR(ch.credit):'-',r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
     }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),fmtINR(totCash),fmtINR(totBank),fmtINR(totCredit),'','','']);
   }
+  if(id==='transport-ledger-tbl'){
+    const rows=_transportLedgerRows.slice().sort((a,b)=>`${b.date}|${b.ticket_no||''}`.localeCompare(`${a.date}|${a.ticket_no||''}`));
+    const totals=rows.reduce((sum,r)=>({qty:sum.qty+_num(r.qty_mt),material:sum.material+_num(r.amount),transport:sum.transport+_num(r.transport_charge),gross:sum.gross+_saleTotal(r)}),{qty:0,material:0,transport:0,gross:0});
+    return pdfTableBlock('Transport Ledger',['Date','Customer','Material','Qty MT','Material Amount','Transport Charges','Total Amount','Vehicle','Ticket'],rows.map(r=>[r.date,r.customer_name||'-',r.material||'-',fmtNum(r.qty_mt,2),fmtINR2(r.amount),fmtINR2(r.transport_charge),fmtINR2(_saleTotal(r)),r.vehicle_no||'-',r.ticket_no||'-']),[`TOTAL (${rows.length})`,'','',fmtNum(totals.qty,2),fmtINR2(totals.material),fmtINR2(totals.transport),fmtINR2(totals.gross),'','']);
+  }
   if(id==='exp-tbl'){
     const derived={vendor:r=>r.vendor_id?(_vendors.find(v=>v.id==r.vendor_id)||{name:'-'}).name:'-'};
     const rows=sortedRows(_allData.expenses,'expenses',derived);
@@ -3507,7 +3540,11 @@ async function loadSales(){
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('s-from').value=f;document.getElementById('s-to').value=t;return loadSales();}
   try{
     const rows=await api(`/api/sales/?from_date=${from}&to_date=${to}`);
-    _allData.sales=rows;_page.sales=_page.sales||1;
+    _allData.sales=rows;
+    // This is a view over the displayed Sales Ledger only.  ₹1/₹2 round-off
+    // differences in Loctell's Gross Total are not transport services.
+    _transportLedgerRows=rows.filter(r=>_num(r.transport_charge)>=TRANSPORT_LEDGER_MINIMUM);
+    _page.sales=_page.sales||1;
     _renderCache.sales=()=>renderSales();
     renderSales();
   }catch(e){flash(e.message,false);}
@@ -3524,9 +3561,25 @@ function renderSales(){
     html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR2(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
   if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
-  html+=`</tbody><tfoot><tr><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr class="ledger-total-row"><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
   document.getElementById('sales-tbl').innerHTML=html;
   document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
+  renderTransportLedger();
+}
+function renderTransportLedger(){
+  const target=document.getElementById('transport-ledger-tbl');if(!target)return;
+  const rows=_transportLedgerRows.slice().sort((a,b)=>`${b.date}|${b.ticket_no||''}`.localeCompare(`${a.date}|${a.ticket_no||''}`));
+  const totals=rows.reduce((sum,r)=>({qty:sum.qty+_num(r.qty_mt),material:sum.material+_num(r.amount),transport:sum.transport+_num(r.transport_charge),gross:sum.gross+_saleTotal(r)}),{qty:0,material:0,transport:0,gross:0});
+  let html='<table class="sales-table"><thead><tr><th>Date</th><th>Customer</th><th>Material</th><th>Qty MT</th><th>Material Amount</th><th>Transport Charges</th><th>Total Amount</th><th>Vehicle</th><th>Ticket</th></tr></thead><tbody>';
+  rows.forEach(r=>{html+=`<tr><td>${esc(r.date)}</td><td>${esc(r.customer_name||'—')}</td><td>${esc(r.material||'—')}</td><td>${fmtNum(r.qty_mt,2)}</td><td>${fmtINR2(r.amount)}</td><td><strong>${fmtINR2(r.transport_charge)}</strong></td><td>${fmtINR2(_saleTotal(r))}</td><td>${esc(r.vehicle_no||'—')}</td><td>${esc(r.ticket_no||'—')}</td></tr>`;});
+  if(!rows.length)html+='<tr><td colspan="9" class="empty">No transport sales of ₹100 or more for the selected Sales Records period</td></tr>';
+  html+=`</tbody><tfoot><tr class="ledger-total-row"><td><strong>TOTAL ${rows.length}</strong></td><td></td><td></td><td>${fmtNum(totals.qty,2)}</td><td>${fmtINR2(totals.material)}</td><td><strong>${fmtINR2(totals.transport)}</strong></td><td>${fmtINR2(totals.gross)}</td><td></td><td></td></tr></tfoot></table>`;
+  target.innerHTML=html;
+}
+function printTransportLedger(){
+  const target=document.getElementById('transport-ledger-tbl');
+  const from=document.getElementById('s-from')?.value,to=document.getElementById('s-to')?.value;
+  openTablePdf('Transport Ledger',target,`Period: ${from||'—'} to ${to||'—'} | Transport charges ₹${TRANSPORT_LEDGER_MINIMUM} and above`);
 }
 async function delSale(id){flash('Please make changes in Loctell ERP. Local changes are disabled.',false);}
 
