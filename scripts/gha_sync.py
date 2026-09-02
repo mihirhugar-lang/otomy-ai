@@ -1421,6 +1421,7 @@ def fetch_machine_fuel_issues(sess, financial_year_start, today):
             "fuel_issued": round(abs(_num(row.get("qty"))), 2),
             "fuel_issue_reading": round(_num(row.get("odometerReading")), 2) if row.get("odometerReading") is not None else None,
             "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "DIESEL"),
+            "remarks": str(row.get("remarks") or "").strip(),
         })
     return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
@@ -1466,6 +1467,7 @@ def fetch_fuel_received(sess, financial_year_start, today):
             "unit_price": round(rate, 2),
             "amount": round(qty * rate, 2),
             "received_by": (row.get("createdBy") or {}).get("userFullName") or "—",
+            "remarks": str(row.get("remarks") or "").strip(),
         })
     return sorted(result, key=lambda row: row["received_date"], reverse=True)
 
