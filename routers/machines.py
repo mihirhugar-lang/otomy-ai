@@ -221,6 +221,7 @@ def fetch_machine_fuel_issues(session: Optional[requests.Session] = None, erp_ba
             "fuel_issued": round(liters, 2),
             "fuel_issue_reading": round(fuel_issue_reading, 2) if fuel_issue_reading is not None else None,
             "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "DIESEL"),
+            "remarks": str(row.get("remarks") or "").strip(),
         })
     return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
@@ -272,6 +273,7 @@ def fetch_fuel_received(session: Optional[requests.Session] = None, erp_base: Op
             "unit_price": round(rate, 2),
             "amount": round(qty * rate, 2),
             "received_by": (row.get("createdBy") or {}).get("userFullName") or "—",
+            "remarks": str(row.get("remarks") or "").strip(),
         })
     return sorted(result, key=lambda row: row["received_date"], reverse=True)
 
