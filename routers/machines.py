@@ -455,7 +455,9 @@ def fetch_operations_machine_summary(
         "prior_odometer": [],
         "fuel_issued": [],
         "fuel_received": [],
-        "fuel_balance": {},
+        "fuel_balance": {
+            "spend_tracking_from": _FUEL_SPEND_TRACKING_FROM.isoformat(),
+        },
         "refreshing": started or is_refreshing,
         "cached": False,
         "cache_age_seconds": None,

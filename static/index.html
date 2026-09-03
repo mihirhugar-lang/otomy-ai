@@ -4112,6 +4112,16 @@ async function loadMachines(dashboardFrom,dashboardTo){
     _allData.machines=rows;_allData.machineHistory=history;_allData.machinePrior=priorRows;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
+    // A cold combined summary intentionally returns immediately rather than
+    // holding the page behind a slow odometer request. Hydrate the independent
+    // fuel feeds as they arrive, so a genuine issue is never hidden by that
+    // temporary odometer delay.
+    if(summary.refreshing&&!summary.cached){
+      const hydrateFuel=(field,path)=>api(path).then(value=>{_allData[field]=value;renderMachines();}).catch(()=>{});
+      hydrateFuel('machineFuel','/api/machines/fuel-issued');
+      hydrateFuel('fuelReceived','/api/machines/fuel-received');
+      hydrateFuel('fuelBalance','/api/machines/fuel-balance');
+    }
     if(summary.refreshing){
       const age=Number(summary.cache_age_seconds),noteText=summary.cached&&Number.isFinite(age)?`Showing the last verified Loctell reading (${age}s old) while a fresh reading loads in the background.`:'Loctell machinery readings are loading in the background. This page remains usable.';
       ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el){const note=document.createElement('div');note.className='metric-note';note.textContent=noteText;el.prepend(note);}});
