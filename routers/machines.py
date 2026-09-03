@@ -372,6 +372,24 @@ def _machine_summary_response(data: dict, *, refreshing: bool, cached: bool, age
     }
 
 
+def _configured_odometer_placeholders() -> list[dict]:
+    """Keep the complete configured fleet visible during a cold ERP refresh.
+
+    These are display-only unknown readings, never invented meter values.
+    Fuel rows deliberately remain empty until Loctell returns genuine issues.
+    """
+    return [
+        {
+            "vehicle_type": vehicle_type,
+            "end_reading": None,
+            "start_reading": None,
+            "difference": None,
+            "has_reading": False,
+        }
+        for vehicle_type, _registration in _ODOMETER_TARGETS
+    ]
+
+
 def _refresh_machine_summary(key: tuple[str, str], from_date: Optional[date], to_date: Optional[date]) -> None:
     try:
         data = _fetch_operations_machine_summary_live(from_date=from_date, to_date=to_date)
@@ -433,7 +451,7 @@ def fetch_operations_machine_summary(
         )
 
     return {
-        "odometer": [],
+        "odometer": _configured_odometer_placeholders(),
         "prior_odometer": [],
         "fuel_issued": [],
         "fuel_received": [],
