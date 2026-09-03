@@ -1203,6 +1203,7 @@ _ODOMETER_TARGETS = [
     ("VMI Loader", "VMI LOADER"),
     ("Daneswary Soling Vehicles", "DANESWARY SOLING VEHICLES"),
     ("Soling Manju Machines", "SOLING MANJU MACHINES"),
+    ("Water Tanker", "WATER TANKER"),
 ]
 _FUEL_SPEND_TRACKING_FROM = date(2026, 9, 1)
 
