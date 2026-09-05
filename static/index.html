@@ -186,10 +186,14 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
 .preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
+.rolling-range-row{display:flex;align-items:center;gap:6px;flex:1 0 100%;flex-wrap:wrap;order:2;padding-top:2px}
+.rolling-range-row .pbtn{font-size:11px;padding:5px 10px}
+.preset-bar>.print-btn,.preset-bar>.page-actions{order:3}
 .print-btn{margin-left:auto;padding:6px 14px;border-radius:5px;border:1.5px solid #1a237e;background:#fff;color:#1a237e;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
+@media(max-width:760px){.rolling-range-row{flex-basis:100%;gap:5px}.rolling-range-row .pbtn{font-size:10px;padding:5px 8px}.preset-bar>.print-btn,.preset-bar>.page-actions{margin-left:0}}
 
 /* ── Sub-tabs ── */
 .subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
@@ -2335,11 +2339,21 @@ function calcPreset(p){
     case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
+    case'last2months':return[rollingMonthStart(2),today()];
+    case'last3months':return[rollingMonthStart(3),today()];
+    case'last7days':return[rollingDayStart(7),today()];
+    case'last15days':return[rollingDayStart(15),today()];
+    case'last30days':return[rollingDayStart(30),today()];
+    case'last45days':return[rollingDayStart(45),today()];
+    case'last60days':return[rollingDayStart(60),today()];
+    case'last90days':return[rollingDayStart(90),today()];
     case'fytd':return[fyStart(),today()];
     case'lastfy':return[lastFyStart(),lastFyEnd()];
     default:return[today(),today()];
   }
 }
+function rollingDayStart(days){const d=new Date(`${today()}T00:00:00`);d.setDate(d.getDate()-(days-1));return localISO(d);}
+function rollingMonthStart(months){const d=new Date(`${today()}T00:00:00`),day=d.getDate(),target=new Date(d.getFullYear(),d.getMonth()-months,1);target.setDate(Math.min(day,new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return localISO(target);}
 
 function preset(section,p,btn){
   const cfg=PRESET_CFG[section];
@@ -2404,6 +2418,17 @@ function initRangeMonthSelectors(){
     if(!lastFy){const fy=[...bar.querySelectorAll('.pbtn')].find(btn=>String(btn.getAttribute('onclick')||'').includes("preset('"+section+"','fytd'"));if(!fy)return;lastFy=document.createElement('button');lastFy.type='button';lastFy.className='pbtn';lastFy.textContent='Last FY';lastFy.setAttribute('onclick',"preset('"+section+"','lastfy',this)");fy.insertAdjacentElement('afterend',lastFy);}
     const sel=document.createElement('select');sel.id='range-month-'+section;sel.className='month-range-select';sel.setAttribute('aria-label','Select month');sel.innerHTML='<option value="">Month</option>'+months.map(row=>'<option value="'+row.ym+'">'+row.label+'</option>').join('');
     sel.addEventListener('change',()=>setRangeMonth(section,sel.value,sel));sel.addEventListener('focus',()=>expandMonthSelect(sel));sel.addEventListener('blur',()=>collapseMonthSelect(sel));lastFy.insertAdjacentElement('afterend',sel);
+  });
+}
+function initRollingRangePresets(){
+  const ranges=[['last2months','Last 2 Months'],['last3months','Last 3 Months'],['last7days','Last 7 Days'],['last15days','Last 15 Days'],['last30days','Last 30 Days'],['last45days','Last 45 Days'],['last60days','Last 60 Days'],['last90days','Last 90 Days']];
+  Object.keys(PRESET_CFG).forEach(section=>{
+    const cfg=PRESET_CFG[section],fromEl=document.getElementById(cfg.from),bar=fromEl&&fromEl.closest('.preset-bar');if(!bar||bar.querySelector('.rolling-range-row'))return;
+    const row=document.createElement('div');row.className='rolling-range-row no-print';row.setAttribute('aria-label','Rolling date ranges');
+    ranges.forEach(([presetName,label])=>{const btn=document.createElement('button');btn.type='button';btn.className='pbtn';btn.textContent=label;btn.setAttribute('onclick',section==='ops'?`opsPreset('${presetName}',this)`:`preset('${section}','${presetName}',this)`);row.appendChild(btn);});
+    const printControl=bar.querySelector(':scope > .page-actions, :scope > .print-btn');
+    const dates=bar.querySelector(':scope > .preset-dates');
+    bar.insertBefore(row,printControl||dates||null);
   });
 }
 function _ledgerRangeTotals(rows){
@@ -3122,6 +3147,7 @@ window.onload=async function(){
   document.getElementById('dash-date').value=t;
   _populateLedgerMonths();
   initRangeMonthSelectors();
+  initRollingRangePresets();
   ['gst-from','ca-from'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=fyStart();});
   ['rpt-month','gst-month','gst-return-month','gst-2b-month','emi-month','ledger-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=ym;});
   // Restore the page the user was on before a refresh (same tab/session only). A brand-new
