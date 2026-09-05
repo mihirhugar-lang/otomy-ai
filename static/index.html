@@ -2641,10 +2641,9 @@ function runPrint(title, content, className=''){
   // Keep the native vector print route: it produces a compact PDF with the
   // sharpest possible text and rules.
   if(isMobilePrint()){
-    // iOS installed apps must open a real print document.  Never use the
-    // Blob/link route: it changes the user flow and is not website-quality.
-    if(_isStandalonePWA() && _isIOS())openMobilePrintPage(title, content, className);
-    else printViaIframe(title, content, className);
+    // Keep the print sheet inside the app.  The iframe uses the same native
+    // HTML print engine as the website without opening a link or blank page.
+    printViaIframe(title, content, className);
     return;
   }
   // Desktop and Android installed app: print the current document directly via the @media print rules.
