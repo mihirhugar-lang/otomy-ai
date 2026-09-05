@@ -249,8 +249,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .report-table thead th{background:linear-gradient(135deg,#2b2118,#7c4a03);color:#fff;padding:10px 12px;font-size:11px;letter-spacing:.4px;text-transform:uppercase}
 .report-table tbody td{padding:10px 12px;border-bottom:1px solid #f1e7d3;vertical-align:top;line-height:1.45}
 #dash-customer-payments-card .dashboard-customer-payments-table{table-layout:fixed}
-#dash-customer-payments-card .dashboard-customer-payments-table th:first-child,#dash-customer-payments-card .dashboard-customer-payments-table td:first-child{width:22%;white-space:normal}
-#dash-customer-payments-card .dashboard-customer-payments-table th:not(:first-child),#dash-customer-payments-card .dashboard-customer-payments-table td:not(:first-child){width:13%;white-space:normal}
+#dash-customer-payments-card .dashboard-customer-payments-table th:first-child,#dash-customer-payments-card .dashboard-customer-payments-table td:first-child{width:20%;white-space:normal}
+#dash-customer-payments-card .dashboard-customer-payments-table th:not(:first-child),#dash-customer-payments-card .dashboard-customer-payments-table td:not(:first-child){width:11.42%;white-space:normal}
+.customer-aging-table{table-layout:fixed;width:100%;font-size:11px}
+.customer-aging-table th:first-child,.customer-aging-table td:first-child{width:20%;white-space:normal}
+.customer-aging-table th:not(:first-child),.customer-aging-table td:not(:first-child){width:11.42%;white-space:normal}
 .report-table tbody tr:nth-child(even){background:#fff8ee}
 .report-table tbody tr:hover{background:#ffefcf}
 .report-table tfoot td{background:#f6ead7;font-weight:800;padding:10px 12px;border-top:2px solid #b45309}
@@ -1248,6 +1251,7 @@ async function _canonicalCustomerAgingAt(asOf){
     if(key)result.set(key,{
       credit_due_15_plus:Math.round(_num(row.credit_due_15_plus)*100)/100,
       credit_due_30_plus:Math.round(_num(row.credit_due_30_plus)*100)/100,
+      credit_due_45_plus:Math.round(_num(row.credit_due_45_plus)*100)/100,
     });
   });
   return result;
@@ -1635,8 +1639,9 @@ function _archiveCreditDue15Plus(balance,sales=[],receipts=[],asOf=today(),days=
 }
 function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSales=sales,agingReceipts=receipts,asOf=today()){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
-  const due15=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf);
-  const due30=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,30);
+  const due15=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,16);
+  const due30=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,31);
+  const due45=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,45);
   const byName=new Map();
   function ensure(name){
     const key=(name||'Customer').trim()||'Customer';
@@ -1681,6 +1686,7 @@ function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSale
     range_payment_received:Math.round(row.range_payment_received*100)/100,
     credit_due_15_plus:Math.round(_num(due15[String(row.name||'').trim().toUpperCase()])*100)/100,
     credit_due_30_plus:Math.round(_num(due30[String(row.name||'').trim().toUpperCase()])*100)/100,
+    credit_due_45_plus:Math.round(_num(due45[String(row.name||'').trim().toUpperCase()])*100)/100,
     range_latest_sale_date:row.range_latest_sale_date||null,
     latest_sale_date:row.latest_sale_date||null,
   })).sort((a,b)=>String(b.range_latest_sale_date||b.latest_sale_date||'').localeCompare(String(a.range_latest_sale_date||a.latest_sale_date||'')) || _num(b.total_outstanding)-_num(a.total_outstanding));
@@ -3412,16 +3418,17 @@ async function renderControlRoom(data){
   const customerPageData=(data.customer_page_rows||[]).filter(row=>customerCollection(row)>0||(row.active!==false&&_num(row.range_total_sales)>0));
   const customerPaymentTotal=customerPageData.reduce((sum,row)=>sum+customerCollection(row),0);
   const customerSalesTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_total_sales),0);
-  const customerDue0to15Total=customerPageData.reduce((sum,row)=>sum+Math.max(0,_num(row.total_outstanding)-_num(row.credit_due_15_plus)),0);
-  const customerDue15Total=customerPageData.reduce((sum,row)=>sum+_num(row.credit_due_15_plus),0);
-  const customerDue30Total=customerPageData.reduce((sum,row)=>sum+_num(row.credit_due_30_plus),0);
+  const customerDue0to15Total=customerPageData.reduce((sum,row)=>sum+_customerAgingBands(row).age0to15,0);
+  const customerDue16to30Total=customerPageData.reduce((sum,row)=>sum+_customerAgingBands(row).age16to30,0);
+  const customerDue31to45Total=customerPageData.reduce((sum,row)=>sum+_customerAgingBands(row).age31to45,0);
+  const customerDue46PlusTotal=customerPageData.reduce((sum,row)=>sum+_customerAgingBands(row).age46plus,0);
   const customerOutstandingTotal=customerPageData.reduce((sum,row)=>sum+Math.max(0,_num(row.total_outstanding)),0);
   const customerPaymentRows=customerPageData.map(row=>{
     const outstanding=_num(row.total_outstanding);
-    const due0to15=Math.max(0,outstanding-_num(row.credit_due_15_plus));
+    const aging=_customerAgingBands(row);
     const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
-    return `<tr><td>${esc(row.name||'Customer')}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(customerCollection(row))}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_total_sales||0)}</td><td style="color:#b45309;font-weight:700;text-align:right">${fmtINR(due0to15)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.credit_due_15_plus||0)}</td><td style="color:#ad1457;font-weight:700;text-align:right">${fmtINR(row.credit_due_30_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(outstanding)}</td></tr>`;
-  }).join('')||'<tr><td colspan="7" class="empty">No customers</td></tr>';
+    return `<tr><td>${esc(row.name||'Customer')}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(customerCollection(row))}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_total_sales||0)}</td><td style="color:#b45309;font-weight:700;text-align:right">${fmtINR(aging.age0to15)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(aging.age16to30)}</td><td style="color:#ad1457;font-weight:700;text-align:right">${fmtINR(aging.age31to45)}</td><td style="color:#6a1b9a;font-weight:700;text-align:right">${fmtINR(aging.age46plus)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(outstanding)}</td></tr>`;
+  }).join('')||'<tr><td colspan="8" class="empty">No customers</td></tr>';
   const vendorPageData=(data.vendor_page_rows||[]).filter(row=>row.active!==false&&(_num(row.range_purchased)>0||_num(row.range_paid)>0));
   const vendorTotals={
     range_purchased:vendorPageData.reduce((sum,row)=>sum+_num(row.range_purchased),0), range_paid:vendorPageData.reduce((sum,row)=>sum+_num(row.range_paid),0),
@@ -3534,8 +3541,8 @@ async function renderControlRoom(data){
       <h3>Customer Payments <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Customer Payments','dash-customer-payments-card')">Print / PDF</button></h3>
       <div class="report-table-wrap">
         <table class="report-table dashboard-customer-payments-table">
-          <thead><tr><th>Customer</th><th style="text-align:right">Collected in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 0–15 Days</th><th style="text-align:right">Credit Due 15+ Days</th><th style="text-align:right">Credit Due 30+ Days</th><th style="text-align:right">Total Outstanding</th></tr></thead>
-          <tbody>${customerPaymentRows}</tbody><tfoot><tr><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue0to15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr></tfoot>
+          <thead><tr><th>Customer</th><th style="text-align:right">Collected in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 0–15</th><th style="text-align:right">Credit Due 16–30</th><th style="text-align:right">Credit Due 31–44</th><th style="text-align:right">Credit Due 45+</th><th style="text-align:right">Total Outstanding</th></tr></thead>
+          <tbody>${customerPaymentRows}</tbody><tfoot><tr><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue0to15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue16to30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue31to45Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue46PlusTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Collected = spot cash/UPI paid against sales + later credit repayments. Credit sales remain receivable, with the selected-end customer balance.</div>
@@ -3802,27 +3809,29 @@ async function loadCustomers(){
       range_total_sales:r=>r.range_total_sales??0,
       range_credit_sales:r=>r.range_credit_sales??0,
       range_payment_received:r=>customerCollection(r),
-      credit_due_0_15:r=>Math.max(0,_customerOutstandingAmount(r)-_num(r.credit_due_15_plus)),
-      credit_due_15_plus:r=>r.credit_due_15_plus??0,
-      credit_due_30_plus:r=>r.credit_due_30_plus??0,
+      credit_due_0_15:r=>_customerAgingBands(r).age0to15,
+      credit_due_16_30:r=>_customerAgingBands(r).age16to30,
+      credit_due_31_45:r=>_customerAgingBands(r).age31to45,
+      credit_due_46_plus:r=>_customerAgingBands(r).age46plus,
       latest_sale_date:r=>r.range_latest_sale_date||r.latest_sale_date||'',
     };
     const activeRows=sortedRows(customerRangeRows,'customers',derived);
-    let html='<table class="customer-aging-table"><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Collected in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_0_15','Credit Due 0–15 Days','loadCustomers')+thSort('customers','credit_due_15_plus','Credit Due 15+ Days','loadCustomers')+thSort('customers','credit_due_30_plus','Credit Due 30+ Days','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
+    let html='<table class="customer-aging-table"><thead><tr>'+thSort('customers','name','Name','loadCustomers')+thSort('customers','range_payment_received','Collected in Range','loadCustomers')+thSort('customers','range_total_sales','Sold in Range','loadCustomers')+thSort('customers','credit_due_0_15','Credit Due 0–15','loadCustomers')+thSort('customers','credit_due_16_30','Credit Due 16–30','loadCustomers')+thSort('customers','credit_due_31_45','Credit Due 31–44','loadCustomers')+thSort('customers','credit_due_46_plus','Credit Due 45+','loadCustomers')+thSort('customers','outstanding','Total Outstanding','loadCustomers')+'</tr></thead><tbody>';
     const totReceived=customerRangeRows.reduce((s,r)=>s+customerCollection(r),0);
     const totSold=customerRangeRows.reduce((s,r)=>s+(r.range_total_sales??0),0);
     const totDue0to15=customerRangeRows.reduce((s,r)=>s+derived.credit_due_0_15(r),0);
-    const totDue15=customerRangeRows.reduce((s,r)=>s+(r.credit_due_15_plus??0),0);
-    const totDue30=customerRangeRows.reduce((s,r)=>s+(r.credit_due_30_plus??0),0);
+    const totDue16to30=customerRangeRows.reduce((s,r)=>s+derived.credit_due_16_30(r),0);
+    const totDue31to45=customerRangeRows.reduce((s,r)=>s+derived.credit_due_31_45(r),0);
+    const totDue46Plus=customerRangeRows.reduce((s,r)=>s+derived.credit_due_46_plus(r),0);
     const totalRangeOutstanding=customerRangeRows.reduce((s,r)=>s+Math.max(0,derived.outstanding(r)),0);
-    if(customerRangeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${customerRangeRows.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#b45309">${fmtINR(totDue0to15)}</td><td style="color:#c62828">${fmtINR(totDue15)}</td><td style="color:#ad1457">${fmtINR(totDue30)}</td><td style="color:#c62828">${fmtINR(totalRangeOutstanding)}</td></tr>`;
+    if(customerRangeRows.length)html+=`<tr style="background:#e8eaf6;font-weight:800"><td>TOTAL (${customerRangeRows.length})</td><td style="color:#2e7d32">${fmtINR(totReceived)}</td><td style="color:#1565c0">${fmtINR(totSold)}</td><td style="color:#b45309">${fmtINR(totDue0to15)}</td><td style="color:#c62828">${fmtINR(totDue16to30)}</td><td style="color:#ad1457">${fmtINR(totDue31to45)}</td><td style="color:#6a1b9a">${fmtINR(totDue46Plus)}</td><td style="color:#c62828">${fmtINR(totalRangeOutstanding)}</td></tr>`;
     activeRows.forEach(r=>{
       const outstanding=derived.outstanding(r);
       const color=outstanding>100000?'#c62828':outstanding>0?'#e65100':'#2e7d32';
       const nameCell=Number.isInteger(Number(r.id))?`<a href="#" onclick='showCustLedger(${r.id},${JSON.stringify(r.name)});return false' style="color:#1a237e;font-weight:600;text-decoration:underline">${esc(r.name)}</a>`:esc(r.name);
-      html+=`<tr><td>${nameCell}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#b45309;font-weight:700">${fmtINR(derived.credit_due_0_15(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_15_plus(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_30_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
+      html+=`<tr><td>${nameCell}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(derived.range_payment_received(r))}</td><td style="color:#1565c0;font-weight:700">${fmtINR(derived.range_total_sales(r))}</td><td style="color:#b45309;font-weight:700">${fmtINR(derived.credit_due_0_15(r))}</td><td style="color:#c62828;font-weight:700">${fmtINR(derived.credit_due_16_30(r))}</td><td style="color:#ad1457;font-weight:700">${fmtINR(derived.credit_due_31_45(r))}</td><td style="color:#6a1b9a;font-weight:700">${fmtINR(derived.credit_due_46_plus(r))}</td><td style="color:${color};font-weight:700">${fmtINR(outstanding)}</td></tr>`;
     });
-    if(!active.length)html+='<tr><td colspan="7" class="empty">No customers</td></tr>';
+    if(!active.length)html+='<tr><td colspan="8" class="empty">No customers</td></tr>';
     html+='</tbody></table>';
     document.getElementById('cust-tbl').innerHTML=html;
     fillCustSelect('cr-cust');
@@ -3830,6 +3839,13 @@ async function loadCustomers(){
 }
 function threeMonthCustomerStart(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-2);return localISO(d);}
 function _customerOutstandingAmount(row){return Number(row.total_outstanding??row.outstanding??row.balance??0)||0;}
+function _customerAgingBands(row){
+  const outstanding=Math.max(0,_customerOutstandingAmount(row));
+  const due16=Math.min(outstanding,Math.max(0,_num(row.credit_due_15_plus)));
+  const due31=Math.min(due16,Math.max(0,_num(row.credit_due_30_plus)));
+  const due46=Math.min(due31,Math.max(0,_num(row.credit_due_45_plus)));
+  return {age0to15:outstanding-due16,age16to30:due16-due31,age31to45:due31-due46,age46plus:due46};
+}
 function _customerHasThreeMonthActivity(row){return (Number(row.range_total_sales??0)||0)>0||(Number(row.range_payment_received??0)||0)>0;}
 async function printThreeMonthActiveCustomers(){
   const from=threeMonthCustomerStart(),to=today();
