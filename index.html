@@ -2569,56 +2569,41 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
+  // A long consolidated report can exceed Safari's maximum canvas height. Keep
+  // its final Fuel Ledger out of the first canvas and append it separately so
+  // no receipt, issue, TOTAL or Fuel-in-Plant line can be silently clipped.
+  const deferredFuelCards=[...pa.querySelectorAll('#dash-fuel-ledger-card')];
+  deferredFuelCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
     // 2.25x preserves fine rules and readable figures at A4 size, while JPEG
     // compression keeps multi-page reports small enough to share from iPhone.
     const pdfRenderScale=2.25;
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
     const pageHeight=pdf.internal.pageSize.getHeight();
-    const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
-    // A raster PDF cannot repeat a CSS table header, but it can safely start the next page at a row boundary.
-    // Use all rows, including headers and totals, so no customer name or amount is cut at a page edge.
-    const paRect=pa.getBoundingClientRect();
-    const verticalScale=canvas.width/Math.max(paRect.width,1);
-    const contentBottom=Math.max(0,...[...pa.children]
-      .filter(node=>node.tagName!=='STYLE')
-      .map(node=>node.getBoundingClientRect().bottom-paRect.top));
-    // html2canvas includes any viewport-sized canvas and trailing margins.  Only
-    // capture through the final printed element plus the six-pixel print padding.
-    const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil((contentBottom+6)*verticalScale)));
-    const rowBounds=[...pa.querySelectorAll('tr')].map(row=>{
-      const box=row.getBoundingClientRect();
-      return {top:Math.round((box.top-paRect.top)*verticalScale),bottom:Math.round((box.bottom-paRect.top)*verticalScale)};
-    }).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<contentHeight);
-    const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
-    for(let y=0,page=0;y<contentHeight;page++){
-      const target=Math.min(y+sliceHeight,contentHeight);
-      // Keep a full page whenever the target lies in whitespace. Move only when it intersects a table row.
-      let end=target;
-      while(end<contentHeight){
-        const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);
-        if(!crossing.length)break;
-        const beforeRow=Math.min(...crossing.map(row=>row.top));
-        if(beforeRow-y<minimumSlice)break;
-        end=beforeRow;
+    let pageCount=0;
+    const appendCanvasPages=(canvas,scope)=>{
+      const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
+      const scopeRect=scope.getBoundingClientRect();
+      const verticalScale=canvas.width/Math.max(scopeRect.width,1);
+      const contentBottom=Math.max(0,...[...scope.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-scopeRect.top));
+      const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil((contentBottom+6)*verticalScale)));
+      const rowBounds=[...scope.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:Math.round((box.top-scopeRect.top)*verticalScale),bottom:Math.round((box.bottom-scopeRect.top)*verticalScale)};}).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<contentHeight);
+      const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
+      for(let y=0;y<contentHeight;){
+        const target=Math.min(y+sliceHeight,contentHeight);let end=target;
+        while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
+        const height=Math.max(1,end-y),slice=document.createElement('canvas');slice.width=canvas.width;slice.height=height;
+        const ctx=slice.getContext('2d');ctx.fillStyle='#243d61';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
+        if(pageCount++)pdf.addPage('a4','landscape');
+        pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');y=end;
       }
-      const height=Math.max(1,end-y);
-      const slice=document.createElement('canvas');
-      slice.width=canvas.width;
-      slice.height=height;
-      const ctx=slice.getContext('2d');
-      ctx.fillStyle='#243d61';
-      ctx.fillRect(0,0,slice.width,slice.height);
-      ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
-      if(page)pdf.addPage('a4','landscape');
-      pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');
-      y=end;
-    }
+    };
+    appendCanvasPages(await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)}),pa);
+    for(const card of deferredFuelCards){card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));appendCanvasPages(await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)}),card);}
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
@@ -2627,6 +2612,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     }
     flash('PDF share is unavailable on this device.',false);
   }finally{
+    deferredFuelCards.forEach(card=>card.style.removeProperty('display'));
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
