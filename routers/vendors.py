@@ -268,6 +268,41 @@ def _payable_aging(vendor: Vendor, payable: float, db: Session, _bills=None, _un
     return {k: round(v, 2) for k, v in aging.items()}
 
 
+def _ledger_payable_age_buckets(payable: float, entries: list[VendorLedgerEntry], as_of: date) -> dict:
+    """Exclusive supplier age bands from the same Loctell ledger FIFO used by Otomy.
+
+    The closing payable represents the newest unpaid purchase bills after
+    oldest-first settlement.  Allocate it from newest bill to oldest bill;
+    any balance that predates the imported ledger is explicitly 45+.
+    """
+    aging = _empty_aging()
+    remaining = round(max(float(payable or 0), 0.0), 2)
+    if remaining <= 0:
+        return aging
+    bills = [
+        entry for entry in entries
+        if entry.entry_type == "purchase" and entry.entry_date and entry.entry_date <= as_of
+        and float(entry.amount or 0) > 0
+    ]
+    for bill in sorted(bills, key=lambda entry: (entry.entry_date, entry.id), reverse=True):
+        if remaining <= 0:
+            break
+        amount = min(remaining, float(bill.amount or 0))
+        days = max((as_of - bill.entry_date).days, 0)
+        if days <= 15:
+            aging["age_0_15"] += amount
+        elif days <= 30:
+            aging["age_16_30"] += amount
+        elif days <= 45:
+            aging["age_31_45"] += amount
+        else:
+            aging["age_45_plus"] += amount
+        remaining = round(remaining - amount, 2)
+    if remaining > 0:
+        aging["age_45_plus"] += remaining
+    return {key: round(value, 2) for key, value in aging.items()}
+
+
 def _payable_due_aging(vendor: Vendor, payable: float, db: Session, as_of: Optional[date] = None) -> dict:
     """FIFO supplier-bill aging, anchored to Loctell's canonical payable.
 
@@ -348,7 +383,7 @@ def _apply_vendor_totals(out: VendorOut, vendor: Vendor, db: Session,
     if ledger_entries:
         matched_purchases = sum(entry.amount or 0 for entry in ledger_entries if entry.entry_type == "purchase")
         total_payments = sum(entry.amount or 0 for entry in ledger_entries if entry.entry_type == "payment")
-    aging = _payable_aging(vendor, payable, db, _bills=bills)
+    aging = _ledger_payable_age_buckets(payable, ledger_entries, report_day)
     due = _payable_due_aging(vendor, payable, db, as_of=report_day)
     out.payable = payable
     out.total_purchases = round(float(matched_purchases), 2)

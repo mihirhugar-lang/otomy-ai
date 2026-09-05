@@ -11,8 +11,14 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
+from pathlib import Path
+import sys
 
 import requests
+
+# Allow this maintenance script to run directly from the app root, like the
+# other CrusherOps sync scripts.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from database import SessionLocal, Vendor, VendorBalanceSnapshot, VendorLedgerEntry, init_db
 from routers.erp_sync import erp_auth, fetch_creditors, fetch_supplier_ledger, load_config
