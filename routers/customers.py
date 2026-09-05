@@ -80,6 +80,7 @@ class CustomerOut(CustomerIn):
     age_45_plus: Optional[float] = None
     credit_due_15_plus: Optional[float] = None
     credit_due_30_plus: Optional[float] = None
+    credit_due_45_plus: Optional[float] = None
     outstanding: Optional[float] = None
     total_outstanding: Optional[float] = None
     material_sold: Optional[str] = ""
@@ -708,8 +709,11 @@ def list_customers(
             out.erp_balance_as_of = snapshot.as_of
         metric = range_metrics.get(c.id, {})
         out.total_outstanding = out.outstanding
-        out.credit_due_15_plus = _credit_due_plus(c.id, out.outstanding or 0.0, end, db, 15, _sales=sales_by_customer.get(c.id, []), _receipts=receipts_by_customer.get(c.id, []))
-        out.credit_due_30_plus = _credit_due_plus(c.id, out.outstanding or 0.0, end, db, 30, _sales=sales_by_customer.get(c.id, []), _receipts=receipts_by_customer.get(c.id, []))
+        # Cumulative cut-offs allow the UI to render exact, non-overlapping
+        # 0–15, 16–30, 31–44 and 45+ receivable bands.
+        out.credit_due_15_plus = _credit_due_plus(c.id, out.outstanding or 0.0, end, db, 16, _sales=sales_by_customer.get(c.id, []), _receipts=receipts_by_customer.get(c.id, []))
+        out.credit_due_30_plus = _credit_due_plus(c.id, out.outstanding or 0.0, end, db, 31, _sales=sales_by_customer.get(c.id, []), _receipts=receipts_by_customer.get(c.id, []))
+        out.credit_due_45_plus = _credit_due_plus(c.id, out.outstanding or 0.0, end, db, 45, _sales=sales_by_customer.get(c.id, []), _receipts=receipts_by_customer.get(c.id, []))
         out.material_sold = metric.get("material_sold", "No sale")
         out.range_total_sales = metric.get("range_total_sales", 0.0)
         out.range_credit_sales = metric.get("range_credit_sales", 0.0)

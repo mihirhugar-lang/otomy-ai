@@ -1507,6 +1507,7 @@ def control_room(
                 "range_credit_sales": round(_amount(row.range_credit_sales), 2),
                 "credit_due_15_plus": round(_amount(row.credit_due_15_plus), 2),
                 "credit_due_30_plus": round(_amount(row.credit_due_30_plus), 2),
+                "credit_due_45_plus": round(_amount(row.credit_due_45_plus), 2),
                 "total_outstanding": round(_amount(row.total_outstanding or row.outstanding or row.balance), 2),
             })
         paid_by_vendor = {}
