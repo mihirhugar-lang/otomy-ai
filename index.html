@@ -2638,20 +2638,13 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Use the compact vector builder on mobile.  It provides the original
-  // system Share popup without embedding full-page raster screenshots.
-  if(isMobilePrint()){
-    const staging=document.createElement('div');
-    staging.className=className;
-    staging.style.cssText='position:fixed;left:-12000px;top:0;width:1120px;display:block;opacity:0;pointer-events:none;z-index:-1';
-    staging.innerHTML=content;
-    document.body.appendChild(staging);
-    try{return downloadPdfReport(pdfBuildPayload(title,staging,staging.querySelector('.print-ph p')?.innerText||''));}
-    catch(e){flash('Could not create PDF file',false);return false;}
-    finally{staging.remove();}
-  }
-  // Desktop and Android installed app: print the current document directly via the @media print rules.
-  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
+  // Use the browser's own PDF renderer everywhere.  It is the only route that
+  // preserves the exact website pagination, colours, borders and vector text.
+  // iOS standalone PWAs need a real printable document rather than in-place
+  // printing; the blob page opens the native Print / PDF share sheet.
+  if(_isStandalonePWA()&&_isIOS())return printViaBlob(title,content,className);
+  if(isMobilePrint())return printViaIframe(title,content,className);
+  setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
