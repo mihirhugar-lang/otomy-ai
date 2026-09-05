@@ -2570,10 +2570,10 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('overflow','visible','important');
   });
   // A long consolidated report can exceed Safari's maximum canvas height. Keep
-  // its final Fuel Ledger out of the first canvas and append it separately so
-  // no receipt, issue, TOTAL or Fuel-in-Plant line can be silently clipped.
-  const deferredFuelCards=[...pa.querySelectorAll('#dash-fuel-ledger-card')];
-  deferredFuelCards.forEach(card=>card.style.setProperty('display','none','important'));
+  // the final machinery and fuel cards out of the first canvas and append them
+  // in their visible order so no reading, receipt, issue or total is clipped.
+  const deferredFinalCards=[...pa.querySelectorAll('#dash-machine-odometer-card,#dash-fuel-ledger-card')];
+  deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -2603,7 +2603,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       }
     };
     appendCanvasPages(await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)}),pa);
-    for(const card of deferredFuelCards){card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));appendCanvasPages(await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)}),card);}
+    for(const card of deferredFinalCards){card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));appendCanvasPages(await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)}),card);}
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
@@ -2612,7 +2612,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     }
     flash('PDF share is unavailable on this device.',false);
   }finally{
-    deferredFuelCards.forEach(card=>card.style.removeProperty('display'));
+    deferredFinalCards.forEach(card=>card.style.removeProperty('display'));
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
