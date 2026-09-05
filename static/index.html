@@ -2612,10 +2612,8 @@ async function shareStyledMobilePdf(title, content, className=''){
       ctx.fillStyle='#243d61';
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
-      const renderedHeight=height*(pageWidth/canvas.width);
-      const isFinalPage=end>=contentHeight;
-      if(page)pdf.addPage(isFinalPage?[pageWidth,Math.max(12,renderedHeight)]:'a4','landscape');
-      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,renderedHeight,undefined,'NONE');
+      if(page)pdf.addPage('a4','landscape');
+      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'NONE');
       y=end;
     }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
@@ -2625,7 +2623,8 @@ async function shareStyledMobilePdf(title, content, className=''){
       catch(error){if(error?.name==='AbortError')return;}
     }
     const url=URL.createObjectURL(file);
-    const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
+    const popup=window.open(url,'_blank');
+    if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
     setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
   }finally{
     pa.className=className;
@@ -2636,13 +2635,15 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Generate a direct high-resolution PDF on every device.  This allows the
-  // final page to be physically cropped to its final report row.
-  shareStyledMobilePdf(title,content,className).catch(error=>{
-    flash(error?.message||'Could not generate PDF',false);
-    if(isMobilePrint())printViaIframe(title,content,className);
-    else setTimeout(()=>{try{window.print();}catch(e){}},50);
-  });
+  // Keep the native vector print route: it produces a compact PDF with the
+  // sharpest possible text and rules.
+  if(isMobilePrint()){
+    if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
+    else printViaIframe(title, content, className);
+    return;
+  }
+  // Desktop and Android installed app: print the current document directly via the @media print rules.
+  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
