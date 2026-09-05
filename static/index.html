@@ -689,7 +689,9 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
      also colours a printer-created trailing sheet with no report content. */
   html,body{background:#fff!important}
   #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
+  /* A browser PDF always has a full A4 sheet.  Keep unused space on the
+     final sheet white instead of extending the blue report canvas to its edge. */
+  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:#fff!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
   #print-area .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
   #print-area .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
   #print-area .card h3{background:#1f4e79!important;color:#fff!important}
@@ -707,11 +709,15 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   #print-area [style*="color:#b45309"]{color:#b45309!important}
   #print-area [style*="color:#ad1457"]{color:#ad1457!important}
   #print-area [style*="color:#c2610c"]{color:#c2610c!important}
+  /* Headings must stay within their cells on a printed PDF.  Keep a compact
+     single line rather than letting a word cross a column border or create a
+     second header line. */
+  #print-area table th{box-sizing:border-box!important;font-size:7px!important;letter-spacing:-.12px!important;line-height:1.1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
 }
 /* The installed app captures its PDF with screen CSS, not @media print.
    Keep that canvas colour-for-colour identical to the website's final print theme. */
 #print-area.pdf-capture,#print-area.pdf-capture *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
+#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:#fff!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
 #print-area.pdf-capture .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
 #print-area.pdf-capture .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
 #print-area.pdf-capture .card h3{background:#1f4e79!important;color:#fff!important}
@@ -2553,7 +2559,7 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('width','1120px','important');
   pa.style.setProperty('max-width','none','important');
   pa.style.setProperty('padding','6px','important');
-  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
+  pa.style.setProperty('background','#fff','important');
   pa.style.setProperty('overflow','visible','important');
   // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
   pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
@@ -2568,7 +2574,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     // A 3x, lossless source keeps numbers and thin table rules crisp when the
     // downloaded PDF is zoomed, while retaining the direct file-share flow.
     const pdfRenderScale=3;
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    const canvas=await window.html2canvas(pa,{backgroundColor:'#fff',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
@@ -2605,7 +2611,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       slice.width=canvas.width;
       slice.height=height;
       const ctx=slice.getContext('2d');
-      ctx.fillStyle='#243d61';
+      ctx.fillStyle='#fff';
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
       if(page)pdf.addPage('a4','landscape');
