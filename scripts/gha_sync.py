@@ -4577,6 +4577,7 @@ def build_customer_range_rows(
         aging_repayments if aging_repayments is not None
         else (all_repayments if all_repayments is not None else range_repayments),
         as_of,
+        days=16,
     ) if as_of else {}
     due_30_plus = _credit_due_15_plus_by_name(
         customers_full,
@@ -4584,7 +4585,15 @@ def build_customer_range_rows(
         aging_repayments if aging_repayments is not None
         else (all_repayments if all_repayments is not None else range_repayments),
         as_of,
-        days=30,
+        days=31,
+    ) if as_of else {}
+    due_45_plus = _credit_due_15_plus_by_name(
+        customers_full,
+        aging_sales if aging_sales is not None else all_sales,
+        aging_repayments if aging_repayments is not None
+        else (all_repayments if all_repayments is not None else range_repayments),
+        as_of,
+        days=45,
     ) if as_of else {}
     rows = []
     consumed_end_balance_keys = set()
@@ -4612,6 +4621,7 @@ def build_customer_range_rows(
             "range_payment_received": round(_num(metric.get("range_payment_received")), 2),
             "credit_due_15_plus": due_15_plus.get(name, round(max(_num(row.get("credit_due_15_plus")), 0.0), 2)),
             "credit_due_30_plus": due_30_plus.get(name, round(max(_num(row.get("credit_due_30_plus")), 0.0), 2)),
+            "credit_due_45_plus": due_45_plus.get(name, round(max(_num(row.get("credit_due_45_plus")), 0.0), 2)),
             "range_latest_sale_date": metric.get("range_latest_sale_date") or None,
             "latest_sale_date": metric.get("latest_sale_date") or None,
         })
@@ -6228,14 +6238,18 @@ def main():
 
     customers_full = sorted(customers_by_name.values(), key=lambda row: row.get("name", ""))
     due_15_plus = _credit_due_15_plus_by_name(
-        customers_full, aging_sales, aging_repayments, today
+        customers_full, aging_sales, aging_repayments, today, days=16
     )
     due_30_plus = _credit_due_15_plus_by_name(
-        customers_full, aging_sales, aging_repayments, today, days=30
+        customers_full, aging_sales, aging_repayments, today, days=31
+    )
+    due_45_plus = _credit_due_15_plus_by_name(
+        customers_full, aging_sales, aging_repayments, today, days=45
     )
     for row in customers_full:
         row["credit_due_15_plus"] = due_15_plus.get(row.get("name", ""), 0.0)
         row["credit_due_30_plus"] = due_30_plus.get(row.get("name", ""), 0.0)
+        row["credit_due_45_plus"] = due_45_plus.get(row.get("name", ""), 0.0)
     customers_outstanding = [
         {
             "id": row.get("id"),
