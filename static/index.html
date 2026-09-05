@@ -2638,12 +2638,13 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Keep the native vector print route: it produces a compact PDF with the
-  // sharpest possible text and rules.
+  // Mobile and installed-app reports are shared as the same high-resolution
+  // PDF file used by the original Otomy Share popup.
   if(isMobilePrint()){
-    // Keep the print sheet inside the app.  The iframe uses the same native
-    // HTML print engine as the website without opening a link or blank page.
-    printViaIframe(title, content, className);
+    shareStyledMobilePdf(title, content, className).catch(()=>{
+      if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
+      else printViaIframe(title, content, className);
+    });
     return;
   }
   // Desktop and Android installed app: print the current document directly via the @media print rules.
