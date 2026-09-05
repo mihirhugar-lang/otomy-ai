@@ -2008,8 +2008,8 @@ async function cachedJson(cache,key,url){
   const now=Date.now();
   const hit=cache.get(key);
   const cacheMs=isStaticSnapshotHost()?5*60*1000:DASH_CACHE_MS;
-  if(hit && now-hit.ts<cacheMs)return hit.data;
   if(hit && hit.promise)return hit.promise;
+  if(hit && now-hit.ts<cacheMs)return hit.data;
   const promise=api(url).then(data=>{
     cache.set(key,{ts:Date.now(),data});
     return data;
