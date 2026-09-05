@@ -2569,6 +2569,10 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
+  // Dashboard's final two data cards are explicitly appended after the normal
+  // segmented pass. This avoids an iOS crop edge ever omitting either block.
+  const deferredFinalCards=[...pa.querySelectorAll('#dash-machine-odometer-card,#dash-fuel-ledger-card')];
+  deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -2583,11 +2587,11 @@ async function shareStyledMobilePdf(title, content, className=''){
     const reportRect=pa.getBoundingClientRect();
     const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
     const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
-    const appendCanvasPages=(canvas,cropTop,cropHeight)=>{
+    const appendCanvasPages=(canvas,cropTop,cropHeight,rows=reportRows,referenceRect=reportRect)=>{
       const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
-      const verticalScale=canvas.width/Math.max(reportRect.width,1);
+      const verticalScale=canvas.width/Math.max(referenceRect.width,1);
       const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil(cropHeight*verticalScale)));
-      const rowBounds=reportRows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
+      const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
       const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
       for(let y=0;y<contentHeight;){
         const target=Math.min(y+sliceHeight,contentHeight);let end=target;
@@ -2610,6 +2614,13 @@ async function shareStyledMobilePdf(title, content, className=''){
       const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
       appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
     }
+    for(const card of deferredFinalCards){
+      card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
+      const cardRect=card.getBoundingClientRect(),cardTop=cardRect.top-reportRect.top;
+      const cardRows=[...card.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top);
+      const cardCanvas=await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)});
+      appendCanvasPages(cardCanvas,cardTop,cardRect.height,cardRows,cardRect);
+    }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
@@ -2618,6 +2629,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     }
     flash('PDF share is unavailable on this device.',false);
   }finally{
+    deferredFinalCards.forEach(card=>card.style.removeProperty('display'));
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
