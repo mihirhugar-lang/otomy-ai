@@ -182,7 +182,7 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .month-range-select{appearance:auto;min-width:128px;max-width:172px;padding:5px 8px;border:1.5px solid #c9b98f;border-radius:4px;background:#fffdf5;color:#1f4e79;font:700 12px var(--tally-mono,ui-monospace,monospace);cursor:pointer}
 .month-range-select[size]{position:relative;z-index:120;max-height:180px;overflow-y:auto}
 .pbtn:hover,.pbtn.act{border-color:var(--amber);color:#92400e;background:#fff7ed}
-.pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}
+.pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}.pbtn.loading{opacity:.7;cursor:wait}
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
 .preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
@@ -2007,7 +2007,8 @@ async function applyAccessMode(){
 async function cachedJson(cache,key,url){
   const now=Date.now();
   const hit=cache.get(key);
-  if(hit && now-hit.ts<DASH_CACHE_MS)return hit.data;
+  const cacheMs=isStaticSnapshotHost()?5*60*1000:DASH_CACHE_MS;
+  if(hit && now-hit.ts<cacheMs)return hit.data;
   if(hit && hit.promise)return hit.promise;
   const promise=api(url).then(data=>{
     cache.set(key,{ts:Date.now(),data});
@@ -2033,9 +2034,9 @@ function prefetchDashDate(d){
 function prefetchDashboardPresets(){
   if(_dashPrefetched)return;
   _dashPrefetched=true;
-  ['today','yesterday','week','mtd','lastmonth'].forEach(p=>{
+  ['today','yesterday','week','mtd','lastmonth','last2months','last3months','last7days','last15days','last30days','last45days','last60days','last90days'].forEach((p,index)=>{
     const [f,t]=calcPreset(p);
-    setTimeout(()=>prefetchDashRange(f,t), 250);
+    setTimeout(()=>prefetchDashRange(f,t), 250+index*180);
   });
 }
 
@@ -2379,7 +2380,12 @@ function preset(section,p,btn){
   if(section==='dashboard')document.getElementById('dash-date').value=t;
   // Reset to page 1 on new date range
   if(_page[section]!==undefined)_page[section]=1;
-  cfg.reload();
+  const loading=cfg.reload();
+  if(loading&&typeof loading.finally==='function'){
+    btn.classList.add('loading');btn.disabled=true;
+    loading.finally(()=>{btn.classList.remove('loading');btn.disabled=false;});
+  }
+  return loading;
 }
 
 function setDay(section,d){
@@ -3177,6 +3183,9 @@ window.onload=async function(){
   let _bootSection='dashboard';
   try{const s=sessionStorage.getItem('cx_active_section');const leftAt=parseInt(sessionStorage.getItem('cx_left_at')||'0',10);const awayLong=leftAt&&(Date.now()-leftAt)>AWAY_RESET_MS;if(s&&document.getElementById('section-'+s)&&!awayLong)_bootSection=s;sessionStorage.removeItem('cx_left_at');}catch(e){}
   if(_bootSection!=='dashboard'){nav(_bootSection);}else{await loadDash();}
+  // Warm the rolling range data only after the first screen is usable. Otomy
+  // then answers the added range tabs from memory instead of a cold R2/archive read.
+  if(isStaticSnapshotHost())setTimeout(prefetchDashboardPresets,900);
   startSyncAutoRefresh();
   startEngineStatusRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
