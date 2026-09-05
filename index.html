@@ -186,14 +186,15 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
 .preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
-.rolling-range-row{display:flex;align-items:center;gap:6px;flex:1 0 100%;flex-wrap:wrap;order:2;padding-top:2px}
-.rolling-range-row .pbtn{font-size:11px;padding:5px 10px}
-.preset-bar>.print-btn,.preset-bar>.page-actions{order:3}
+.rolling-range-action-row{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;flex-wrap:nowrap;order:2;padding-top:2px}
+.rolling-range-row{display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;flex-wrap:wrap}
+.day-range-control{display:flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap}
+.rolling-range-action-row>.print-btn,.rolling-range-action-row>.page-actions{margin-left:auto;flex:0 0 auto}
 .print-btn{margin-left:auto;padding:6px 14px;border-radius:5px;border:1.5px solid #1a237e;background:#fff;color:#1a237e;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
-@media(max-width:760px){.rolling-range-row{flex-basis:100%;gap:5px}.rolling-range-row .pbtn{font-size:10px;padding:5px 8px}.preset-bar>.print-btn,.preset-bar>.page-actions{margin-left:0}}
+@media(max-width:760px){.rolling-range-action-row{flex-wrap:wrap;gap:6px}.rolling-range-row{flex-basis:100%;gap:5px}.day-range-control{flex-basis:100%}.rolling-range-action-row>.print-btn,.rolling-range-action-row>.page-actions{margin-left:0}}
 
 /* ── Sub-tabs ── */
 .subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
@@ -2395,6 +2396,14 @@ function clearPresetBtns(section){
   const el=fromId?document.getElementById(fromId):null;
   if(el){const bar=el.closest('.preset-bar');if(bar)bar.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
 }
+function applyCustomRange(section){
+  const cfg=PRESET_CFG[section];if(!cfg)return;
+  const from=cfg.from&&document.getElementById(cfg.from)?.value,to=cfg.to&&document.getElementById(cfg.to)?.value;
+  if(!from||!to||from>to){flash('Choose a valid From and To date.',false);return;}
+  if(section==='ops')clearOpsBtns();else clearPresetBtns(section);
+  if(_page[section]!==undefined)_page[section]=1;
+  cfg.reload();
+}
 function _rangeMonthOptions(){
   const out=[],now=new Date(),lastY=now.getFullYear(),lastM=now.getMonth()+1;let y=2026,m=4;
   while(y<lastY||(y===lastY&&m<=lastM)){const ym=String(y)+'-'+String(m).padStart(2,'0');out.push({ym,label:new Date(y,m-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'})});m++;if(m===13){m=1;y++;}}
@@ -2427,8 +2436,16 @@ function initRollingRangePresets(){
     const row=document.createElement('div');row.className='rolling-range-row no-print';row.setAttribute('aria-label','Rolling date ranges');
     ranges.forEach(([presetName,label])=>{const btn=document.createElement('button');btn.type='button';btn.className='pbtn';btn.textContent=label;btn.setAttribute('onclick',section==='ops'?`opsPreset('${presetName}',this)`:`preset('${section}','${presetName}',this)`);row.appendChild(btn);});
     const printControl=bar.querySelector(':scope > .page-actions, :scope > .print-btn');
+    const actionRow=document.createElement('div');actionRow.className='rolling-range-action-row no-print';actionRow.appendChild(row);
     const dates=bar.querySelector(':scope > .preset-dates');
-    bar.insertBefore(row,printControl||dates||null);
+    const toEl=cfg.to&&document.getElementById(cfg.to);
+    [fromEl,toEl].filter(Boolean).forEach(el=>{el.onchange=section==='ops'?()=>clearOpsBtns():()=>clearPresetBtns(section);});
+    if(dates&&!dates.querySelector('button.pbtn')){const go=document.createElement('button');go.type='button';go.className='pbtn';go.textContent='Go';go.addEventListener('click',()=>applyCustomRange(section));dates.appendChild(go);}
+    const dayInput=dates&&dates.querySelector('input[id$="-day"],input#dash-date');
+    const dayLabel=dayInput&&dayInput.previousElementSibling;
+    if(dayInput&&dayLabel?.tagName==='LABEL'){const dayControl=document.createElement('div');dayControl.className='day-range-control';dayControl.append(dayLabel,dayInput);actionRow.appendChild(dayControl);}
+    bar.insertBefore(actionRow,printControl||null);
+    if(printControl)actionRow.appendChild(printControl);
   });
 }
 function _ledgerRangeTotals(rows){
