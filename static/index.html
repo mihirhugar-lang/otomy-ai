@@ -2638,14 +2638,17 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Mobile and installed-app reports are shared as the same high-resolution
-  // PDF file used by the original Otomy Share popup.
+  // Use the compact vector builder on mobile.  It provides the original
+  // system Share popup without embedding full-page raster screenshots.
   if(isMobilePrint()){
-    shareStyledMobilePdf(title, content, className).catch(()=>{
-      if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
-      else printViaIframe(title, content, className);
-    });
-    return;
+    const staging=document.createElement('div');
+    staging.className=className;
+    staging.style.cssText='position:fixed;left:-12000px;top:0;width:1120px;display:block;opacity:0;pointer-events:none;z-index:-1';
+    staging.innerHTML=content;
+    document.body.appendChild(staging);
+    try{return downloadPdfReport(pdfBuildPayload(title,staging,staging.querySelector('.print-ph p')?.innerText||''));}
+    catch(e){flash('Could not create PDF file',false);return false;}
+    finally{staging.remove();}
   }
   // Desktop and Android installed app: print the current document directly via the @media print rules.
   setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
@@ -2988,14 +2991,12 @@ function buildPdfBytes(report){
 function downloadPdfReport(payload){
   const pdf=buildPdfBytes(payload);
   const blob=new Blob([pdf],{type:'application/pdf'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  flash('PDF downloaded');
+  const filename=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
+  const url=URL.createObjectURL(blob);
+  let file=null,canShare=false;
+  try{file=new File([blob],filename,{type:'application/pdf'});canShare=(isMobilePrint()||_isStandalonePWA())&&typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare({files:[file]}));}catch(e){}
+  if(canShare){navigator.share({title:pdfClean(payload.title),files:[file]}).catch(e=>{if(e?.name!=='AbortError')flash('Could not open PDF share sheet',false);});setTimeout(()=>URL.revokeObjectURL(url),300000);flash('Opening PDF share sheet…');return true;}
+  const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);flash('PDF downloaded');
   return true;
 }
 function openTablePdf(title,el,subtitle,printClass='report-print'){
