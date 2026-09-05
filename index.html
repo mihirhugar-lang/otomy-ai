@@ -2641,7 +2641,9 @@ function runPrint(title, content, className=''){
   // Keep the native vector print route: it produces a compact PDF with the
   // sharpest possible text and rules.
   if(isMobilePrint()){
-    if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
+    // iOS installed apps must open a real print document.  Never use the
+    // Blob/link route: it changes the user flow and is not website-quality.
+    if(_isStandalonePWA() && _isIOS())openMobilePrintPage(title, content, className);
     else printViaIframe(title, content, className);
     return;
   }
