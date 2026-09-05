@@ -689,9 +689,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
      also colours a printer-created trailing sheet with no report content. */
   html,body{background:#fff!important}
   #print-area,#print-area *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-  /* A browser PDF always has a full A4 sheet.  Keep unused space on the
-     final sheet white instead of extending the blue report canvas to its edge. */
-  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:#fff!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
+  #print-area.report-print,#print-area.dashboard-print,#print-area.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
   #print-area .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
   #print-area .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
   #print-area .card h3{background:#1f4e79!important;color:#fff!important}
@@ -717,7 +715,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 /* The installed app captures its PDF with screen CSS, not @media print.
    Keep that canvas colour-for-colour identical to the website's final print theme. */
 #print-area.pdf-capture,#print-area.pdf-capture *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;forced-color-adjust:none!important}
-#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:#fff!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
+#print-area.pdf-capture.report-print,#print-area.pdf-capture.dashboard-print,#print-area.pdf-capture.daily-book-print{background:linear-gradient(160deg,#31507c,#243d61)!important;color:#12233f!important;box-sizing:border-box!important;min-height:0!important;height:auto!important;padding:6px!important}
 #print-area.pdf-capture .print-ph{background:#fdfbf0!important;border:1px solid #c9b98f!important;padding:7px 9px!important;margin:0 0 6px!important}
 #print-area.pdf-capture .card{background:#fdfbf0!important;border-color:#8ba0c0!important}
 #print-area.pdf-capture .card h3{background:#1f4e79!important;color:#fff!important}
@@ -2559,7 +2557,7 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('width','1120px','important');
   pa.style.setProperty('max-width','none','important');
   pa.style.setProperty('padding','6px','important');
-  pa.style.setProperty('background','#fff','important');
+  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
   pa.style.setProperty('overflow','visible','important');
   // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
   pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
@@ -2574,7 +2572,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     // A 3x, lossless source keeps numbers and thin table rules crisp when the
     // downloaded PDF is zoomed, while retaining the direct file-share flow.
     const pdfRenderScale=3;
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#fff',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
@@ -2611,11 +2609,13 @@ async function shareStyledMobilePdf(title, content, className=''){
       slice.width=canvas.width;
       slice.height=height;
       const ctx=slice.getContext('2d');
-      ctx.fillStyle='#fff';
+      ctx.fillStyle='#243d61';
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
-      if(page)pdf.addPage('a4','landscape');
-      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'NONE');
+      const renderedHeight=height*(pageWidth/canvas.width);
+      const isFinalPage=end>=contentHeight;
+      if(page)pdf.addPage(isFinalPage?[pageWidth,Math.max(12,renderedHeight)]:'a4','landscape');
+      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,renderedHeight,undefined,'NONE');
       y=end;
     }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
@@ -2625,8 +2625,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       catch(error){if(error?.name==='AbortError')return;}
     }
     const url=URL.createObjectURL(file);
-    const popup=window.open(url,'_blank');
-    if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
+    const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
     setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
   }finally{
     pa.className=className;
@@ -2637,16 +2636,13 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Every mobile route receives a shareable PDF file. If rendering fails, preserve the former native print route.
-  if(isMobilePrint()){
-    shareStyledMobilePdf(title, content, className).catch(()=>{
-      if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
-      else printViaIframe(title, content, className);
-    });
-    return;
-  }
-  // Desktop and Android installed app: print the current document directly via the @media print rules.
-  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
+  // Generate a direct high-resolution PDF on every device.  This allows the
+  // final page to be physically cropped to its final report row.
+  shareStyledMobilePdf(title,content,className).catch(error=>{
+    flash(error?.message||'Could not generate PDF',false);
+    if(isMobilePrint())printViaIframe(title,content,className);
+    else setTimeout(()=>{try{window.print();}catch(e){}},50);
+  });
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
