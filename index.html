@@ -2572,9 +2572,9 @@ async function shareStyledMobilePdf(title, content, className=''){
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
-    // A 3x, lossless source keeps numbers and thin table rules crisp when the
-    // downloaded PDF is zoomed, while retaining the direct file-share flow.
-    const pdfRenderScale=3;
+    // 2.25x preserves fine rules and readable figures at A4 size, while JPEG
+    // compression keeps multi-page reports small enough to share from iPhone.
+    const pdfRenderScale=2.25;
     const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
@@ -2616,7 +2616,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       ctx.fillRect(0,0,slice.width,slice.height);
       ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
       if(page)pdf.addPage('a4','landscape');
-      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'NONE');
+      pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');
       y=end;
     }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
@@ -2625,10 +2625,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       try{await navigator.share({title,files:[file]});return;}
       catch(error){if(error?.name==='AbortError')return;}
     }
-    const url=URL.createObjectURL(file);
-    const popup=window.open(url,'_blank');
-    if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
-    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
+    flash('PDF share is unavailable on this device.',false);
   }finally{
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
@@ -2638,12 +2635,9 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Use the browser's own PDF renderer everywhere.  It is the only route that
-  // preserves the exact website pagination, colours, borders and vector text.
-  // iOS standalone PWAs need a real printable document rather than in-place
-  // printing; the blob page opens the native Print / PDF share sheet.
-  if(_isStandalonePWA()&&_isIOS())return printViaBlob(title,content,className);
-  if(isMobilePrint())return printViaIframe(title,content,className);
+  // iPhone/iPad app reports use Web Share directly, never a Blob tab or link.
+  // This capture keeps the website layout while presenting the native share sheet.
+  if(isMobilePrint())return shareStyledMobilePdf(title,content,className);
   setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
