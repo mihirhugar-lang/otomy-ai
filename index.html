@@ -186,6 +186,7 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
 .preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
+.preset-primary-row{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;flex-wrap:wrap;order:1}
 .rolling-range-action-row{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;flex-wrap:nowrap;order:2;padding-top:2px}
 .rolling-range-row{display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;flex-wrap:wrap}
 .day-range-control{display:flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap}
@@ -194,7 +195,7 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
-@media(max-width:760px){.rolling-range-action-row{flex-wrap:wrap;gap:6px}.rolling-range-row{flex-basis:100%;gap:5px}.day-range-control{flex-basis:100%}.rolling-range-action-row>.print-btn,.rolling-range-action-row>.page-actions{margin-left:0}}
+@media(max-width:760px){.preset-primary-row{flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.preset-primary-row .preset-dates{flex:0 0 auto;flex-wrap:nowrap;margin:0}.rolling-range-action-row{flex:0 0 100%;flex-wrap:nowrap;gap:6px;overflow:visible}.rolling-range-row{flex:1 1 auto;min-width:0;flex-basis:auto;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.day-range-control{flex:0 0 auto}.rolling-range-action-row>.print-btn,.rolling-range-action-row>.page-actions{margin-left:0;flex:0 0 auto}}
 
 /* ── Sub-tabs ── */
 .subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
@@ -299,7 +300,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
   .alert-banner{padding:10px 12px}
-  .preset-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px;border-radius:14px;margin-bottom:12px}
+  .preset-bar{display:flex;flex-wrap:wrap;align-items:center;gap:7px;overflow:visible;padding:10px;border-radius:14px;margin-bottom:12px}
   .preset-label{flex:0 0 auto}
   .pbtn{flex:0 0 auto;padding:7px 12px}
   .preset-dates{display:flex;flex:0 0 100%;flex-wrap:wrap;margin:8px 0 0;gap:6px}
@@ -2446,15 +2447,17 @@ function initRollingRangePresets(){
     const row=document.createElement('div');row.className='rolling-range-row no-print';row.setAttribute('aria-label','Rolling date ranges');
     ranges.forEach(([presetName,label])=>{const btn=document.createElement('button');btn.type='button';btn.className='pbtn';btn.textContent=label;btn.setAttribute('onclick',section==='ops'?`opsPreset('${presetName}',this)`:`preset('${section}','${presetName}',this)`);row.appendChild(btn);});
     const printControl=bar.querySelector(':scope > .page-actions, :scope > .print-btn');
+    let primaryRow=bar.querySelector(':scope > .preset-primary-row');
+    if(!primaryRow){primaryRow=document.createElement('div');primaryRow.className='preset-primary-row no-print';[...bar.children].filter(child=>child!==printControl).forEach(child=>primaryRow.appendChild(child));bar.insertBefore(primaryRow,printControl||null);}
     const actionRow=document.createElement('div');actionRow.className='rolling-range-action-row no-print';actionRow.appendChild(row);
-    const dates=bar.querySelector(':scope > .preset-dates');
+    const dates=bar.querySelector('.preset-primary-row .preset-dates, :scope > .preset-dates');
     const toEl=cfg.to&&document.getElementById(cfg.to);
     [fromEl,toEl].filter(Boolean).forEach(el=>{el.onchange=section==='ops'?()=>clearOpsBtns():()=>clearPresetBtns(section);});
     if(dates&&!dates.querySelector('button.pbtn')){const go=document.createElement('button');go.type='button';go.className='pbtn';go.textContent='Go';go.addEventListener('click',()=>applyCustomRange(section));dates.appendChild(go);}
     const dayInput=dates&&dates.querySelector('input[id$="-day"],input#dash-date');
     const dayLabel=dayInput&&dayInput.previousElementSibling;
-    if(dayInput&&dayLabel?.tagName==='LABEL'){const dayControl=document.createElement('div');dayControl.className='day-range-control';dayControl.append(dayLabel,dayInput);actionRow.appendChild(dayControl);}
-    bar.insertBefore(actionRow,printControl||null);
+    if(dayInput&&dayLabel?.tagName==='LABEL'){const dayControl=document.createElement('div');dayControl.className='day-range-control';const dayGo=document.createElement('button');dayGo.type='button';dayGo.className='pbtn';dayGo.textContent='Go';dayGo.addEventListener('click',()=>{if(!dayInput.value)return;if(section==='dashboard')setDashboardDay(dayInput.value);else setDay(section,dayInput.value);});dayControl.append(dayLabel,dayInput,dayGo);actionRow.appendChild(dayControl);}
+    bar.appendChild(actionRow);
     if(printControl)actionRow.appendChild(printControl);
   });
 }
