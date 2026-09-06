@@ -6498,6 +6498,53 @@ def main():
         # after the recent Loctell delta rather than a second historical fetch.
         (financial_year_start, today),
     ]
+    # Cash/Bank books deliberately use canonical server-built snapshots rather
+    # than browser arithmetic.  Keep their rolling presets in lockstep with
+    # the dashboard/page range list above, otherwise these buttons work on
+    # every page except Cash & Bank.
+    def cashbook_rolling_month_start(months_back: int) -> date:
+        month_index = today.year * 12 + (today.month - 1) - months_back
+        target_year, target_month_index = divmod(month_index, 12)
+        target_month = target_month_index + 1
+        next_month = date(
+            target_year + (1 if target_month == 12 else 0),
+            1 if target_month == 12 else target_month + 1,
+            1,
+        )
+        return date(target_year, target_month, min(today.day, (next_month - timedelta(days=1)).day))
+
+    rolling_cashbook_ranges = [
+        (cashbook_rolling_month_start(2), today),
+        (cashbook_rolling_month_start(3), today),
+        *((today - timedelta(days=days - 1), today) for days in (7, 15, 30, 45, 60, 90)),
+    ]
+    for rolling_range in rolling_cashbook_ranges:
+        if rolling_range not in cashbook_ranges:
+            cashbook_ranges.append(rolling_range)
+
+    # Retain only the current moving rolling-book snapshot keys.  Cashbook
+    # objects are otherwise protected from generic pruning because their
+    # balances must never fall back to client-side calculation.  This small
+    # dedicated index safely removes yesterday's moving presets while keeping
+    # all established canonical and historical book snapshots intact.
+    rolling_cashbook_index = DATA_DIR / "control" / "rolling_cashbook_snapshot_keys.json"
+    try:
+        previous_rolling_files = set(json.loads(rolling_cashbook_index.read_text()).get("files", []))
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
+        previous_rolling_files = set()
+    current_rolling_files = {
+        f"{snapshot_key(f'/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}')}.json"
+        for book_from, book_to in rolling_cashbook_ranges
+    }
+    for filename in previous_rolling_files - current_rolling_files:
+        path = SNAPSHOT_API_DIR / str(filename)
+        if path.name == filename and path.suffix == ".json":
+            path.unlink(missing_ok=True)
+    rolling_cashbook_index.parent.mkdir(parents=True, exist_ok=True)
+    rolling_cashbook_index.write_text(
+        json.dumps({"files": sorted(current_rolling_files)}, separators=(",", ":")),
+        encoding="utf-8",
+    )
     if sync_mode == "full":
         historical_end = min(yesterday, last_month_end)
         cashbook_ranges.extend([
