@@ -352,6 +352,23 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .mini-list li{font-size:12px}
   #flash{left:10px;right:10px;top:60px;min-width:0}
 }
+/* iPads have more room than phones, but the permanent navigation still takes
+   useful report width.  Use the same off-canvas menu on touch tablets while
+   preserving the desktop sidebar for mouse/trackpad computers. */
+@media (min-width:761px) and (max-width:1366px) and (any-pointer:coarse){
+  body{display:block;min-width:0;overflow-x:hidden}
+  body.mobile-nav-open{overflow:hidden}
+  .mobile-menu-btn{display:inline-flex;flex:0 0 auto}
+  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(17,24,39,.52);z-index:190;backdrop-filter:blur(2px)}
+  body.mobile-nav-open .mobile-nav-backdrop{display:block}
+  .sidebar{width:min(360px,86vw);transform:translateX(-105%);transition:transform .22s ease;z-index:220;border-radius:0 22px 22px 0}
+  body.mobile-nav-open .sidebar{transform:translateX(0)}
+  .main{margin-left:0;width:100%;min-width:0}
+  .topbar{padding:12px 18px;gap:12px;justify-content:flex-start}
+  .topbar-title-stack{flex:1;min-width:0}
+  .topbar-actions{margin-left:0}
+  .content{padding:20px 18px 28px}
+}
 /* The Engine badge already carries the verified date/time. On a phone, hide
    the duplicate topbar date so the entire Dashboard + Engine stamp is visible. */
 @media(max-width:600px){.topbar-date{display:none}}
