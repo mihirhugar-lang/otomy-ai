@@ -2594,9 +2594,9 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
-  // Keep normal dashboard cards in natural order. iOS can crop the final
-  // two live-data cards in a tall canvas, so use the established final-card
-  // capture path for Machinery and Fuel Ledger only.
+  // Keep normal dashboard cards in natural order. The final two live-data
+  // cards are captured separately to stay below iOS's canvas limit, but are
+  // flowed into the same PDF pages so no blank page-gap is introduced.
   const deferredFinalCards=[...pa.querySelectorAll('#dash-machine-odometer-card,#dash-fuel-ledger-card')];
   deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
@@ -2609,10 +2609,16 @@ async function shareStyledMobilePdf(title, content, className=''){
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
     const pageHeight=pdf.internal.pageSize.getHeight();
-    let pageCount=0;
+    let pageCount=0,activePage=null,activePageUsed=0;
     const reportRect=pa.getBoundingClientRect();
     const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
     const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
+    const flushActivePage=()=>{
+      if(!activePage||!activePageUsed)return;
+      if(pageCount++)pdf.addPage('a4','landscape');
+      pdf.addImage(activePage.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,activePageUsed*(pageWidth/activePage.width),undefined,'FAST');
+      activePage=null;activePageUsed=0;
+    };
     const appendCanvasPages=(canvas,cropTop,cropHeight,rows=reportRows,referenceRect=reportRect)=>{
       const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
       const verticalScale=canvas.width/Math.max(referenceRect.width,1);
@@ -2620,12 +2626,13 @@ async function shareStyledMobilePdf(title, content, className=''){
       const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
       const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
       for(let y=0;y<contentHeight;){
-        const target=Math.min(y+sliceHeight,contentHeight);let end=target;
+        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle='#243d61';activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
+        const target=Math.min(y+(activePage.height-activePageUsed),contentHeight);let end=target;
         while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
-        const height=Math.max(1,end-y),slice=document.createElement('canvas');slice.width=canvas.width;slice.height=height;
-        const ctx=slice.getContext('2d');ctx.fillStyle='#243d61';ctx.fillRect(0,0,slice.width,slice.height);ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
-        if(pageCount++)pdf.addPage('a4','landscape');
-        pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'FAST');y=end;
+        const height=Math.max(1,end-y),ctx=activePage.getContext('2d');
+        ctx.drawImage(canvas,0,y,canvas.width,height,0,activePageUsed,activePage.width,height);
+        activePageUsed+=height;y=end;
+        if(activePageUsed>=activePage.height)flushActivePage();
       }
     };
     // Render every report in continuous safe-height segments. This prevents a
@@ -2647,6 +2654,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       const cardCanvas=await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)});
       appendCanvasPages(cardCanvas,cardTop,cardRect.height,cardRows,cardRect);
     }
+    flushActivePage();
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
