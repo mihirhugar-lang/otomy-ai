@@ -2594,11 +2594,8 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
-  // Dashboard's four long live-data cards are appended after the normal pass.
-  // On iOS a single very tall capture can silently crop a late card, so each
-  // book is captured in its own safe-height segments below.
-  const deferredFinalCards=[...pa.querySelectorAll('#dash-bank-book-card,#dash-cash-book-card,#dash-machine-odometer-card,#dash-fuel-ledger-card')];
-  deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
+  // Keep every dashboard block in one continuous document, exactly like the
+  // website print flow. Safe-height strips below are only a renderer detail.
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -2630,7 +2627,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     };
     // Render every report in continuous safe-height segments. This prevents a
     // browser canvas limit from removing any late table/block on any page.
-    const maxCaptureHeight=5000;
+    const maxCaptureHeight=Math.max(2400,Math.floor((pageHeight/pageWidth)*reportRect.width*5));
     for(let cropTop=0;cropTop<reportBottom;){
       let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
       const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
@@ -2640,21 +2637,6 @@ async function shareStyledMobilePdf(title, content, className=''){
       const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
       appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
     }
-    for(const card of deferredFinalCards){
-      card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
-      const cardRect=card.getBoundingClientRect();
-      const cardRows=[...card.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-cardRect.top,bottom:box.bottom-cardRect.top};}).filter(row=>row.bottom>row.top);
-      const cardBottom=Math.max(cardRect.height,card.scrollHeight,1);
-      for(let cropTop=0;cropTop<cardBottom;){
-        let cropEnd=Math.min(cropTop+maxCaptureHeight,cardBottom);
-        const crossing=cardRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
-        if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
-        if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,cardBottom);
-        const cropHeight=Math.max(1,cropEnd-cropTop);
-        const cardCanvas=await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(cardRect.width),height:cropHeight});
-        appendCanvasPages(cardCanvas,cropTop,cropHeight,cardRows,cardRect);cropTop=cropEnd;
-      }
-    }
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
@@ -2663,7 +2645,6 @@ async function shareStyledMobilePdf(title, content, className=''){
     }
     flash('PDF share is unavailable on this device.',false);
   }finally{
-    deferredFinalCards.forEach(card=>card.style.removeProperty('display'));
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
