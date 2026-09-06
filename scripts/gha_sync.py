@@ -4768,21 +4768,18 @@ def write_snapshot_bundle(
     # generate the exact ranges selected by the UI as part of every engine
     # refresh.  They replace the prior day's derived snapshots through the
     # retention pass below; this does not grow R2 storage over time.
-    def rolling_month_start(months_back: int) -> date:
-        month_index = today.year * 12 + (today.month - 1) - months_back
+    def calendar_month_range_start(months: int) -> date:
+        # Last 2 Months = previous full calendar month + current MTD; Last 3
+        # Months also includes the full month before that.  Match the UI's
+        # month-boundary semantics exactly rather than a rolling 60/90 days.
+        month_index = today.year * 12 + (today.month - 1) - (months - 1)
         target_year, target_month_index = divmod(month_index, 12)
         target_month = target_month_index + 1
-        next_month = date(
-            target_year + (1 if target_month == 12 else 0),
-            1 if target_month == 12 else target_month + 1,
-            1,
-        )
-        last_target_day = (next_month - timedelta(days=1)).day
-        return date(target_year, target_month, min(today.day, last_target_day))
+        return date(target_year, target_month, 1)
 
     rolling_ranges = [
-        (rolling_month_start(2), today),
-        (rolling_month_start(3), today),
+        (calendar_month_range_start(2), today),
+        (calendar_month_range_start(3), today),
         *((today - timedelta(days=days - 1), today) for days in (7, 15, 30, 45, 60, 90)),
     ]
     for rolling_range in rolling_ranges:
@@ -6502,20 +6499,15 @@ def main():
     # than browser arithmetic.  Keep their rolling presets in lockstep with
     # the dashboard/page range list above, otherwise these buttons work on
     # every page except Cash & Bank.
-    def cashbook_rolling_month_start(months_back: int) -> date:
-        month_index = today.year * 12 + (today.month - 1) - months_back
+    def cashbook_calendar_month_range_start(months: int) -> date:
+        month_index = today.year * 12 + (today.month - 1) - (months - 1)
         target_year, target_month_index = divmod(month_index, 12)
         target_month = target_month_index + 1
-        next_month = date(
-            target_year + (1 if target_month == 12 else 0),
-            1 if target_month == 12 else target_month + 1,
-            1,
-        )
-        return date(target_year, target_month, min(today.day, (next_month - timedelta(days=1)).day))
+        return date(target_year, target_month, 1)
 
     rolling_cashbook_ranges = [
-        (cashbook_rolling_month_start(2), today),
-        (cashbook_rolling_month_start(3), today),
+        (cashbook_calendar_month_range_start(2), today),
+        (cashbook_calendar_month_range_start(3), today),
         *((today - timedelta(days=days - 1), today) for days in (7, 15, 30, 45, 60, 90)),
     ]
     for rolling_range in rolling_cashbook_ranges:
