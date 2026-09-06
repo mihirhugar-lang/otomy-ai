@@ -4763,6 +4763,31 @@ def write_snapshot_bundle(
         # while Today and MTD continue to advance.
         (financial_year_start, today),
     ]
+    # These rolling periods are first-class dashboard choices in Otomy.  The
+    # static site cannot calculate an absent dashboard snapshot on demand, so
+    # generate the exact ranges selected by the UI as part of every engine
+    # refresh.  They replace the prior day's derived snapshots through the
+    # retention pass below; this does not grow R2 storage over time.
+    def rolling_month_start(months_back: int) -> date:
+        month_index = today.year * 12 + (today.month - 1) - months_back
+        target_year, target_month_index = divmod(month_index, 12)
+        target_month = target_month_index + 1
+        next_month = date(
+            target_year + (1 if target_month == 12 else 0),
+            1 if target_month == 12 else target_month + 1,
+            1,
+        )
+        last_target_day = (next_month - timedelta(days=1)).day
+        return date(target_year, target_month, min(today.day, last_target_day))
+
+    rolling_ranges = [
+        (rolling_month_start(2), today),
+        (rolling_month_start(3), today),
+        *((today - timedelta(days=days - 1), today) for days in (7, 15, 30, 45, 60, 90)),
+    ]
+    for rolling_range in rolling_ranges:
+        if rolling_range not in ranges:
+            ranges.append(rolling_range)
     # Completed FY months are selectable dashboard periods too.  Without
     # explicit snapshots April falls through to a different client archive
     # path while May onward may happen to exist from prior runs.
