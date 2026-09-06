@@ -2594,10 +2594,10 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
-  // Every top-level dashboard table card is appended after the normal pass.
+  // Dashboard's four long live-data cards are appended after the normal pass.
   // On iOS a single very tall capture can silently crop a late card, so each
-  // block is captured in its own safe-height segments below.
-  const deferredFinalCards=[...pa.children].filter(card=>card.classList?.contains('card')&&card.querySelector('table,.tbl-wrap,.report-table-wrap'));
+  // book is captured in its own safe-height segments below.
+  const deferredFinalCards=[...pa.querySelectorAll('#dash-bank-book-card,#dash-cash-book-card,#dash-machine-odometer-card,#dash-fuel-ledger-card')];
   deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
     if(document.fonts?.ready)await document.fonts.ready;
