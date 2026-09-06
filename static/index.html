@@ -2369,8 +2369,8 @@ function calcPreset(p){
     case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
-    case'last2months':return[rollingMonthStart(2),today()];
-    case'last3months':return[rollingMonthStart(3),today()];
+    case'last2months':return[calendarMonthRangeStart(2),today()];
+    case'last3months':return[calendarMonthRangeStart(3),today()];
     case'last7days':return[rollingDayStart(7),today()];
     case'last15days':return[rollingDayStart(15),today()];
     case'last30days':return[rollingDayStart(30),today()];
@@ -2383,7 +2383,9 @@ function calcPreset(p){
   }
 }
 function rollingDayStart(days){const d=new Date(`${today()}T00:00:00`);d.setDate(d.getDate()-(days-1));return localISO(d);}
-function rollingMonthStart(months){const d=new Date(`${today()}T00:00:00`),day=d.getDate(),target=new Date(d.getFullYear(),d.getMonth()-months,1);target.setDate(Math.min(day,new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return localISO(target);}
+// Calendar-month ranges: Last 2 Months is last month's full book plus this
+// month's data to date; Last 3 Months adds the prior full month as well.
+function calendarMonthRangeStart(months){const d=new Date(`${today()}T00:00:00`);return localISO(new Date(d.getFullYear(),d.getMonth()-(months-1),1));}
 
 function preset(section,p,btn){
   const cfg=PRESET_CFG[section];
