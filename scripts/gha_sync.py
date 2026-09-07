@@ -1132,8 +1132,11 @@ def fetch_internal_transfers(sess, from_d, to_d):
             index = next((idx for idx, cash_leg in enumerate(cash_legs)
                 if idx not in used_cash and cash_leg["date"] == bank_leg["date"]
                 and abs(cash_leg["amount"] - bank_leg["amount"]) < 0.01
-                and re.sub(r"\s+", " ", cash_leg["remarks"]).strip().upper()
-                    == re.sub(r"\s+", " ", bank_leg["remarks"]).strip().upper()), None)
+                # Loctell can vary punctuation/spacing between the paired legs
+                # (for example "::PLANT" vs ":: PLANT").  Match the same
+                # meaningful remark text, never formatting alone.
+                and re.sub(r"[^A-Z0-9]+", "", cash_leg["remarks"].upper())
+                    == re.sub(r"[^A-Z0-9]+", "", bank_leg["remarks"].upper())), None)
             if index is None:
                 continue
             used_cash.add(index)
