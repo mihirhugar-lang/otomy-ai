@@ -14,6 +14,7 @@ import datetime as dt
 import importlib.util
 import json
 import os
+import re
 import sys
 import argparse
 from pathlib import Path
@@ -488,9 +489,17 @@ def owner_control_tile_order(html: str) -> tuple[str, ...]:
     end = html.find('<div class="card cash-card">', start)
     if start == -1 or end == -1 or end <= start:
         fail("could not locate Owner Control Room tile block")
-    block = html[start:end]
+    grid_start = html.find('<div class="control-grid">', start, end)
+    if grid_start == -1:
+        fail("could not locate Owner Control Room metric grid")
+    block = html[grid_start:end]
     labels = []
-    for metric in block.split('<div class="control-metric')[1:]:
+    metric_pattern = r'<(?:div|button)[^>]*class="[^"]*control-metric[^"]*"[^>]*>|[$][{]cashProfitTile[}]'
+    for match in re.finditer(metric_pattern, block):
+        if match.group() == "${cashProfitTile}":
+            labels.append("Cash Profit ₹/T")
+            continue
+        metric = block[match.end():]
         label_start = metric.find("<span>")
         label_end = metric.find("</span>", label_start)
         if label_start == -1 or label_end == -1:
