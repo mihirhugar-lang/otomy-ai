@@ -23,6 +23,7 @@ _ODOMETER_TARGETS = [
     ("VSI", "VSI"),
     ("Hitachi", "HITACHI"),
     ("VMI Loader", "VMI LOADER"),
+    ("VMI Secondary Blasting", "VMI SECONDARY BLASTING"),
     ("Daneswary Soling Vehicles", "DANESWARY SOLING VEHICLES"),
     ("Soling Manju Machines", "SOLING MANJU MACHINES"),
     ("Water Tanker", "WATER TANKER"),
