@@ -228,6 +228,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .control-metric{background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:10px}
 .control-metric span{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .control-metric strong{display:block;font-size:18px;margin-top:4px}
+.control-metric-link{color:inherit;text-align:left;width:100%;font:inherit;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+.control-metric-link:hover,.control-metric-link:focus-visible{transform:translateY(-2px);border-color:#fef3c7;box-shadow:0 12px 24px rgba(0,0,0,.2);outline:2px solid #fbbf24;outline-offset:2px}
+.control-metric-link .control-drill{display:block;margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.3px;color:#fde68a;text-transform:none}
 .control-metric.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18));border-color:rgba(187,247,208,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 14px 30px rgba(5,150,105,.16)}
 .control-metric.glass-green span{color:#dcfce7;opacity:.95}
 .control-metric.glass-green strong{color:#f0fdf4}
@@ -3398,8 +3401,44 @@ document.getElementById('d-exp-bank').textContent=fmtINR(_expenseBank);
   document.getElementById('d-profit-mt').textContent=fmtINR2(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
 
+let _cashProfitDetailData=null;
+function _cashProfitRound(value){return Math.round(_num(value)*100)/100;}
+function openCashProfitDetail(){
+  const data=_cashProfitDetailData;
+  const s=data?.summary||{},period=data?.period||{};
+  const from=String(period.from||''),to=String(period.to||'');
+  const tonnes=_num(s.sales_qty_mt),profit=_num(s.selected_period_profit_director_adjusted??s.profit);
+  const creditSold=_num(s.credit_sale_for_liquidity),creditRepaid=_num(s.credit_recovery_for_liquidity);
+  const netCredit=_num(s.net_credit_change_for_liquidity),reported=s.cash_converted_profit_per_tonne;
+  if(!data||from<'2026-06-01'||s.credit_liquidity_available!==true||tonnes<=0||reported==null){flash('Cash Profit ₹/T is available from 1 Jun 2026 when sales tonnes are available.',false);return;}
+  const sales=data.customer_sales||[],expenses=(data.expense_rows||[]).filter(row=>row.is_operating_expense!==false),repayments=data.customer_repayments||[];
+  const salesTotal=_cashProfitRound(sales.reduce((sum,row)=>sum+_num(row.amount),0));
+  const expenseTotal=_cashProfitRound(expenses.reduce((sum,row)=>sum+_num(row.amount),0));
+  const creditSalesTotal=_cashProfitRound(sales.reduce((sum,row)=>sum+_num(row.credit_sale_amount),0));
+  const repaymentTotal=_cashProfitRound(repayments.reduce((sum,row)=>sum+_num(row.payment_received??row.amount),0));
+  const calculated=_cashProfitRound((profit-netCredit)/tonnes);
+  const mismatched=[
+    Math.abs(salesTotal-_num(s.sales)),Math.abs(expenseTotal-_num(s.expenses)),
+    Math.abs(creditSalesTotal-creditSold),Math.abs(repaymentTotal-creditRepaid),
+    Math.abs(calculated-_num(reported)),
+  ].some(value=>value>.01);
+  if(mismatched){flash('Cash Profit detail was not opened: the selected range did not reconcile to the existing tile.',false);return;}
+  const salesRows=sales.map(row=>`<tr><td>${esc(row.customer_name||'Cash Sale')}</td><td>${esc(row.material||'—')}</td><td>${esc((row.ticket_nos||[]).join(', ')||'—')}</td><td class="num">${fmtNum(row.qty_mt,2)}</td><td class="num">${fmtINR2(row.amount)}</td><td class="num bank">${fmtINR2(row.bank_received||0)}</td><td class="num cash">${fmtINR2(row.cash_received||0)}</td><td class="num credit">${fmtINR2(row.credit_sale_amount||0)}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">No sales rows</td></tr>';
+  const repaymentRows=repayments.map(row=>{const amount=_num(row.payment_received??row.amount),mode=String(row.mode||'');let bank=_num(row.bank_received),cash=_num(row.cash_received);if(bank+cash===0&&amount){if(_payChannel(mode)==='cash')cash=amount;else bank=amount;}return `<tr><td>${esc(row.date||'—')}</td><td>${esc(row.customer_name||'—')}</td><td>${esc(mode||'—')}</td><td>${esc(row.reference||'—')}</td><td class="num bank">${fmtINR2(bank)}</td><td class="num cash">${fmtINR2(cash)}</td><td class="num">${fmtINR2(amount)}</td></tr>`;}).join('')||'<tr><td colspan="7" class="empty">No credit repayments</td></tr>';
+  const expenseRows=expenses.map(row=>`<tr><td>${esc(row.date||'—')}</td><td>${esc(row.category||'Expense')}</td><td>${esc(row.description||'—')}</td><td>${esc(row.party||'—')}</td><td>${esc(row.payment_mode||'—')}</td><td class="num expense">${fmtINR2(row.amount)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No operating expenses</td></tr>';
+  const creditLabel=netCredit>=0?'Less: credit newly locked':'Add: credit released from earlier sales';
+  const popup=window.open('', '_blank', 'width=1240,height=900');
+  if(!popup){flash('Allow pop-ups to open the Cash Profit detail.',false);return;}
+  try{popup.opener=null;}catch(e){}
+  const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cash Profit ₹/T — ${esc(from)} to ${esc(to)}</title><style>
+    :root{--navy:#1f4e79;--blue:#1565c0;--green:#2e7d32;--red:#c62828;--amber:#b45309;--paper:#fffdf5;--line:#c9b98f}*{box-sizing:border-box}body{margin:0;background:#eef3f8;color:#172033;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.page{max-width:1180px;margin:0 auto;background:var(--paper);min-height:100vh;padding:26px}.head{background:linear-gradient(135deg,#1f4e79,#14314c);color:#fff;border-radius:10px;padding:20px 22px;display:flex;justify-content:space-between;gap:16px}.head h1{font-size:23px;margin:0 0 6px}.head p{margin:0;color:#dbeafe;font-size:12px}.print{align-self:start;border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 12px;font-weight:800;cursor:pointer}.formula{margin:18px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.formula h2,.section h2{font-size:14px;margin:0;padding:10px 12px;background:#e8eef6;color:var(--navy)}.formula table{width:100%;border-collapse:collapse}.formula td{padding:10px 12px;border-top:1px solid #d8dee8;font-size:13px}.formula td:last-child{text-align:right;font-weight:800}.formula .result td{background:#e8f5e9;color:#14532d;font-size:15px;border-top:2px solid var(--green)}.formula .credit td:last-child{color:var(--amber)}.section{margin-top:18px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.section p{margin:0;padding:9px 12px;background:#f8fafc;color:#536273;font-size:11px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}th{background:#1f4e79;color:#fff;text-align:left;padding:9px 10px;white-space:nowrap}td{padding:8px 10px;border-bottom:1px solid #d8dee8;vertical-align:top}tbody tr:nth-child(even){background:#faf7ed}tfoot td{background:#e8eef6;font-weight:800;border-top:2px solid var(--navy)}.num{text-align:right;font-variant-numeric:tabular-nums}.bank{color:var(--blue);font-weight:700}.cash{color:var(--green);font-weight:700}.credit,.expense{color:var(--red);font-weight:700}.empty{text-align:center;color:#64748b}.note{margin-top:16px;border-left:4px solid var(--amber);padding:10px 12px;background:#fffbeb;font-size:11px;color:#713f12}@media print{body{background:#fff}.page{max-width:none;padding:10mm}.print{display:none}.head{border-radius:0}.section{break-inside:avoid}}
+  </style></head><body><main class="page"><header class="head"><div><h1>Cash Profit ₹/T — Calculation Detail</h1><p>Owner Control Room · ${esc(from)} to ${esc(to)} · Read-only report from the same published dashboard data.</p></div><button class="print" onclick="window.print()">Print / PDF</button></header><section class="formula"><h2>Exact tile formula</h2><table><tbody><tr><td>Selected Period Profit</td><td>Gross Sales − Operating Expenses</td><td>${fmtINR2(profit)}</td></tr><tr class="credit"><td>${creditLabel}</td><td>Credit Sales − Credit Repayments</td><td>${fmtINR2(netCredit)}</td></tr><tr><td>Cash-converted Profit</td><td>Selected Period Profit − Net Credit Change</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr><td>Total Sale Tonnes</td><td>Selected period sales quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr><tr class="result"><td>Cash Profit ₹/T</td><td>Cash-converted Profit ÷ Total Sale Tonnes</td><td>${fmtINR2(reported)}</td></tr></tbody></table></section><section class="section"><h2>Sales Ledger — source of Gross Sales and Credit Sales</h2><p>Bank is blue, cash is green, and credit still locked with customers is red.</p><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Material</th><th>Tickets</th><th class="num">Qty MT</th><th class="num">Sale Amount</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">${fmtNum(tonnes,2)}</td><td class="num">${fmtINR2(salesTotal)}</td><td></td><td></td><td class="num credit">${fmtINR2(creditSalesTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Credit Repayment Ledger — source of Credit Repaid</h2><p>These are the same credit-repayment rows used by the Cash Profit ₹/T calculation.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Reference</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">Total Repaid</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td colspan="6">Total Credit Repaid</td><td class="num">${fmtINR2(repaymentTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Operating Expense Ledger — source of Selected Period Profit</h2><p>Director drawings are excluded, exactly as in the Owner Control Room profit tile.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Particulars</th><th>Party</th><th>Mode</th><th class="num">Operating Expense</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td colspan="5">Total Operating Expenses</td><td class="num expense">${fmtINR2(expenseTotal)}</td></tr></tfoot></table></div></section><p class="note">This is a liquidity measure, not the closing cash or bank balance. It adjusts selected-period profit only for new credit sold and credit repaid during the same selected period.</p></main></body></html>`;
+  popup.document.open();popup.document.write(html);popup.document.close();
+}
+
 async function renderControlRoom(data){
   const s=data.summary||{};
+  _cashProfitDetailData=data;
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const _rc=_reclassifySales(data);
   // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). Apply the
@@ -3510,6 +3549,10 @@ async function renderControlRoom(data){
   const expGrandTotal=expCashTotal+expBankTotal;
   const rec=(data.top_receivables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No receivables</strong><span>₹0</span></li>';
   const pay=(data.top_payables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No payables</strong><span>₹0</span></li>';
+  const cashProfitReady=s.credit_liquidity_available===true&&_num(s.sales_qty_mt)>0&&s.cash_converted_profit_per_tonne!=null;
+  const cashProfitTile=cashProfitReady
+    ? `<button type="button" class="control-metric glass-green control-metric-link" onclick="openCashProfitDetail()" title="Open the exact Cash Profit ₹/T calculation"><span>Cash Profit ₹/T</span><strong>${fmtINR2(s.cash_converted_profit_per_tonne)}</strong><small class="control-drill">View calculation →</small></button>`
+    : `<div class="control-metric glass-green" title="Available from 1 Jun 2026"><span>Cash Profit ₹/T</span><strong>—</strong></div>`;
   document.getElementById('control-room').innerHTML=`
     <div class="control-hero">
       <div class="control-panel">
@@ -3532,7 +3575,7 @@ async function renderControlRoom(data){
           <div class="control-metric glass-green"><span>Profit / Tonne</span><strong>${fmtINR2(s.selected_period_profit_per_tonne||0)}</strong></div>
           <div class="control-metric"><span>Credit Repayment</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
           <!-- Credit liquidity: real Loctell tender splits and repayments, from 01-Jun-2026. -->
-          <div class="control-metric glass-green"><span>Cash Profit ₹/T</span><strong>${s.credit_liquidity_available===true&&s.cash_converted_profit_per_tonne!=null?fmtINR2(s.cash_converted_profit_per_tonne):'—'}</strong></div>
+          ${cashProfitTile}
           <div class="control-metric"><span>Credit Locked ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_locked_per_tonne!=null?fmtINR2(s.credit_locked_per_tonne):'—'}</strong></div>
           <div class="control-metric"><span>Credit Sold ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_sale_per_tonne!=null?fmtINR2(s.credit_sale_per_tonne):'—'}</strong></div>
           <div class="control-metric"><span>Credit Repaid ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_recovery_per_tonne!=null?fmtINR2(s.credit_recovery_per_tonne):'—'}</strong></div>
