@@ -23,13 +23,18 @@ _ODOMETER_TARGETS = [
     ("VSI", "VSI"),
     ("Hitachi", "HITACHI"),
     ("VMI Loader", "VMI LOADER"),
-    ("VMI Secondary Blasting", "VMI SECONDARY BLASTING"),
+    ("VMI Secondary Blasting (OB Work)", "VMI SECONDARY BLASTING(OB WORK)"),
     ("Daneswary Soling Vehicles", "DANESWARY SOLING VEHICLES"),
     ("Soling Manju Machines", "SOLING MANJU MACHINES"),
     ("Water Tanker", "WATER TANKER"),
 ]
 _FUEL_HISTORY_START = date(2026, 4, 1)
 _FUEL_SPEND_TRACKING_FROM = date(2026, 9, 1)
+# Preserve the issue line recorded before Loctell's vehicle rename.  New rows
+# use the current registration above; both labels belong to the same machine.
+_FUEL_ISSUE_REGISTRATION_ALIASES = {
+    "VMI SECONDARY BLASTING": "VMI Secondary Blasting (OB Work)",
+}
 _MACHINE_SUMMARY_CACHE_TTL_SECONDS = 60
 _MACHINE_SUMMARY_MAX_STALE_SECONDS = 2 * 60
 _MACHINE_SUMMARY_FAILURE_COOLDOWN_SECONDS = 60
@@ -199,6 +204,10 @@ def fetch_machine_fuel_issues(session: Optional[requests.Session] = None, erp_ba
         _odometer_key(registration): vehicle_type
         for vehicle_type, registration in _ODOMETER_TARGETS
     }
+    vehicle_type_by_registration.update({
+        _odometer_key(registration): vehicle_type
+        for registration, vehicle_type in _FUEL_ISSUE_REGISTRATION_ALIASES.items()
+    })
     result = []
     for row in (payload.get("data", []) if isinstance(payload, dict) else []):
         vehicle = row.get("vehicle") or {}
