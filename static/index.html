@@ -2682,6 +2682,35 @@ async function shareStyledMobilePdf(title, content, className=''){
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
 }
+// The installed app shares a PDF file, but its visible result must stay
+// identical to the website. Render the report inside an isolated document that
+// owns the website CSS, then make the native share-sheet PDF from those exact
+// painted blocks. This never opens a second app window or a Blob URL.
+async function shareIsolatedMobilePdf(title, style, content, rootSelector, background='#fffdf5'){
+  if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
+  const iframe=document.createElement('iframe');
+  iframe.style.cssText='position:fixed;left:-13000px;top:0;width:1200px;height:900px;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(iframe);
+  try{
+    const doc=iframe.contentDocument;
+    doc.open();doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+style+'</style></head><body>'+content+'</body></html>');doc.close();
+    if(doc.fonts?.ready)await doc.fonts.ready;
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const root=doc.querySelector(rootSelector);if(!root)throw new Error('Report is not ready');
+    const blocks=[...root.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length);
+    const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
+    const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),scale=2.25;
+    let count=0,active=null,used=0;
+    const flush=()=>{if(!active||!used)return;if(count++)pdf.addPage('a4','landscape');pdf.addImage(active.toDataURL('image/jpeg',0.9),'JPEG',0,0,pageW,used*(pageW/active.width),undefined,'FAST');active=null;used=0;};
+    const append=(canvas,rows,rect)=>{const slice=Math.max(1,Math.floor(canvas.width*(pageH/pageW))),factor=canvas.width/Math.max(rect.width,1),bounds=rows.map(row=>({top:Math.round((row.top-rect.top)*factor),bottom:Math.round((row.bottom-rect.top)*factor)}));for(let y=0;y<canvas.height;){if(!active){active=document.createElement('canvas');active.width=canvas.width;active.height=slice;const c=active.getContext('2d');c.fillStyle=background;c.fillRect(0,0,active.width,active.height);}let end=Math.min(y+(slice-used),canvas.height);const crossing=bounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=150);if(crossing.length)end=Math.min(...crossing.map(row=>row.top));if(end<=y)end=Math.min(y+(slice-used),canvas.height);const h=end-y;active.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,used,active.width,h);used+=h;y=end;if(used>=slice)flush();}};
+    for(const block of blocks){const rect=block.getBoundingClientRect(),rows=[...block.querySelectorAll('tr')].map(row=>row.getBoundingClientRect()).filter(box=>box.height>0);const canvas=await window.html2canvas(block,{backgroundColor:background,scale,useCORS:true,logging:false,windowWidth:1200,windowHeight:Math.ceil(Math.max(block.scrollHeight,rect.height))});append(canvas,rows,rect);}
+    flush();
+    const filename=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
+    const file=new File([pdf.output('blob')],filename,{type:'application/pdf'});
+    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){try{await navigator.share({title,files:[file]});return;}catch(error){if(error?.name==='AbortError')return;}}
+    flash('PDF share is unavailable on this device.',false);
+  }finally{iframe.remove();}
+}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
@@ -3112,11 +3141,6 @@ async function printDashboardConsolidated(){
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
-  // Reserve the real print window while this button still has the user's tap.
-  // The report data is assembled asynchronously below, then written into that
-  // same window with the identical website print stylesheet.
-  const mobilePrintWindow=isMobilePrint()?window.open('', '_blank'):null;
-  if(isMobilePrint()&&!mobilePrintWindow){flash('Allow pop-ups for Otomy, then tap Consolidated Report again.',false);return;}
   try{
     const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     if(!data||!data.summary)throw new Error('Dashboard data is not ready');
@@ -3165,9 +3189,9 @@ async function printDashboardConsolidated(){
       ${vendorPayments}
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
       ${machineReadings}${fuelLedger}`;
-    if(isMobilePrint())return openMobilePrintPage('Dashboard Consolidated Report',content,'dashboard-print',mobilePrintWindow);
+    if(isMobilePrint())return shareIsolatedMobilePdf('Dashboard Consolidated Report',printStyles(),`<div id="print-area" class="dashboard-print pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:6px!important;background:#243d61!important">${content}</div>`,'#print-area','#243d61');
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
-  }catch(e){try{mobilePrintWindow?.close();}catch(_){}flash(e.message||'Could not build consolidated report',false);}
+  }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
 async function _ensureDashboardPrintBooks(from,to){
   // The dashboard books load asynchronously from the same selected range. Do
@@ -3436,7 +3460,7 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
   const title=_cashProfitDetailModalTitle||'Cash Profit Calculation Detail';
-  if(isMobilePrint())return openExactMobilePrintPage(title,reportStyle,copy.innerHTML);
+  if(isMobilePrint())return shareIsolatedMobilePdf(title,reportStyle,copy.innerHTML,'.page','#fffdf5');
   runPrint(title,`<style>${reportStyle}</style>${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
