@@ -2702,8 +2702,21 @@ async function shareIsolatedMobilePdf(title, style, content, rootSelector, backg
     const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),scale=2.25;
     let count=0,active=null,used=0;
     const flush=()=>{if(!active||!used)return;if(count++)pdf.addPage('a4','landscape');pdf.addImage(active.toDataURL('image/jpeg',0.9),'JPEG',0,0,pageW,used*(pageW/active.width),undefined,'FAST');active=null;used=0;};
-    const append=(canvas,rows,rect)=>{const slice=Math.max(1,Math.floor(canvas.width*(pageH/pageW))),factor=canvas.width/Math.max(rect.width,1),bounds=rows.map(row=>({top:Math.round((row.top-rect.top)*factor),bottom:Math.round((row.bottom-rect.top)*factor)}));for(let y=0;y<canvas.height;){if(!active){active=document.createElement('canvas');active.width=canvas.width;active.height=slice;const c=active.getContext('2d');c.fillStyle=background;c.fillRect(0,0,active.width,active.height);}let end=Math.min(y+(slice-used),canvas.height);const crossing=bounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=150);if(crossing.length)end=Math.min(...crossing.map(row=>row.top));if(end<=y)end=Math.min(y+(slice-used),canvas.height);const h=end-y;active.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,used,active.width,h);used+=h;y=end;if(used>=slice)flush();}};
-    for(const block of blocks){const rect=block.getBoundingClientRect(),rows=[...block.querySelectorAll('tr')].map(row=>row.getBoundingClientRect()).filter(box=>box.height>0);const canvas=await window.html2canvas(block,{backgroundColor:background,scale,useCORS:true,logging:false,windowWidth:1200,windowHeight:Math.ceil(Math.max(block.scrollHeight,rect.height))});append(canvas,rows,rect);}
+    const append=(canvas,rows,rect,cropTop=0)=>{const slice=Math.max(1,Math.floor(canvas.width*(pageH/pageW))),factor=canvas.width/Math.max(rect.width,1),bounds=rows.map(row=>({top:Math.round((row.top-rect.top-cropTop)*factor),bottom:Math.round((row.bottom-rect.top-cropTop)*factor)})).filter(row=>row.bottom>0&&row.top<canvas.height);for(let y=0;y<canvas.height;){if(!active){active=document.createElement('canvas');active.width=canvas.width;active.height=slice;const c=active.getContext('2d');c.fillStyle=background;c.fillRect(0,0,active.width,active.height);}let end=Math.min(y+(slice-used),canvas.height);const crossing=bounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=150);if(crossing.length)end=Math.min(...crossing.map(row=>row.top));if(end<=y)end=Math.min(y+(slice-used),canvas.height);const h=end-y;active.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,used,active.width,h);used+=h;y=end;if(used>=slice)flush();}};
+    for(const block of blocks){
+      const rect=block.getBoundingClientRect(),rows=[...block.querySelectorAll('tr')].map(row=>row.getBoundingClientRect()).filter(box=>box.height>0),height=Math.ceil(Math.max(block.scrollHeight,rect.height));
+      // Keep every source canvas below iOS's reliable pixel limit. Break only
+      // before a table row, so a long Expenses ledger stays complete and neat.
+      for(let cropTop=0;cropTop<height;){
+        let cropEnd=Math.min(cropTop+2600,height);
+        const crossing=rows.filter(row=>row.top-rect.top<cropEnd&&row.bottom-rect.top>cropEnd&&row.top-rect.top-cropTop>=140);
+        if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top-rect.top));
+        if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+2600,height);
+        const cropHeight=Math.max(1,cropEnd-cropTop);
+        const canvas=await window.html2canvas(block,{backgroundColor:background,scale,useCORS:true,logging:false,windowWidth:1200,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(rect.width),height:cropHeight});
+        append(canvas,rows,rect,cropTop);cropTop=cropEnd;
+      }
+    }
     flush();
     const filename=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],filename,{type:'application/pdf'});
