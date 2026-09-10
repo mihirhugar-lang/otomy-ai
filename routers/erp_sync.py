@@ -129,18 +129,36 @@ def _expense_key(row: dict, sequence: int) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 def erp_auth(erp_base: str, org: str, username: str, password: str):
     import requests as req
-    sess = req.Session()
-    sess.headers.update({"User-Agent": "Mozilla/5.0"})
     cred = base64.b64encode(f"{org};{username}:{password}".encode()).decode()
-    sess.get(f"{erp_base}/restserver/rest/users/login?web=true",
-             headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
-             timeout=25, verify=True)
-    sess.post(f"{erp_base}/home/MainLogin",
-              data={"loginUsername": username, "loginPassword": password,
-                    "loginOrgName": org, "pType": "attendance"},
-              headers={"Content-Type": "application/x-www-form-urlencoded"},
-              timeout=25, verify=True)
-    return sess
+    last_error = None
+    # Router DNS can drop briefly while the Mac remains online.  A fresh
+    # session is required on every retry, otherwise requests retains a failed
+    # connection pool and the next scheduled sync fails immediately too.
+    for attempt in range(1, 4):
+        sess = req.Session()
+        sess.headers.update({"User-Agent": "Mozilla/5.0"})
+        try:
+            login = sess.get(
+                f"{erp_base}/restserver/rest/users/login?web=true",
+                headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
+                timeout=25, verify=True,
+            )
+            login.raise_for_status()
+            main_login = sess.post(
+                f"{erp_base}/home/MainLogin",
+                data={"loginUsername": username, "loginPassword": password,
+                      "loginOrgName": org, "pType": "attendance"},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=25, verify=True,
+            )
+            main_login.raise_for_status()
+            return sess
+        except req.RequestException as exc:
+            last_error = exc
+            sess.close()
+            if attempt < 3:
+                time.sleep(attempt * 2)
+    raise last_error
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. SALES TICKETS
@@ -614,8 +632,11 @@ def fetch_internal_transfers(sess, erp_base: str, from_d: date, to_d: date) -> l
             match_index = next((idx for idx, cash_leg in enumerate(cash_legs)
                 if idx not in used_cash and cash_leg["date"] == bank_leg["date"]
                 and abs(cash_leg["amount"] - bank_leg["amount"]) < 0.01
-                and re.sub(r"\s+", " ", cash_leg["remarks"]).strip().upper()
-                    == re.sub(r"\s+", " ", bank_leg["remarks"]).strip().upper()), None)
+                # Loctell can vary punctuation/spacing between the paired legs
+                # (for example "::PLANT" vs ":: PLANT").  Match the same
+                # meaningful remark text, never formatting alone.
+                and re.sub(r"[^A-Z0-9]+", "", cash_leg["remarks"].upper())
+                    == re.sub(r"[^A-Z0-9]+", "", bank_leg["remarks"].upper())), None)
             if match_index is None:
                 continue
             used_cash.add(match_index)
@@ -1820,7 +1841,7 @@ def sync_status():
     return {
         "last_sync":              cfg.get("last_sync"),
         "historical_done":        cfg.get("historical_sync_done", False),
-        "auto_sync_interval_min": 5,
+        "auto_sync_interval_min": 10,
         "creditors_sync_ok":      cfg.get("last_creditors_sync_ok"),
         "last_sync_errors":       cfg.get("last_sync_errors", []),
     }

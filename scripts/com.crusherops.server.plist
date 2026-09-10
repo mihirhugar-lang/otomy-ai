@@ -17,6 +17,10 @@
     <key>KeepAlive</key>
     <true/>
 
+    <!-- Restart immediately if macOS ever terminates the local server, including after wake. -->
+    <key>ThrottleInterval</key>
+    <integer>1</integer>
+
     <key>WorkingDirectory</key>
     <string>/Users/apple/codex/CRUSHER/apps/CrusherOps</string>
 

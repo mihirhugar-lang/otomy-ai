@@ -182,10 +182,11 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .month-range-select{appearance:auto;min-width:128px;max-width:172px;padding:5px 8px;border:1.5px solid #c9b98f;border-radius:4px;background:#fffdf5;color:#1f4e79;font:700 12px var(--tally-mono,ui-monospace,monospace);cursor:pointer}
 .month-range-select[size]{position:relative;z-index:120;max-height:180px;overflow-y:auto}
 .pbtn:hover,.pbtn.act{border-color:var(--amber);color:#92400e;background:#fff7ed}
-.pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}
+.pbtn.act{background:linear-gradient(135deg,#92400e,#d97706);color:#fff}.pbtn.loading{opacity:.7;cursor:wait}
 .preset-dates{display:flex;align-items:center;gap:6px;margin-left:4px}
 .preset-dates input{border:1.5px solid #e0e0e0;border-radius:5px;padding:5px 8px;font-size:12px;background:#fafafa}
 .preset-dates label{font-size:11px;font-weight:600;color:#888}
+.preset-primary-row{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;flex-wrap:wrap;order:1}
 .rolling-range-action-row{display:flex;align-items:center;gap:8px;flex:1 0 100%;min-width:0;flex-wrap:nowrap;order:2;padding-top:2px}
 .rolling-range-row{display:flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;flex-wrap:wrap}
 .day-range-control{display:flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap}
@@ -194,7 +195,7 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
-@media(max-width:760px){.rolling-range-action-row{flex-wrap:wrap;gap:6px}.rolling-range-row{flex-basis:100%;gap:5px}.day-range-control{flex-basis:100%}.rolling-range-action-row>.print-btn,.rolling-range-action-row>.page-actions{margin-left:0}}
+@media(max-width:760px){.preset-primary-row{flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.preset-primary-row .preset-dates{flex:0 0 auto;flex-wrap:nowrap;margin:0}.rolling-range-action-row{flex:0 0 100%;flex-wrap:wrap;gap:6px;overflow:visible}.rolling-range-row{flex:0 0 100%;min-width:0;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.day-range-control{flex:0 0 auto}.rolling-range-action-row>.print-btn{margin-left:0;flex:0 0 auto}.rolling-range-action-row>.page-actions{margin-left:0;flex:0 0 100%;width:100%;flex-wrap:wrap}}
 
 /* ── Sub-tabs ── */
 .subtabs{display:flex;gap:0;border-bottom:2px solid #e65100;margin-bottom:16px;overflow-x:auto}
@@ -209,18 +210,6 @@ body.readonly .write-only{display:none!important}
 body.readonly .readonly-disabled{opacity:.45;pointer-events:none}
 body.static-locked{display:block}
 body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-nav-backdrop{display:none!important}
-.static-login{display:none;position:fixed;inset:0;z-index:10000;align-items:center;justify-content:center;padding:24px;background:
-  radial-gradient(circle at 20% 10%,rgba(245,158,11,.26),transparent 30%),
-  linear-gradient(135deg,#17202a,#3f2507 58%,#fff7ed)}
-.static-login-card{width:min(420px,100%);background:rgba(255,255,255,.94);border:1px solid rgba(255,255,255,.4);border-radius:28px;padding:28px 24px;box-shadow:0 24px 70px rgba(0,0,0,.28)}
-.static-login-brand{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-.static-login-brand img{width:58px;height:58px;border-radius:16px}
-.static-login-brand h1{font-size:27px;margin:0;color:#17202a}
-.static-login-brand p{margin:4px 0 0;color:#8a5a18;font:700 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.8px;text-transform:uppercase}
-.static-login label{display:block;font:800 11px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#667085;margin:14px 0 6px}
-.static-login input{width:100%;font-size:18px;padding:14px 15px;border-radius:14px;border:1.5px solid #e2d7c5;background:#fffaf0}
-.static-login button{width:100%;margin-top:20px;padding:15px;border:0;border-radius:16px;background:linear-gradient(135deg,#17202a,#b45309);color:white;font-size:17px;font-weight:900;letter-spacing:.3px;cursor:pointer}
-.static-login-error{display:none;margin-top:14px;color:#b42318;font:700 13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .pager{display:flex;align-items:center;gap:10px;padding:10px 4px;font-size:13px;color:#555}
 .pager button{padding:5px 14px;border:1.5px solid #1a237e;border-radius:4px;background:#fff;color:#1a237e;cursor:pointer;font-size:13px;font-weight:600}
 .pager button:hover:not(:disabled){background:#e8eaf6}
@@ -239,6 +228,9 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .control-metric{background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:10px}
 .control-metric span{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .control-metric strong{display:block;font-size:18px;margin-top:4px}
+.control-metric-link{color:inherit;text-align:left;width:100%;font:inherit;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+.control-metric-link:hover,.control-metric-link:focus-visible{transform:translateY(-2px);border-color:#fef3c7;box-shadow:0 12px 24px rgba(0,0,0,.2);outline:2px solid #fbbf24;outline-offset:2px}
+.control-metric-link .control-drill{display:block;margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.3px;color:#fde68a;text-transform:none}
 .control-metric.glass-green{background:linear-gradient(135deg,rgba(16,185,129,.34),rgba(187,247,208,.18));border-color:rgba(187,247,208,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 14px 30px rgba(5,150,105,.16)}
 .control-metric.glass-green span{color:#dcfce7;opacity:.95}
 .control-metric.glass-green strong{color:#f0fdf4}
@@ -302,8 +294,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .nav-item .icon{font-size:17px;width:22px}
   .main{margin-left:0;width:100%;min-width:0}
   .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
-  .topbar-title-stack{flex:1;min-width:0}
-  .topbar-title{font-size:16px;line-height:1.2;flex:0 1 auto;min-width:0}
+  .topbar-title-stack{flex:1;min-width:0;gap:6px}
+  .topbar-title{font-size:16px;line-height:1.2}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
   .engine-status{font-size:9.5px;padding:3px 5px;max-width:none;min-width:0}
@@ -311,7 +303,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .content{padding:14px 10px 24px}
   .page-header{margin-bottom:10px}.page-header h2{font-size:17px}
   .alert-banner{padding:10px 12px}
-  .preset-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:10px;border-radius:14px;margin-bottom:12px}
+  .preset-bar{display:flex;flex-wrap:wrap;align-items:center;gap:7px;overflow:visible;padding:10px;border-radius:14px;margin-bottom:12px}
   .preset-label{flex:0 0 auto}
   .pbtn{flex:0 0 auto;padding:7px 12px}
   .preset-dates{display:flex;flex:0 0 100%;flex-wrap:wrap;margin:8px 0 0;gap:6px}
@@ -320,12 +312,12 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .page-actions{margin-left:0;flex:0 0 100%;gap:6px}
  .kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
  .customer-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
- #section-dashboard>.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #section-dashboard>.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(76px,auto)}
   #ledger-summary,#ledger-average-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
   #ledger-average-panel{margin-top:12px}
-  .kpi{padding:12px 10px;border-radius:15px;min-width:0}
-  .kpi-label{font-size:9px;letter-spacing:.45px;line-height:1.25}
-  .kpi-value{font-size:20px;line-height:1.15;word-break:break-word}
+  .kpi{padding:12px 10px;border-radius:15px;min-width:0;overflow:hidden}
+  .kpi-label{font-size:9px;letter-spacing:.45px;line-height:1.25;overflow-wrap:anywhere}
+  .kpi-value{font-size:20px;line-height:1.15;word-break:break-word;overflow-wrap:anywhere}
   .kpi-sub{font-size:10px}
   .card{padding:14px 12px;border-radius:16px;margin-bottom:12px}
   .card h3{font-size:12px;margin-bottom:10px}
@@ -363,8 +355,25 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .mini-list li{font-size:12px}
   #flash{left:10px;right:10px;top:60px;min-width:0}
 }
-/* The Engine badge carries the verified local sync date/time.  On phones,
-   hide the duplicate topbar date so Dashboard + Engine remains fully visible. */
+/* iPads have more room than phones, but the permanent navigation still takes
+   useful report width.  Use the same off-canvas menu on touch tablets while
+   preserving the desktop sidebar for mouse/trackpad computers. */
+@media (min-width:761px) and (max-width:1366px) and (any-pointer:coarse){
+  body{display:block;min-width:0;overflow-x:hidden}
+  body.mobile-nav-open{overflow:hidden}
+  .mobile-menu-btn{display:inline-flex;flex:0 0 auto}
+  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(17,24,39,.52);z-index:190;backdrop-filter:blur(2px)}
+  body.mobile-nav-open .mobile-nav-backdrop{display:block}
+  .sidebar{width:min(360px,86vw);transform:translateX(-105%);transition:transform .22s ease;z-index:220;border-radius:0 22px 22px 0}
+  body.mobile-nav-open .sidebar{transform:translateX(0)}
+  .main{margin-left:0;width:100%;min-width:0}
+  .topbar{padding:12px 18px;gap:12px;justify-content:flex-start}
+  .topbar-title-stack{flex:1;min-width:0}
+  .topbar-actions{margin-left:0}
+  .content{padding:20px 18px 28px}
+}
+/* The Engine badge already carries the verified date/time. On a phone, hide
+   the duplicate topbar date so the entire Dashboard + Engine stamp is visible. */
 @media(max-width:600px){.topbar-date{display:none}}
 @media(max-width:420px){
   .content{padding:12px 8px 22px}
@@ -408,12 +417,16 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 #print-area.report-print .insights-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
 #print-area.report-print .insight-card{min-width:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
 #print-area.report-print svg{max-width:100%!important;height:auto!important}
-/* The Dashboard has a deliberately compact eight-tile strip.  Mobile PDF
-   rendering uses screen CSS, so preserve the same geometry outside @media print. */
+/* Mobile PDF generation renders #print-area with html2canvas, which uses screen
+   CSS rather than @media print.  The dashboard summary must therefore define
+   its fixed eight-card print layout here as well: auto-fit would place card 8
+   on a second row at the renderer's 1120px canvas width. */
 #print-area.dashboard-print .kpi-row{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;margin:0 0 5px!important}
 #print-area.dashboard-print .kpi{min-width:0!important;min-height:42px!important;padding:5px 4px!important;border-radius:6px!important;overflow:hidden!important}
 #print-area.dashboard-print .kpi-label{font-size:6.2px!important;line-height:1.12!important;letter-spacing:0!important;margin:0 0 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important}
 #print-area.dashboard-print .kpi-value{font-size:9.5px!important;line-height:1.1!important;letter-spacing:-.35px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important}
+/* html2canvas (mobile/app PDF) applies screen CSS. Keep its Control Room
+   geometry identical to the desktop @media print geometry below. */
 #print-area.dashboard-print .control-hero{display:grid!important;grid-template-columns:1.35fr .65fr!important;gap:6px!important;align-items:start!important;margin-bottom:5px!important}
 #print-area.dashboard-print .card{padding:6px 7px!important;border-radius:6px!important;box-shadow:none!important;border:1px solid #d8dee8!important}
 #print-area.dashboard-print .control-panel{padding:8px!important;border-radius:8px!important;box-shadow:none!important;overflow:visible!important}
@@ -422,6 +435,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 #print-area.dashboard-print .control-metric{padding:6px 7px!important;border-radius:6px!important;min-height:40px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;overflow:visible!important}
 #print-area.dashboard-print .control-metric span{font-size:7.5px!important;line-height:1.1!important;margin:0 0 2px!important;white-space:normal!important}
 #print-area.dashboard-print .control-metric strong{font-size:11px!important;line-height:1.15!important;margin:0!important;white-space:normal!important}
+/* Cash Position has eight cards of its own. Match its four PDF rows to the
+   four Owner Control Room rows, including on the mobile canvas renderer. */
 #print-area.dashboard-print .cash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:40px;gap:4px}
 #print-area.dashboard-print .cash-grid .kpi{min-width:0!important;min-height:0!important;height:100%!important;padding:4px 6px!important;overflow:hidden!important}
 #print-area.dashboard-print .cash-grid .kpi-label{font-size:7px!important;line-height:1.1!important;letter-spacing:0!important;margin:0 0 2px!important;white-space:normal!important;overflow-wrap:anywhere!important}
@@ -499,6 +514,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .tbl-wrap,#print-area.dashboard-print .report-table-wrap{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important}
   #print-area.dashboard-print .print-section tr{break-inside:avoid!important;page-break-inside:avoid!important}
   #print-area.dashboard-print .profit-bar{margin-bottom:5px!important;padding:7px 10px!important}
+  /* The dashboard summary is exactly eight cards. Keep all eight below Gross
+     Profit / Margin on one printed row, with every label and amount contained. */
   #print-area.dashboard-print .kpi-row{grid-template-columns:repeat(8,minmax(0,1fr))!important;gap:3px!important;margin-bottom:5px!important}
   #print-area.dashboard-print .kpi{min-width:0!important;padding:5px 4px!important;border-radius:6px!important;min-height:42px!important;overflow:hidden!important}
   #print-area.dashboard-print .kpi-label{font-size:6.2px!important;line-height:1.12!important;letter-spacing:0!important;margin:0 0 2px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important}
@@ -508,6 +525,8 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area.dashboard-print .card{padding:6px 7px!important;border-radius:6px!important;box-shadow:none!important;border:1px solid #d8dee8!important}
   #print-area.dashboard-print .control-panel{padding:8px!important;border-radius:8px!important;box-shadow:none!important;overflow:visible!important}
   #print-area.dashboard-print .control-title{display:none!important}
+  /* Owner Control Room has sixteen tiles. Keep its on-screen four-column
+     structure in the PDF so it remains exactly four rows, never a stray fifth. */
   #print-area.dashboard-print .control-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important}
   #print-area.dashboard-print .control-metric{padding:6px 7px!important;border-radius:6px!important;min-height:40px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;overflow:visible!important}
   #print-area.dashboard-print .control-metric span{font-size:7.5px!important;line-height:1.1!important;margin:0 0 2px!important;white-space:normal!important}
@@ -746,16 +765,6 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 </head>
 <body>
 
-<div class="static-login no-print" id="static-login">
-  <form class="static-login-card" id="static-login-form">
-    <div class="static-login-brand"><img src="/static/icons/icon-180.png" alt=""><div><h1>CrusherOps</h1><p>VMIPL Secure Access</p></div></div>
-    <label for="static-login-user">User ID</label><input id="static-login-user" autocomplete="username" autocapitalize="characters" value="VMIPL">
-    <label for="static-login-password">Password</label><input id="static-login-password" type="password" autocomplete="current-password" placeholder="Enter password">
-    <button type="submit">Open Dashboard</button>
-    <div class="static-login-error" id="static-login-error">Wrong user ID or password.</div>
-  </form>
-</div>
-
 <div class="mobile-nav-backdrop no-print" onclick="toggleMobileNav(false)"></div>
 
 <!-- SIDEBAR -->
@@ -785,7 +794,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <button class="mobile-menu-btn no-print" type="button" onclick="toggleMobileNav(true)" aria-label="Open menu">☰</button>
   <div class="topbar-title-stack">
     <div class="topbar-title" id="page-title">Dashboard</div>
-    <div id="engine-status" class="engine-status" role="status" title="Local ERP sync status">Engine</div>
+    <div id="engine-status" class="engine-status" role="status" title="Common engine status">Engine</div>
   </div>
   <div class="topbar-actions no-print">
     <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
@@ -986,7 +995,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     <div class="kpi blue"><div class="kpi-label">Purchased in Range</div><div class="kpi-value" id="v-range-received">—</div></div>
   </div>
   <div class="card">
-    <h3>Vendor List — Payable Balances & FIFO Due Aging <span id="vendor-range-status" class="vendor-range-status" role="status" aria-live="polite"></span></h3>
+    <h3>Vendor List — Payable Balances &amp; FIFO Due Aging <span id="vendor-range-status" class="vendor-range-status" role="status" aria-live="polite"></span></h3>
     <div class="tbl-wrap" id="vend-tbl"></div>
   </div>
   <div class="card" id="vend-ledger-card" style="display:none">
@@ -1210,6 +1219,33 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 
 <script>
 const API='';
+// Graceful re-auth: an Access-gated /data/ request whose login lapsed comes back as the
+// login PAGE (HTTP 200, text/html), so r.json() would throw "doctype is not valid json".
+// Detect that and re-run the full-page login instead of surfacing a parse error.
+(function(){
+  const _fetch=window.fetch;
+  window.fetch=function(input,init){
+    return _fetch.call(this,input,init).then(function(resp){
+      try{
+        const url=typeof input==='string'?input:(input&&input.url)||'';
+        if(url.indexOf('/data/')>=0){
+          const bounced=resp.redirected&&/cloudflareaccess\.com|cdn-cgi\/access/.test(resp.url||'');
+          const isHtml=(resp.headers.get('content-type')||'').indexOf('text/html')>=0;
+          if(bounced||isHtml){
+            if(!sessionStorage.getItem('_otomyReauth')){
+              sessionStorage.setItem('_otomyReauth','1');
+              window.location.replace('/?_reauth='+Date.now());
+              return new Promise(function(){});
+            }
+          }else if(resp.ok){
+            sessionStorage.removeItem('_otomyReauth');
+          }
+        }
+      }catch(e){}
+      return resp;
+    });
+  };
+})();
 const STATIC_SNAPSHOT_HOSTS=new Set(['otomy.ai','www.otomy.ai']);
 function isStaticSnapshotHost(){
   return STATIC_SNAPSHOT_HOSTS.has(window.location.hostname);
@@ -1226,8 +1262,30 @@ function _isVendorPaymentBankRow(row){
 function _withoutVendorPaymentRows(rows){
   return Array.isArray(rows)?rows.filter(row=>!_isVendorPaymentBankRow(row)):rows;
 }
+async function _canonicalCustomerAgingAt(asOf){
+  // The engine's customer snapshot includes complete pre-FY FIFO history.
+  // A historical report still builds its range sales/receipts from the archive,
+  // but must never re-age them from that shorter window: doing so can turn a
+  // current balance into a false 15+/30+ amount (for example HONNAPPA).
+  const url=`/api/customers/?active_only=false&as_of=${asOf}`;
+  const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'});
+  if(!r.ok)return new Map();
+  const rows=await r.json(), result=new Map();
+  (Array.isArray(rows)?rows:[]).forEach(row=>{
+    const key=String(row.name||'').trim().toUpperCase();
+    if(key)result.set(key,{
+      credit_due_15_plus:Math.round(_num(row.credit_due_15_plus)*100)/100,
+      credit_due_30_plus:Math.round(_num(row.credit_due_30_plus)*100)/100,
+      credit_due_45_plus:Math.round(_num(row.credit_due_45_plus)*100)/100,
+    });
+  });
+  return result;
+}
 function fiveMinuteCacheBust(){
-  return Math.floor(Date.now()/300000);
+  // R2 is the source of truth and can change between two requests while the page stays open.
+  // A unique query key prevents an intermediary or an old browser cache from serving the prior
+  // snapshot even if it ignores no-store on a response.
+  return Date.now();
 }
 function _archiveAllowedForRange(from,to){
   if(!to)return false;
@@ -1240,30 +1298,40 @@ function _archiveAllowedForRange(from,to){
 async function snapshotFetch(url){
   const cacheBust=fiveMinuteCacheBust();
   const u=new URL(url, window.location.origin);
-  const archived=await archiveFetch(url);
-  if(archived!==null)return archived;
+  const snapshotPreferredPath=new Set([
+    '/api/dashboard/control',
+    '/api/sync/erp/bank',
+    '/api/sync/erp/cash',
+    '/api/sync/erp/cashbook',
+    '/api/machines/odometer',
+    '/api/machines/fuel-issued',
+    '/api/machines/fuel-received',
+    '/api/machines/fuel-balance',
+    '/api/machines/summary',
+    '/api/customers/',
+    '/api/customers/outstanding',
+    '/api/vendors/',
+    '/api/vendors/payables',
+    '/api/vendors/payments/',
+  ]).has(u.pathname);
+  // The engine publishes canonical snapshots for every dashboard and book
+  // preset.  Always use one when present: completed-range archive arithmetic
+  // is only a fallback for a custom range with no published snapshot.
+  // Otherwise a historical dashboard can calculate a different cash/bank
+  // balance from the same rows than its Ledger/Cashbook snapshot.
+  const preferSnapshotFirst=snapshotPreferredPath;
+  if(!preferSnapshotFirst){
+    const archived=await archiveFetch(url);
+    if(archived!==null)return archived;
+  }
   const r=await fetch(`/data/snapshot/api/${snapshotKey(url)}.json?_=${cacheBust}`, {cache:'no-store'});
   if(!r.ok){
+    const archived=preferSnapshotFirst?await archiveFetch(url):null;
+    if(archived!==null)return archived;
     throw new Error('Snapshot missing for '+url);
   }
   const data=await r.json();
   if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(data);
-  if(u.pathname==='/api/dashboard/control' && data && data.summary){
-    const to=u.searchParams.get('to_date');
-    if(to && _archiveAllowedForRange(null,to)){
-      const operating=await _archiveOperatingBalances(to);
-      data.summary.bank_balance=operating.bank_balance;
-      data.summary.cash_balance_office=operating.cash_balance_office;
-      data.summary.operating_balance_from=operating.operating_balance_from;
-      const balance=await _archiveBalanceForDate(to);
-      if(balance){
-        data.summary.receivables=Math.round(_num(balance.receivables)*100)/100;
-        data.summary.payables=Math.round(_num(balance.payables)*100)/100;
-        data.top_receivables=balance.top_receivables||balance.receivables_rows||[];
-        data.top_payables=balance.top_payables||balance.payables_rows||[];
-      }
-    }
-  }
   return data;
 }
 const _archiveCache={};
@@ -1293,6 +1361,55 @@ async function _loadArchiveRange(from,to){
 function _rowsInRange(months,section,from,to){
   return months.flatMap(m=>m[section]||[]).filter(r=>r.date>=from&&r.date<=to);
 }
+// One client-side source for every historical range. Dashboard tiles, Sales,
+// Expenses, Operations, Ledger View, and Cash/Bank books all load the same
+// monthly payload through this engine before deriving their page-specific view.
+const OtomyDataEngine={
+  _ranges:new Map(),
+  async range(from,to){
+    const key=`${from}|${to}`;
+    let pending=this._ranges.get(key);
+    if(!pending){
+      pending=_loadArchiveRange(from,to);
+      this._ranges.set(key,pending);
+    }
+    return (await pending)||[];
+  },
+  clear(){this._ranges.clear();},
+  rows(months,section,from,to){return _rowsInRange(months,section,from,to);},
+  summarize(months,from,to){
+    const sales=this.rows(months,'sales',from,to), expenses=this.rows(months,'expenses',from,to),
+      receipts=this.rows(months,'receipts',from,to), boulders=this.rows(months,'boulders',from,to),
+      labour=this.rows(months,'labour',from,to), parts=this.rows(months,'parts',from,to),
+      machines=this.rows(months,'machines',from,to);
+    const sum=(rows,field)=>rows.reduce((total,row)=>total+_num(row&&row[field]),0);
+    return {
+      sales,expenses,receipts,boulders,labour,parts,machines,
+      sales_total:sales.reduce((total,row)=>total+_saleTotal(row),0),
+      sales_qty_mt:sum(sales,'qty_mt'),
+      boulder_input_mt:sum(boulders,'total_tonnes'),
+      boulder_trips:sum(boulders,'trips'),
+      expenses_total:sum(expenses,'amount'),
+      labour_total:sum(labour,'amount'),
+      parts_total:sum(parts,'total_amount'),
+      receipts_total:receipts.reduce((total,row)=>total+_receiptPaymentAmount(row),0),
+      machine_hours:sum(machines,'running_hours'),
+      machine_fuel_liters:sum(machines,'fuel_liters'),
+      cash_collected:sales.reduce((total,row)=>total+_saleSpotAmount(row),0),
+    };
+  },
+  day(months,day){
+    return {
+      sales:this.rows(months,'sales',day,day),
+      expenses:this.rows(months,'expenses',day,day),
+      receipts:this.rows(months,'receipts',day,day),
+      boulders:this.rows(months,'boulders',day,day),
+      labour:this.rows(months,'labour',day,day),
+      parts:this.rows(months,'parts',day,day),
+      machines:this.rows(months,'machines',day,day),
+    };
+  },
+};
 function _num(v){const n=Number(v||0);return Number.isFinite(n)?n:0;}
 function _saleTotal(r){return _num(r&&(r.amount!=null?r.amount:r.debit))+_num(r&&r.transport_charge);}
 function _payChannel(mode){
@@ -1314,6 +1431,10 @@ function _isDirectorPayment(...values){
   let when=null;
   if(values.length&&values[values.length-1]&&typeof values[values.length-1]==='object'){when=values.pop().when;}
   const text=values.map(v=>String(v||'')).join(' ').toUpperCase();
+  // Owner-confirmed personal accounts for Prashant's director share. Keep this
+  // list exact so an ordinary Sidd/N J supplier is never misclassified.
+  const prashantDirectorSharePayees=['N J SHUSHRUTHA','NJ SHUSHRUTHA','SRI SIDDA'];
+  if(prashantDirectorSharePayees.some(name=>text.includes(name)))return true;
   if(String(values[0]||'').toUpperCase().includes('DIRECTOR'))return false;
   if(!(text.includes('PRASHANT')||text.includes('KUMAR')))return false;
   // Before June 2026: only genuine drawings ("... SIR SHARE") are director payments;
@@ -1334,31 +1455,132 @@ function _receiptChannels(row){
   if(cash||bank)return {cash,bank};
   return _payChannel(row&&row.mode)==='cash'?{cash:payment,bank:0}:{cash:0,bank:payment};
 }
+// Localhost keys spot sales and customer receipts by ERP customer id. Older archive rows may
+// not have that id, so use the normalized customer name only as the compatibility fallback.
+function _partyKey(row){
+  const id=row&&(row.customer_id!=null?row.customer_id:row.erp_customer_id);
+  if(id!=null&&String(id).trim()!=='')return String(id).trim().toUpperCase();
+  return String(row&&(row.customer_name||row.customer||row.name)||'').trim().toUpperCase();
+}
+let _balCfgCache, _bankStmtCache, _dailyBalanceCache;
+async function _dailyOperatingBalance(toDate){
+  const to=String(toDate||today()).slice(0,10),now=today();
+  const previous=localISO(new Date(new Date(`${now}T00:00:00`).getTime()-86400000));
+  // The sync writes this small, explicit chain after calculating the live overlay:
+  // yesterday closing == today's opening. Use it only for those two dates; all historical
+  // dates still use the anchor + movement engine below.
+  if(to!==now&&to!==previous)return null;
+  if(_dailyBalanceCache===undefined){
+    _dailyBalanceCache=fetch(`/data/balance_daily.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'})
+      .then(r=>r.ok?r.json():null).catch(()=>null);
+  }
+  const payload=await _dailyBalanceCache;
+  let row=null;
+  if(payload&&payload.as_of===now&&to===now)row=payload.today_close;
+  if(!row&&payload&&payload.previous_close&&String(payload.previous_close.as_of).slice(0,10)===to)row=payload.previous_close;
+  if(!row&&payload&&payload.today_close&&String(payload.today_close.as_of).slice(0,10)===to)row=payload.today_close;
+  if(!row||row.bank_balance==null||row.cash_balance_office==null)return null;
+  return {
+    bank_balance:Math.round(_num(row.bank_balance)*100)/100,
+    cash_balance_office:Math.round(_num(row.cash_balance_office)*100)/100,
+    operating_balance_from:String(row.as_of||to).slice(0,10),
+  };
+}
+async function _balanceConfig(){
+  if(_balCfgCache!==undefined)return _balCfgCache;
+  _balCfgCache=await fetch(`/data/balance_anchors.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  return _balCfgCache;
+}
+async function _bankStatement(file){
+  if(!file)return null;
+  if(_bankStmtCache!==undefined)return _bankStmtCache;
+  _bankStmtCache=await fetch(`/data/${file}?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+  return _bankStmtCache;
+}
+function _modeOverride(corrs,e){
+  if(!corrs)return null;
+  const amt=_num(e.amount);
+  const hay=((e.category||'')+' '+(e.description||'')+' '+(e.notes||'')).toUpperCase();
+  const dt=String(e.date||'');
+  for(const c of corrs){
+    if(Math.abs(amt-_num(c.amount))<1
+      && (!c.contains||hay.includes(String(c.contains).toUpperCase()))
+      && (!c.date_from||dt>=c.date_from)
+      && (!c.date_to||dt<=c.date_to)) return c.force;
+  }
+  return null;
+}
 async function _archiveOperatingBalances(toDate=today()){
-  const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
-  const opening=(manifest&&manifest.operating_balance_opening)||{};
-  const asOf=String(opening.as_of||'').slice(0,10);
-  const from=asOf?localISO(new Date(new Date(`${asOf}T00:00:00`).getTime()+86400000)):'2025-02-14';
   const to=toDate||today();
-  let bank=_num(opening.bank_balance), cash=_num(opening.cash_balance_office);
-  if(to<from)return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
-  const months=await _loadArchiveRange(from,to);
-  const sales=_rowsInRange(months,'sales',from,to);
-  const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to);
-  sales.forEach(s=>{
-    const ch=_saleChannels(s);
-    cash+=ch.cash;
-    bank+=ch.upi;
-  });
-  receipts.forEach(r=>{
-    const amount=_receiptPaymentAmount(r);
-    if(_payChannel(r.mode)==='cash')cash+=amount;else bank+=amount;
-  });
-  expenses.forEach(e=>{
-    if(_payChannel(e.payment_mode)==='cash')cash-=_num(e.amount);else bank-=_num(e.amount);
-  });
-  return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:from};
+  const daily=await _dailyOperatingBalance(to);
+  if(daily)return daily;
+  const cfg=await _balanceConfig();
+  // Anchor each book to its own latest verified truth point on/before `to`. Bank and cash do not
+  // necessarily share a cutoff: bank follows the ICICI statement, while cash follows the latest
+  // physical count. This is the same opening/cutoff rule used by localhost.
+  let anchorDate, bank, cash, cashCutoff, bankCutoff;
+  const anchors=((cfg&&cfg.anchors)||[]).filter(a=>String(a.date)<=to).sort((a,b)=>String(a.date)<String(b.date)?-1:1);
+  if(anchors.length){
+    const a=anchors[anchors.length-1];
+    anchorDate=String(a.date); bank=_num(a.bank); cash=_num(a.cash);
+    cashCutoff=anchorDate; bankCutoff=anchorDate;
+  }else{
+    const manifest=await fetch(`/data/archive/manifest.json?_=${fiveMinuteCacheBust()}`,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
+    const opening=(manifest&&manifest.operating_balance_opening)||{};
+    anchorDate=String(opening.as_of||'').slice(0,10)||'2025-02-13';
+    bank=_num(opening.bank_balance); cash=_num(opening.cash_balance_office);
+    cashCutoff=anchorDate; bankCutoff=anchorDate;
+  }
+  const corrs=(cfg&&cfg.mode_corrections)||null;
+  // BANK: use the actual ICICI statement running balance (exact). After statement end, add bank movements.
+  const stmt=await _bankStatement(cfg&&cfg.bank_statement_file);
+  if(stmt&&Array.isArray(stmt.rows)&&stmt.rows.length){
+    const le=stmt.rows.filter(r=>String(r.date)<=to);
+    if(le.length){
+      bank=_num(le[le.length-1].balance);
+      // Use the last statement row actually included in this as-of date. This keeps custom
+      // ranges before the statement end from silently skipping their later movements.
+      bankCutoff=String(le[le.length-1].date||stmt.to).slice(0,10);
+    }
+  }
+  const nextDay=d=>localISO(new Date(new Date(`${d}T00:00:00`).getTime()+86400000));
+  const from=[nextDay(cashCutoff||anchorDate),nextDay(bankCutoff||anchorDate)].sort()[0];
+  if(to>=from){
+    const months=await OtomyDataEngine.range(from,to);
+    const inCash=dt=>cashCutoff===null||String(dt)>cashCutoff;
+    const inBank=dt=>bankCutoff===null||String(dt)>bankCutoff;  // skip bank moves already inside the statement
+    const saleRows=_rowsInRange(months,'sales',from,to);
+    // Same-day spot receipts are captured by the sale channels below; subtract the same-day,
+    // same-channel overlap from ledger repayments so spot payments aren't double-counted.
+    const spotCash={}, spotBank={}, rkey=(row)=>`${_partyKey(row)}|${row.date}`;
+    saleRows.forEach(s=>{
+      const ch=_saleChannels(s), k=rkey(s);
+      if(ch.cash&&inCash(s.date))spotCash[k]=(spotCash[k]||0)+ch.cash;
+      if(ch.upi&&inBank(s.date))spotBank[k]=(spotBank[k]||0)+ch.upi;
+    });
+    saleRows.forEach(s=>{
+      const ch=_saleChannels(s);
+      if(inCash(s.date))cash+=ch.cash;
+      if(ch.upi&&inBank(s.date))bank+=ch.upi;
+    });
+    _rowsInRange(months,'receipts',from,to).forEach(r=>{
+      const amount=_receiptPaymentAmount(r), k=rkey(r);
+      if(_payChannel(r.mode)==='cash'&&inCash(r.date)){
+        const ov=Math.min(amount,spotCash[k]||0); spotCash[k]=(spotCash[k]||0)-ov; cash+=amount-ov;
+      }else if(inBank(r.date)){
+        const ov=Math.min(amount,spotBank[k]||0); spotBank[k]=(spotBank[k]||0)-ov; bank+=amount-ov;
+      }
+    });
+    _rowsInRange(months,'expenses',from,to).forEach(e=>{
+      const ch=_modeOverride(corrs,e)||_payChannel(e.payment_mode);
+      // A company-office cash payment is a real cash outflow, including a
+      // director-share drawing. Classification changes P&L only.
+      if(ch==='cash'){
+        if(inCash(e.date))cash-=_num(e.amount);
+      }else if(inBank(e.date))bank-=_num(e.amount);
+    });
+  }
+  return {bank_balance:Math.round(bank*100)/100,cash_balance_office:Math.round(cash*100)/100,operating_balance_from:anchorDate};
 }
 function _archiveCustomerSales(sales){
   const map=new Map();
@@ -1366,9 +1588,9 @@ function _archiveCustomerSales(sales){
     const customer=(s.customer_name||'Cash Sale').trim()||'Cash Sale';
     const material=(s.material||'Mixed').trim()||'Mixed';
     const key=`${customer}||${material}`;
-    if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
+    if(!map.has(key))map.set(key,{customer_name:customer,material,ticket_count:0,ticket_nos:[],tickets:[],qty_mt:0,amount:0,mdp_ton:0,bank_received:0,cash_received:0,paid_against_sale:0,credit_sale_amount:0});
     const g=map.get(key), amount=_saleTotal(s), mode=s.payment_mode||'Credit';
-    g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.ticket_nos.push(s.ticket_no||'—');
+    g.ticket_count+=1;g.qty_mt+=_num(s.qty_mt);g.amount+=amount;g.mdp_ton+=_num(s.mdp_ton);g.ticket_nos.push(s.ticket_no||'—');
     const ch=_saleChannels(s);
     g.credit_sale_amount+=ch.credit;
     g.cash_received+=ch.cash;
@@ -1380,6 +1602,7 @@ function _archiveCustomerSales(sales){
     ...g,
     qty_mt:Math.round(g.qty_mt*100)/100,
     amount:Math.round(g.amount*100)/100,
+    mdp_ton:Math.round(g.mdp_ton*1000)/1000,
     bank_received:Math.round(g.bank_received*100)/100,
     cash_received:Math.round(g.cash_received*100)/100,
     paid_against_sale:Math.round(g.paid_against_sale*100)/100,
@@ -1407,8 +1630,43 @@ function _formatArchiveMaterials(materials){
   if(rows.length>4)parts.push(`+${rows.length-4} more`);
   return parts.join(', ');
 }
-function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={}){
+function _archiveCreditDue15Plus(balance,sales=[],receipts=[],asOf=today(),days=15){
+  const asOfDate=new Date(`${asOf}T00:00:00`),cutoffDate=new Date(asOfDate);
+  cutoffDate.setDate(cutoffDate.getDate()-days);
+  const cutoff=localISO(cutoffDate),keyOf=v=>String(v||'').trim().toUpperCase();
+  const invoicesByName={},receiptsByName={};
+  (sales||[]).forEach((sale,index)=>{
+    const name=keyOf(sale.customer_name),d=String(sale.date||'').slice(0,10),amount=Math.round(Math.max(_saleCreditAmount(sale),0)*100)/100;
+    if(name&&d&&d<=asOf&&amount>0)(invoicesByName[name]||(invoicesByName[name]=[])).push({date:d,unpaid:amount,index});
+  });
+  (receipts||[]).forEach((receipt,index)=>{
+    const name=keyOf(receipt.customer_name),d=String(receipt.date||'').slice(0,10),amount=Math.round(Math.max(_receiptPaymentAmount(receipt),0)*100)/100;
+    if(name&&d&&d<=asOf&&amount>0)(receiptsByName[name]||(receiptsByName[name]=[])).push({date:d,amount,index});
+  });
+  const targetByName={};
+  (balance?.receivables_rows||balance?.top_receivables||[]).forEach(row=>{targetByName[keyOf(row.name)]=Math.round(Math.max(_num(row.balance),0)*100)/100;});
+  const result={};
+  Object.keys(targetByName).forEach(name=>{
+    const invoices=(invoicesByName[name]||[]).sort((a,b)=>`${a.date}|${a.index}`.localeCompare(`${b.date}|${b.index}`));
+    const customerReceipts=(receiptsByName[name]||[]).sort((a,b)=>`${a.date}|${a.index}`.localeCompare(`${b.date}|${b.index}`));
+    customerReceipts.forEach(receipt=>{
+      let remaining=receipt.amount;
+      invoices.forEach(invoice=>{if(remaining<=0)return;const applied=Math.min(remaining,invoice.unpaid);invoice.unpaid=Math.round((invoice.unpaid-applied)*100)/100;remaining=Math.round((remaining-applied)*100)/100;});
+    });
+    const invoiceUnpaid=Math.round(invoices.reduce((sum,invoice)=>sum+invoice.unpaid,0)*100)/100,target=targetByName[name];
+    let olderUnmatched=0;
+    if(target<invoiceUnpaid){let reduction=Math.round((invoiceUnpaid-target)*100)/100;invoices.forEach(invoice=>{if(reduction<=0)return;const amount=Math.min(reduction,invoice.unpaid);invoice.unpaid=Math.round((invoice.unpaid-amount)*100)/100;reduction=Math.round((reduction-amount)*100)/100;});}
+    else olderUnmatched=Math.round((target-invoiceUnpaid)*100)/100;
+    const overdue=Math.round((invoices.filter(invoice=>invoice.date<=cutoff).reduce((sum,invoice)=>sum+invoice.unpaid,0)+olderUnmatched)*100)/100;
+    result[name]=Math.min(Math.max(overdue,0),target);
+  });
+  return result;
+}
+function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSales=sales,agingReceipts=receipts,asOf=today()){
   const rows=(balance?.receivables_rows||balance?.top_receivables||[]);
+  const due15=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,16);
+  const due30=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,31);
+  const due45=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,45);
   const byName=new Map();
   function ensure(name){
     const key=(name||'Customer').trim()||'Customer';
@@ -1451,6 +1709,9 @@ function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={}){
     range_total_sales:Math.round(row.range_total_sales*100)/100,
     range_credit_sales:Math.round(row.range_credit_sales*100)/100,
     range_payment_received:Math.round(row.range_payment_received*100)/100,
+    credit_due_15_plus:Math.round(_num(due15[String(row.name||'').trim().toUpperCase()])*100)/100,
+    credit_due_30_plus:Math.round(_num(due30[String(row.name||'').trim().toUpperCase()])*100)/100,
+    credit_due_45_plus:Math.round(_num(due45[String(row.name||'').trim().toUpperCase()])*100)/100,
     range_latest_sale_date:row.range_latest_sale_date||null,
     latest_sale_date:row.latest_sale_date||null,
   })).sort((a,b)=>String(b.range_latest_sale_date||b.latest_sale_date||'').localeCompare(String(a.range_latest_sale_date||a.latest_sale_date||'')) || _num(b.total_outstanding)-_num(a.total_outstanding));
@@ -1487,21 +1748,16 @@ function _archiveVendorRows(balance,idByName={}){
   }));
 }
 async function _archiveControl(from,to){
-  const months=await _loadArchiveRange(from,to);
+  const months=await OtomyDataEngine.range(from,to);
   if(!months.length)return null;
-  const sales=_rowsInRange(months,'sales',from,to);
-  const expenses=_rowsInRange(months,'expenses',from,to);
-  const receipts=_rowsInRange(months,'receipts',from,to);
-  const boulders=_rowsInRange(months,'boulders',from,to);
-  const labour=_rowsInRange(months,'labour',from,to);
-  const parts=_rowsInRange(months,'parts',from,to);
-  const machines=_rowsInRange(months,'machines',from,to);
+  const metrics=OtomyDataEngine.summarize(months,from,to);
+  const {sales,expenses,receipts,boulders,labour,parts,machines}=metrics;
   const balances=_archiveBalanceAsOf(months,to);
-  const totalSales=sales.reduce((s,r)=>s+_saleTotal(r),0);
-  const totalQty=sales.reduce((s,r)=>s+_num(r.qty_mt),0);
-  const boulderMt=boulders.reduce((s,r)=>s+_num(r.total_tonnes),0);
-  const boulderTrips=boulders.reduce((s,r)=>s+_num(r.trips),0);
-  const cashCollected=sales.reduce((s,r)=>s+_saleSpotAmount(r),0);
+  const totalSales=metrics.sales_total;
+  const totalQty=metrics.sales_qty_mt;
+  const boulderMt=metrics.boulder_input_mt;
+  const boulderTrips=metrics.boulder_trips;
+  const cashCollected=metrics.cash_collected;
   const expAdj=expenses.filter(e=>!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes,{when:e.date})).reduce((s,r)=>s+_num(r.amount),0);
   const labourAdj=labour.filter(l=>!_isDirectorPayment(l.worker_name,l.worker_type,l.notes,{when:l.date})).reduce((s,r)=>s+_num(r.amount),0);
   const partsAdj=parts.filter(p=>!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes,{when:p.date})).reduce((s,r)=>s+_num(r.total_amount),0);
@@ -1520,10 +1776,15 @@ async function _archiveControl(from,to){
   if(labour.length)byExpense.Labour=(byExpense.Labour||0)+labour.reduce((s,r)=>s+_num(r.amount),0);
   if(parts.length)byExpense.Parts=(byExpense.Parts||0)+parts.reduce((s,r)=>s+_num(r.total_amount),0);
   const customerSales=_archiveCustomerSales(sales);
+  const creditLiquidityAvailable=from>='2026-06-01'&&totalQty>0;
+  const creditSaleTotal=Math.round(customerSales.reduce((s,r)=>s+_num(r.credit_sale_amount),0)*100)/100;
+  const creditRecoveryTotal=Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100;
+  const netCreditChange=Math.round((creditSaleTotal-creditRecoveryTotal)*100)/100;
+  const cashConvertedProfit=totalSales-expensesAdj-netCreditChange;
   const expenseRows=[
-    ...expenses.map(e=>({date:e.date,type:'Expense',category:e.category||'Other',description:e.description||e.category||'Expense',party:'',payment_mode:e.payment_mode||'',amount:_num(e.amount)})),
-    ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount)})),
-    ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount)})),
+    ...expenses.map(e=>({date:e.date,type:'Expense',category:e.category||'Other',description:e.description||e.category||'Expense',party:'',payment_mode:e.payment_mode||'',amount:_num(e.amount),is_operating_expense:!_isDirectorPayment(e.category,e.description,e.payment_mode,e.notes,{when:e.date})})),
+    ...labour.map(l=>({date:l.date,type:'Labour',category:l.worker_type||'Labour',description:l.worker_name||'Labour entry',party:l.worker_name||'',payment_mode:l.paid?'Paid':'Unpaid',amount:_num(l.amount),is_operating_expense:!_isDirectorPayment(l.worker_name,l.worker_type,l.notes,{when:l.date})})),
+    ...parts.map(p=>({date:p.date,type:'Part',category:p.machine_name||'Parts',description:p.part_name||'Part / Repair',party:p.supplier||'',payment_mode:'',amount:_num(p.total_amount),is_operating_expense:!_isDirectorPayment(p.machine_name,p.part_name,p.supplier,p.notes,{when:p.date})})),
   ].sort((a,b)=>`${b.date}|${b.amount}`.localeCompare(`${a.date}|${a.amount}`));
   const operating=await _archiveOperatingBalances(to);
   const days=Math.floor((new Date(`${to}T00:00:00`)-new Date(`${from}T00:00:00`))/86400000)+1;
@@ -1537,7 +1798,7 @@ async function _archiveControl(from,to){
   }
   return {
     period:{from,to,days},
-    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:Math.round(repayments.reduce((s,r)=>s+_num(r.payment_received),0)*100)/100,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
+    summary:{sales:Math.round(totalSales*100)/100,cash_collected:Math.round(cashCollected*100)/100,credit_sales:Math.round((totalSales-cashCollected)*100)/100,expenses:Math.round(expensesAdj*100)/100,expenses_before_director_adjustment:Math.round(expensesRaw*100)/100,profit:Math.round((totalSales-expensesAdj)*100)/100,margin_pct:totalSales?Math.round((totalSales-expensesAdj)/totalSales*1000)/10:0,sales_qty_mt:Math.round(totalQty*100)/100,avg_rate_per_mt:totalQty?Math.round(totalSales/totalQty*100)/100:0,boulder_input_mt:Math.round(boulderMt*100)/100,boulder_trips:Math.round(boulderTrips*100)/100,recovery_pct:boulderMt?Math.round(totalQty/boulderMt*1000)/10:0,machine_hours:Math.round(machines.reduce((s,r)=>s+_num(r.running_hours),0)*100)/100,machine_fuel_liters:Math.round(machines.reduce((s,r)=>s+_num(r.fuel_liters),0)*100)/100,fuel_per_mt:0,bank_balance:operating.bank_balance,cash_balance_office:operating.cash_balance_office,operating_balance_from:operating.operating_balance_from,credit_payment_received:creditRecoveryTotal,credit_liquidity_available:creditLiquidityAvailable,credit_sale_for_liquidity:creditSaleTotal,credit_recovery_for_liquidity:creditRecoveryTotal,net_credit_change_for_liquidity:netCreditChange,credit_sale_per_tonne:creditLiquidityAvailable?Math.round(creditSaleTotal/totalQty*100)/100:null,credit_recovery_per_tonne:creditLiquidityAvailable?Math.round(creditRecoveryTotal/totalQty*100)/100:null,credit_locked_per_tonne:creditLiquidityAvailable?Math.round(netCreditChange/totalQty*100)/100:null,cash_converted_profit_per_tonne:creditLiquidityAvailable?Math.round(cashConvertedProfit/totalQty*100)/100:null,selected_period_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,selected_period_profit_director_adjusted:Math.round((totalSales-expensesAdj)*100)/100,selected_period_director_adjusted_profit_per_tonne:totalQty?Math.round((totalSales-expensesAdj)/totalQty*100)/100:0,receivables:Math.round(_num(balances.receivables)*100)/100,payables:Math.round(_num(balances.payables)*100)/100},
     mix:{materials:Object.values(byMaterial).sort((a,b)=>b.amount-a.amount),expenses:Object.entries(byExpense).map(([category,amount])=>({category,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount)},
     input:{source:'Archive',materials:boulders.map(r=>({material:r.source||'Boulder Input',trips:_num(r.trips),tonnes:_num(r.total_tonnes)})),suppliers:[]},
     customer_sales:customerSales,
@@ -1548,13 +1809,37 @@ async function _archiveControl(from,to){
 }
 async function _archiveLedger(year,month){
   const ym=`${year}-${String(month).padStart(2,'0')}`;
-  const payload=await _loadArchiveMonth(ym);
-  if(!payload)return null;
-  const sales=payload.sales||[], expenses=payload.expenses||[], receipts=payload.receipts||[], labour=payload.labour||[], parts=payload.parts||[], boulders=payload.boulders||[];
   const days=new Date(year,month,0).getDate(), rows=[];
-  for(let d=1;d<=days;d++){
+  const lastDay=(ym===today().substring(0,7))?Number(today().substring(8,10)):days;  // current month: stop at today
+  const rangeEnd=`${ym}-${String(lastDay).padStart(2,'0')}`;
+  const months=await OtomyDataEngine.range(`${ym}-01`,rangeEnd);
+  if(!months.length)return null;
+  const storedRows=months.flatMap(monthPayload=>
+    (monthPayload.ledger||[]).filter(row=>row.date>=`${ym}-01`&&row.date<=rangeEnd)
+  );
+  if(storedRows.length){
+    const storedTotals=months.find(monthPayload=>Array.isArray(monthPayload.ledger)&&monthPayload.ledger.length)?.ledger_totals||{};
+    return {year,month,rows:storedRows,totals:{
+      sale_trips:storedRows.reduce((s,r)=>s+_num(r.sale_trips),0),
+      sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.sale_amount),0)*100)/100,
+      spot_sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_amount),0)*100)/100,
+      spot_sale_cash:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_cash),0)*100)/100,
+      spot_sale_bank:Math.round(storedRows.reduce((s,r)=>s+_num(r.spot_sale_bank),0)*100)/100,
+      qty_mt:Math.round(storedRows.reduce((s,r)=>s+_num(r.qty_mt),0)*100)/100,
+      credit_sale_amount:Math.round(storedRows.reduce((s,r)=>s+_num(r.credit_sale_amount),0)*100)/100,
+      credit_repayment:Math.round(storedRows.reduce((s,r)=>s+_num(r.credit_repayment),0)*100)/100,
+      expenses:Math.round(storedRows.reduce((s,r)=>s+_num(r.expenses),0)*100)/100,
+      boulder_input_mt:Math.round(storedRows.reduce((s,r)=>s+_num(r.boulder_input_mt),0)*100)/100,
+      boulder_trips:Math.round(storedRows.reduce((s,r)=>s+_num(r.boulder_trips),0)*100)/100,
+      cash_balance_office:storedRows.length?storedRows[storedRows.length-1].cash_balance_office:0,
+      bank_balance:storedRows.length?storedRows[storedRows.length-1].bank_balance:0,
+      ...storedTotals,
+    }};
+  }
+  for(let d=1;d<=lastDay;d++){
     const day=`${ym}-${String(d).padStart(2,'0')}`;
-    const ds=sales.filter(r=>r.date===day), de=expenses.filter(r=>r.date===day), dr=receipts.filter(r=>r.date===day), dl=labour.filter(r=>r.date===day), dp=parts.filter(r=>r.date===day), db=boulders.filter(r=>r.date===day);
+    const dayRows=OtomyDataEngine.day(months,day);
+    const ds=dayRows.sales, de=dayRows.expenses, dr=dayRows.receipts, dl=dayRows.labour, dp=dayRows.parts, db=dayRows.boulders;
     const saleAmount=ds.reduce((s,r)=>s+_saleTotal(r),0), spot=ds.reduce((s,r)=>s+_saleSpotAmount(r),0), credit=ds.reduce((s,r)=>s+_saleCreditAmount(r),0), spotCash=ds.reduce((s,r)=>s+_saleChannels(r).cash,0), spotBank=ds.reduce((s,r)=>s+_saleChannels(r).upi,0), qty=ds.reduce((s,r)=>s+_num(r.qty_mt),0), repaymentCash=dr.reduce((s,r)=>s+_receiptChannels(r).cash,0), repaymentBank=dr.reduce((s,r)=>s+_receiptChannels(r).bank,0);
     const operating=await _archiveOperatingBalances(day);
     rows.push({date:day,sale_trips:ds.length,sale_amount:Math.round(saleAmount*100)/100,spot_sale_amount:Math.round(spot*100)/100,spot_sale_cash:Math.round(spotCash*100)/100,spot_sale_bank:Math.round(spotBank*100)/100,qty_mt:Math.round(qty*100)/100,credit_sale_amount:Math.round(credit*100)/100,credit_repayment:Math.round((repaymentCash+repaymentBank)*100)/100,credit_repayment_cash:Math.round(repaymentCash*100)/100,credit_repayment_bank:Math.round(repaymentBank*100)/100,expenses:Math.round((de.reduce((s,r)=>s+_num(r.amount),0)+dl.reduce((s,r)=>s+_num(r.amount),0)+dp.reduce((s,r)=>s+_num(r.total_amount),0))*100)/100,cash_balance_office:operating.cash_balance_office,bank_balance:operating.bank_balance,boulder_input_mt:Math.round(db.reduce((s,r)=>s+_num(r.total_tonnes),0)*100)/100,boulder_trips:Math.round(db.reduce((s,r)=>s+_num(r.trips),0)*100)/100});
@@ -1571,25 +1856,39 @@ async function archiveFetch(url){
   if(asOf && _archiveAllowedForRange(null,asOf) && (u.pathname==='/api/customers/' || u.pathname==='/api/customers/outstanding')){
     const balance=await _archiveBalanceForDate(asOf);
     if(balance){
-      const months=from&&to?await _loadArchiveRange(from,to):[];
-      return _archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName());
+      const months=from&&to?await OtomyDataEngine.range(from,to):[];
+      const asOfYear=Number(String(asOf).slice(0,4)),asOfMonth=Number(String(asOf).slice(5,7));
+      const fy=`${asOfMonth>=4?asOfYear:asOfYear-1}-04-01`;
+      const agingMonths=await OtomyDataEngine.range(fy,asOf);
+      const rangeRows=_archiveCustomerRows(balance, _rowsInRange(months,'sales',from||asOf,to||asOf), _rowsInRange(months,'receipts',from||asOf,to||asOf), await _customerIdByName(), _rowsInRange(agingMonths,'sales',fy,asOf), _rowsInRange(agingMonths,'receipts',fy,asOf), asOf);
+      // For the current as-of date, retain range metrics but take aging only
+      // from the common engine snapshot, which has the required pre-FY history.
+      if(String(asOf)===today()){
+        const canonicalAging=await _canonicalCustomerAgingAt(asOf);
+        return rangeRows.map(row=>{
+          const aging=canonicalAging.get(String(row.name||'').trim().toUpperCase());
+          return aging?{...row,...aging}:row;
+        });
+      }
+      return rangeRows;
     }
   }
   if(from&&to){
     if(!_archiveAllowedForRange(from,to))return null;
-    const months=await _loadArchiveRange(from,to);
+    const months=await OtomyDataEngine.range(from,to);
     if(!months.length)return null;
     if(u.pathname==='/api/sales/')return _rowsInRange(months,'sales',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/expenses/')return _rowsInRange(months,'expenses',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/boulders/')return _rowsInRange(months,'boulders',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/machines/')return _rowsInRange(months,'machines',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
+    if(u.pathname==='/api/vendors/payments/')return _rowsInRange(months,'vendor_payments',from,to).sort((a,b)=>`${b.date}|${b.id||b.reference||''}`.localeCompare(`${a.date}|${a.id||a.reference||''}`));
     if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(_rowsInRange(months,'bank',from,to)).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/sync/erp/cash')return _rowsInRange(months,'cash',from,to).sort((a,b)=>`${b.date}|${b.id}`.localeCompare(`${a.date}|${a.id}`));
     if(u.pathname==='/api/dashboard/control')return _archiveControl(from,to);
   }
   if(u.pathname==='/api/dashboard/ledger-view'){
     const year=Number(u.searchParams.get('year')), month=Number(u.searchParams.get('month'));
-    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;
+    if(`${year}-${String(month).padStart(2,'0')}`>=today().substring(0,7))return null;  // current+future month -> snapshot (has today + correct balances); past -> archive
     if(year&&month)return _archiveLedger(year,month);
   }
   return null;
@@ -1637,7 +1936,7 @@ function applyTableRangeMode(key,wrapId){
   const el=document.getElementById(wrapId);
   if(!el)return;
   const days=_rangeDaysForKey(key);
-  el.classList.toggle('no-side-scroll',key!=='sales'&&days!==null&&days<=2);
+  el.classList.toggle('no-side-scroll',!['sales','erpbank','erpcash'].includes(key)&&days!==null&&days<=2);
 }
 
 function pagerHTML(key,total){
@@ -1655,58 +1954,17 @@ let _dashLoadSeq=0;
 let _installPromptEvent=null;
 let _dashPrefetched=false;
 let _canWrite=true;
-const STATIC_LOGIN_USER='VMIPL';
-const STATIC_LOGIN_PASSWORD_SHA256='0d257ffbe1cb52846a13a70b63a524af58da69302064e3c3375e0aa9fdf0dad8';
 
-async function sha256Hex(value){
-  const data=new TextEncoder().encode(value);
-  const digest=await crypto.subtle.digest('SHA-256',data);
-  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function showStaticLogin(){
-  document.body.classList.add('static-locked');
-  const box=document.getElementById('static-login');
-  if(box)box.style.display='flex';
-  setTimeout(()=>document.getElementById('static-login-password')?.focus(),50);
-}
 function hideStaticLogin(){
   document.body.classList.remove('static-locked');
   const box=document.getElementById('static-login');
   if(box)box.style.display='none';
 }
-async function unlockStaticLogin(event){
-  event?.preventDefault();
-  const user=(document.getElementById('static-login-user')?.value||'').trim();
-  const password=document.getElementById('static-login-password')?.value||'';
-  const err=document.getElementById('static-login-error');
-  try{
-    const ok=user===STATIC_LOGIN_USER && await sha256Hex(password)===STATIC_LOGIN_PASSWORD_SHA256;
-    if(ok){
-      sessionStorage.setItem('otomy_static_unlocked','1');
-      hideStaticLogin();
-      location.reload();
-      return;
-    }
-  }catch(e){}
-  if(err)err.style.display='block';
-}
-
 function enforceLaunchLogin(){
-  if(isStaticSnapshotHost()){
-    if(sessionStorage.getItem('otomy_static_unlocked')==='1'){
-      hideStaticLogin();
-      return;
-    }
-    showStaticLogin();
-    return;
-  }
-  fetch('/api/me').then(r=>r.json()).then(d=>{
-    if(!d.authenticated || (d.username && sessionStorage.getItem('crusherops_unlocked')!=='1')){
-      window.location.replace('/login');
-    }
-  }).catch(()=>{window.location.replace('/login');});
+  // Access control is handled upstream by Cloudflare Access (email login wall).
+  // The old client-side user/password gate has been removed.
+  hideStaticLogin();
 }
-document.getElementById('static-login-form')?.addEventListener('submit',unlockStaticLogin);
 enforceLaunchLogin();
 
 function isStandaloneApp(){
@@ -1769,8 +2027,9 @@ async function applyAccessMode(){
 async function cachedJson(cache,key,url){
   const now=Date.now();
   const hit=cache.get(key);
-  if(hit && now-hit.ts<DASH_CACHE_MS)return hit.data;
+  const cacheMs=isStaticSnapshotHost()?5*60*1000:DASH_CACHE_MS;
   if(hit && hit.promise)return hit.promise;
+  if(hit && now-hit.ts<cacheMs)return hit.data;
   const promise=api(url).then(data=>{
     cache.set(key,{ts:Date.now(),data});
     return data;
@@ -1784,7 +2043,7 @@ async function cachedJson(cache,key,url){
 }
 
 function prefetchDashRange(f,t){
-  cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}&include_detail_rows=false`).catch(()=>{});
+  cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`).catch(()=>{});
 }
 
 function prefetchDashDate(d){
@@ -1795,9 +2054,9 @@ function prefetchDashDate(d){
 function prefetchDashboardPresets(){
   if(_dashPrefetched)return;
   _dashPrefetched=true;
-  ['today','yesterday','week','mtd','lastmonth'].forEach(p=>{
+  ['today','yesterday','week','mtd','lastmonth','last2months','last3months','last7days','last15days','last30days','last45days','last60days','last90days'].forEach((p,index)=>{
     const [f,t]=calcPreset(p);
-    setTimeout(()=>prefetchDashRange(f,t), 250);
+    setTimeout(()=>prefetchDashRange(f,t), 250+index*180);
   });
 }
 
@@ -1837,11 +2096,37 @@ async function api(url,opts={}){
   return r;
 }
 let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
+const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
+const OTOMY_APP_VERSION='2026-08-02-stale-guard-v1';
 function _clearReadCaches(){
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
   if(typeof _complianceCache!=='undefined')_complianceCache.clear();
   if(typeof _complianceFYCache!=='undefined')_complianceFYCache.clear();
+  OtomyDataEngine?.clear?.();
+  // These caches feed operating balances and entity-ledger links. Leaving any of them alive
+  // after a cloud sync makes an already-open tab display yesterday's data beside fresh rows.
+  _dailyBalanceCache=undefined;
+  _balCfgCache=undefined;
+  _bankStmtCache=undefined;
+  _custIdByNameCache=null;
+  _vendIdByNameCache=null;
+  if(typeof _cashbook!=='undefined'){
+    _cashbook.cash=null;
+    _cashbook.bank=null;
+  }
+}
+function _rememberStaticSyncStamp(stamp){
+  if(!isStaticSnapshotHost()||!stamp)return;
+  try{sessionStorage.setItem(OTOMY_SYNC_STAMP_KEY,stamp);}catch(e){}
+}
+function _reloadStaticPageForSync(stamp){
+  if(!isStaticSnapshotHost())return false;
+  _rememberStaticSyncStamp(stamp);
+  const url=new URL(window.location.href);
+  url.searchParams.set('_sync',String(Date.now()));
+  window.location.replace(url.toString());
+  return true;
 }
 function _activeSectionName(){
   const active=document.querySelector('.section.active');
@@ -1870,10 +2155,16 @@ function _fetchT(url,opts,ms){
 }
 async function _currentSyncStamp(){
   if(isStaticSnapshotHost()){
-    const r=await _fetchT(`/data/snapshot/manifest.json?_=${Date.now()}`, {cache:'no-store'}).catch(()=>null);
-    if(!r||!r.ok)return null;
-    const data=await r.json();
-    return data.generated_at||null;
+    const now=Date.now();
+    const manifestReq=_fetchT(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
+    const engineReq=_fetchT(`/data/common_engine.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
+    const appReq=_fetchT(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
+      .then(r=>r.ok?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:'')
+      .catch(()=>'');
+    const [data, engine, appStamp]=await Promise.all([manifestReq, engineReq, appReq]);
+    const dataStamp=`${data?.generated_at||''}|${engine?.generated_at||''}|${engine?.version||''}`;
+    const codeStamp=appStamp||OTOMY_APP_VERSION;
+    return `${dataStamp}|${codeStamp}`;
   }
   const r=await _fetchT(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'}).catch(()=>null);
   if(!r||!r.ok)return null;
@@ -1887,11 +2178,21 @@ async function checkForFreshSync(force=false){
     const stamp=await _currentSyncStamp();
     if(!stamp)return;
     if(_lastSeenSyncStamp && stamp!==_lastSeenSyncStamp){
+      // Static-site stamp = "data|code". Only a CODE change needs a full page reload (to load the
+      // new app build); a DATA-only change is refreshed silently in place, so the user stays on the
+      // page they're browsing instead of being thrown back to the Dashboard.
+      // The stamp contains three data components followed by the code stamp.
+      // Compare its final component: comparing index 1 accidentally treated a
+      // data refresh as a code deploy and missed real frontend deployments.
+      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|').at(-1)!==String(stamp).split('|').at(-1);
       _lastSeenSyncStamp=stamp;
+      _rememberStaticSyncStamp(stamp);
+      if(codeChanged && _reloadStaticPageForSync(stamp))return;
       await _reloadActiveSectionAfterSync();
       flash('Latest sync data loaded');
     }else if(!_lastSeenSyncStamp || force){
       _lastSeenSyncStamp=stamp;
+      _rememberStaticSyncStamp(stamp);
     }
   }catch(e){
     // Stay quiet; status may require login or be temporarily unavailable during deploy.
@@ -1900,35 +2201,39 @@ async function checkForFreshSync(force=false){
   }
 }
 function startSyncAutoRefresh(){
+  if(isStaticSnapshotHost()){
+    try{_lastSeenSyncStamp=sessionStorage.getItem(OTOMY_SYNC_STAMP_KEY)||_lastSeenSyncStamp;}catch(e){}
+  }
   checkForFreshSync(true);
   clearInterval(_syncRefreshTimer);
-  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),60000);
+  _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
 let _engineStatusTimer=null;
 async function loadEngineStatus(){
   const el=document.getElementById('engine-status');
   if(!el)return;
   try{
-    const response=await fetch(`/api/sync/erp/status?_=${Date.now()}`,{cache:'no-store'});
-    if(!response.ok)throw new Error(`status ${response.status}`);
-    const state=await response.json();
-    const raw=String(state.last_sync||'').replace(/\.\d+$/,'').replace(' ','T');
-    if(!raw)throw new Error('no local sync timestamp');
-    const syncAt=new Date(raw);
-    const compact=Number.isNaN(syncAt.getTime())
-      ? raw.replace('T',' ')
-      : syncAt.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','');
-    const errors=Array.isArray(state.last_sync_errors)?state.last_sync_errors:[];
-    const paused=errors.length>0;
+    const stamp=Date.now();
+    const [stateResponse,engineResponse]=await Promise.all([
+      fetch(`/data/control/engine_state.json?_=${stamp}`,{cache:'no-store'}),
+      fetch(`/data/common_engine.json?_=${stamp}`,{cache:'no-store'})
+    ]);
+    const state=stateResponse.ok?await stateResponse.json():{state:'running'};
+    const engine=engineResponse.ok?await engineResponse.json():{};
+    const paused=state.state==='paused';
+    const generated=engine.generated_at?String(engine.generated_at).replace('T',' ').replace(/([+]).*$/,''):'last verified data unknown';
+    const compactGenerated=engine.generated_at
+      ? new Date(engine.generated_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','')
+      : 'checking';
     el.className=`engine-status ${paused?'paused':'running'}`;
-    el.textContent=`Engine · ${compact}`;
+    el.textContent=`Engine · ${compactGenerated}`;
     el.title=paused
-      ? `Last local ERP sync: ${raw} — ${errors[0]}`
-      : `Last local ERP sync: ${raw}`;
+      ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
+      : `Last verified sync: ${generated}`;
   }catch(e){
     el.className='engine-status unknown';
     el.textContent='Engine · unavailable';
-    el.title='Could not read the local ERP sync status';
+    el.title='Could not read the common-engine status marker';
   }
 }
 function startEngineStatusRefresh(){
@@ -2067,8 +2372,8 @@ function calcPreset(p){
     case'lastweek':return[lastWeekStart(),lastWeekEnd()];
     case'mtd':return[mtdStart(),today()];
     case'lastmonth':return[lastMonthStart(),lastMonthEnd()];
-    case'last2months':return[rollingMonthStart(2),today()];
-    case'last3months':return[rollingMonthStart(3),today()];
+    case'last2months':return[calendarMonthRangeStart(2),today()];
+    case'last3months':return[calendarMonthRangeStart(3),today()];
     case'last7days':return[rollingDayStart(7),today()];
     case'last15days':return[rollingDayStart(15),today()];
     case'last30days':return[rollingDayStart(30),today()];
@@ -2081,7 +2386,9 @@ function calcPreset(p){
   }
 }
 function rollingDayStart(days){const d=new Date(`${today()}T00:00:00`);d.setDate(d.getDate()-(days-1));return localISO(d);}
-function rollingMonthStart(months){const d=new Date(`${today()}T00:00:00`),day=d.getDate(),target=new Date(d.getFullYear(),d.getMonth()-months,1);target.setDate(Math.min(day,new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return localISO(target);}
+// Calendar-month ranges: Last 2 Months is last month's full book plus this
+// month's data to date; Last 3 Months adds the prior full month as well.
+function calendarMonthRangeStart(months){const d=new Date(`${today()}T00:00:00`);return localISO(new Date(d.getFullYear(),d.getMonth()-(months-1),1));}
 
 function preset(section,p,btn){
   const cfg=PRESET_CFG[section];
@@ -2095,7 +2402,12 @@ function preset(section,p,btn){
   if(section==='dashboard')document.getElementById('dash-date').value=t;
   // Reset to page 1 on new date range
   if(_page[section]!==undefined)_page[section]=1;
-  cfg.reload();
+  const loading=cfg.reload();
+  if(loading&&typeof loading.finally==='function'){
+    btn.classList.add('loading');btn.disabled=true;
+    loading.finally(()=>{btn.classList.remove('loading');btn.disabled=false;});
+  }
+  return loading;
 }
 
 function setDay(section,d){
@@ -2163,15 +2475,17 @@ function initRollingRangePresets(){
     const row=document.createElement('div');row.className='rolling-range-row no-print';row.setAttribute('aria-label','Rolling date ranges');
     ranges.forEach(([presetName,label])=>{const btn=document.createElement('button');btn.type='button';btn.className='pbtn';btn.textContent=label;btn.setAttribute('onclick',section==='ops'?`opsPreset('${presetName}',this)`:`preset('${section}','${presetName}',this)`);row.appendChild(btn);});
     const printControl=bar.querySelector(':scope > .page-actions, :scope > .print-btn');
+    let primaryRow=bar.querySelector(':scope > .preset-primary-row');
+    if(!primaryRow){primaryRow=document.createElement('div');primaryRow.className='preset-primary-row no-print';[...bar.children].filter(child=>child!==printControl).forEach(child=>primaryRow.appendChild(child));bar.insertBefore(primaryRow,printControl||null);}
     const actionRow=document.createElement('div');actionRow.className='rolling-range-action-row no-print';actionRow.appendChild(row);
-    const dates=bar.querySelector(':scope > .preset-dates');
+    const dates=bar.querySelector('.preset-primary-row .preset-dates, :scope > .preset-dates');
     const toEl=cfg.to&&document.getElementById(cfg.to);
     [fromEl,toEl].filter(Boolean).forEach(el=>{el.onchange=section==='ops'?()=>clearOpsBtns():()=>clearPresetBtns(section);});
     if(dates&&!dates.querySelector('button.pbtn')){const go=document.createElement('button');go.type='button';go.className='pbtn';go.textContent='Go';go.addEventListener('click',()=>applyCustomRange(section));dates.appendChild(go);}
     const dayInput=dates&&dates.querySelector('input[id$="-day"],input#dash-date');
     const dayLabel=dayInput&&dayInput.previousElementSibling;
-    if(dayInput&&dayLabel?.tagName==='LABEL'){const dayControl=document.createElement('div');dayControl.className='day-range-control';dayControl.append(dayLabel,dayInput);actionRow.appendChild(dayControl);}
-    bar.insertBefore(actionRow,printControl||null);
+    if(dayInput&&dayLabel?.tagName==='LABEL'){const dayControl=document.createElement('div');dayControl.className='day-range-control';const dayGo=document.createElement('button');dayGo.type='button';dayGo.className='pbtn';dayGo.textContent='Go';dayGo.addEventListener('click',()=>{if(!dayInput.value)return;if(section==='dashboard')setDashboardDay(dayInput.value);else setDay(section,dayInput.value);});dayControl.append(dayLabel,dayInput,dayGo);actionRow.appendChild(dayControl);}
+    bar.appendChild(actionRow);
     if(printControl)actionRow.appendChild(printControl);
   });
 }
@@ -2283,67 +2597,76 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
+  // Keep normal dashboard cards in natural order. The final two live-data
+  // cards are captured separately to stay below iOS's canvas limit, but are
+  // flowed into the same PDF pages so no blank page-gap is introduced.
+  const deferredFinalCards=[...pa.querySelectorAll('#dash-machine-odometer-card,#dash-fuel-ledger-card')];
+  deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
   try{
     if(document.fonts?.ready)await document.fonts.ready;
     await new Promise(resolve=>requestAnimationFrame(resolve));
-    // A 3x, lossless source keeps numbers and thin table rules crisp when the
-    // downloaded PDF is zoomed, while retaining the direct file-share flow.
-    const pdfRenderScale=3;
-    const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(pa.scrollHeight,1)});
+    // 2.25x preserves fine rules and readable figures at A4 size, while JPEG
+    // compression keeps multi-page reports small enough to share from iPhone.
+    const pdfRenderScale=2.25;
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
     const pageWidth=pdf.internal.pageSize.getWidth();
     const pageHeight=pdf.internal.pageSize.getHeight();
-    const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
-    // A raster PDF cannot repeat a CSS table header, but it can safely start the next page at a row boundary.
-    // Use all rows, including headers and totals, so no customer name or amount is cut at a page edge.
-    const paRect=pa.getBoundingClientRect();
-    const verticalScale=canvas.width/Math.max(paRect.width,1);
-    const contentBottom=Math.max(0,...[...pa.children]
-      .filter(node=>node.tagName!=='STYLE')
-      .map(node=>node.getBoundingClientRect().bottom-paRect.top));
-    // html2canvas includes any viewport-sized canvas and trailing margins.  Only
-    // capture through the final printed element plus the six-pixel print padding.
-    const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil((contentBottom+6)*verticalScale)));
-    const rowBounds=[...pa.querySelectorAll('tr')].map(row=>{
-      const box=row.getBoundingClientRect();
-      return {top:Math.round((box.top-paRect.top)*verticalScale),bottom:Math.round((box.bottom-paRect.top)*verticalScale)};
-    }).filter(row=>row.top>=0&&row.bottom>row.top&&row.top<contentHeight);
-    const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
-    for(let y=0,page=0;y<contentHeight;page++){
-      const target=Math.min(y+sliceHeight,contentHeight);
-      // Keep a full page whenever the target lies in whitespace. Move only when it intersects a table row.
-      let end=target;
-      while(end<contentHeight){
-        const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);
-        if(!crossing.length)break;
-        const beforeRow=Math.min(...crossing.map(row=>row.top));
-        if(beforeRow-y<minimumSlice)break;
-        end=beforeRow;
+    let pageCount=0,activePage=null,activePageUsed=0;
+    const reportRect=pa.getBoundingClientRect();
+    const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
+    const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
+    const flushActivePage=()=>{
+      if(!activePage||!activePageUsed)return;
+      if(pageCount++)pdf.addPage('a4','landscape');
+      pdf.addImage(activePage.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,activePageUsed*(pageWidth/activePage.width),undefined,'FAST');
+      activePage=null;activePageUsed=0;
+    };
+    const appendCanvasPages=(canvas,cropTop,cropHeight,rows=reportRows,referenceRect=reportRect)=>{
+      const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
+      const verticalScale=canvas.width/Math.max(referenceRect.width,1);
+      const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil(cropHeight*verticalScale)));
+      const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
+      const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
+      for(let y=0;y<contentHeight;){
+        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle='#243d61';activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
+        const target=Math.min(y+(activePage.height-activePageUsed),contentHeight);let end=target;
+        while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
+        const height=Math.max(1,end-y),ctx=activePage.getContext('2d');
+        ctx.drawImage(canvas,0,y,canvas.width,height,0,activePageUsed,activePage.width,height);
+        activePageUsed+=height;y=end;
+        if(activePageUsed>=activePage.height)flushActivePage();
       }
-      const height=Math.max(1,end-y);
-      const slice=document.createElement('canvas');
-      slice.width=canvas.width;
-      slice.height=height;
-      const ctx=slice.getContext('2d');
-      ctx.fillStyle='#243d61';
-      ctx.fillRect(0,0,slice.width,slice.height);
-      ctx.drawImage(canvas,0,y,canvas.width,height,0,0,slice.width,slice.height);
-      if(page)pdf.addPage('a4','landscape');
-      pdf.addImage(slice.toDataURL('image/png'),'PNG',0,0,pageWidth,height*(pageWidth/canvas.width),undefined,'NONE');
-      y=end;
+    };
+    // Render every report in continuous safe-height segments. This prevents a
+    // browser canvas limit from removing any late table/block on any page.
+    const maxCaptureHeight=5000;
+    for(let cropTop=0;cropTop<reportBottom;){
+      let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+      const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
+      if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
+      if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+      const cropHeight=Math.max(1,cropEnd-cropTop);
+      const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
+      appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
     }
+    for(const card of deferredFinalCards){
+      card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
+      const cardRect=card.getBoundingClientRect(),cardTop=cardRect.top-reportRect.top;
+      const cardRows=[...card.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top);
+      const cardCanvas=await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)});
+      appendCanvasPages(cardCanvas,cardTop,cardRect.height,cardRows,cardRect);
+    }
+    flushActivePage();
     const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
     const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
       try{await navigator.share({title,files:[file]});return;}
       catch(error){if(error?.name==='AbortError')return;}
     }
-    const url=URL.createObjectURL(file);
-    const popup=window.open(url,'_blank');
-    if(!popup){const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();}
-    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
+    flash('PDF share is unavailable on this device.',false);
   }finally{
+    deferredFinalCards.forEach(card=>card.style.removeProperty('display'));
     pa.className=className;
     if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
   }
@@ -2352,15 +2675,10 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // Do not rasterise mobile reports. Safari/Chrome print HTML as vector text and lines,
-  // whereas the old canvas-to-JPEG path made an otherwise sharp report look blurry.
-  if(isMobilePrint()){
-    if(_isStandalonePWA() && _isIOS())printViaBlob(title, content, className);
-    else printViaIframe(title, content, className);
-    return;
-  }
-  // Desktop and Android installed app: print the current document directly via the @media print rules.
-  setTimeout(()=>{try{window.print();}catch(e){}}, _isStandalonePWA()?150:50);
+  // iPhone/iPad app reports use Web Share directly, never a Blob tab or link.
+  // This capture keeps the website layout while presenting the native share sheet.
+  if(isMobilePrint())return shareStyledMobilePdf(title,content,className);
+  setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
 function pdfClean(value){
@@ -2497,7 +2815,7 @@ function pdfFullTableForId(id){
     return pdfTableBlock('Sales Ledger',['Date','Customer','Material','MDP Ton','Qty MT','Rate','Material Amount','Transport Charges','Total Amount','Cash','Bank / UPI','Credit','Mode','Vehicle','Ticket'],rows.map(r=>{
       const ch=_saleChannels(r);
       return [r.date,r.customer_name||'-',r.material,r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'-',Number(r.qty_mt||0).toFixed(2),fmtINR(r.rate_per_mt||0),fmtINR(r.amount),fmtINR(r.transport_charge||0),fmtINR2(_saleTotal(r)),ch.cash?fmtINR(ch.cash):'-',ch.upi?fmtINR(ch.upi):'-',ch.credit?fmtINR(ch.credit):'-',r.payment_mode||'-',r.vehicle_no||'-',r.ticket_no||'-'];
-    }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR2(tot),fmtINR(totCash),fmtINR(totBank),fmtINR(totCredit),'','','']);
+    }),[`TOTAL (${_allData.sales.length})`,'','',totmdp.toFixed(2),`${totmt.toFixed(2)} MT`,'','',fmtINR(totTransport),fmtINR(tot),fmtINR(totCash),fmtINR(totBank),fmtINR(totCredit),'','','']);
   }
   if(id==='transport-ledger-tbl'){
     const rows=_transportLedgerRows.slice().sort((a,b)=>`${b.date}|${b.ticket_no||''}`.localeCompare(`${a.date}|${a.ticket_no||''}`));
@@ -2526,8 +2844,7 @@ function pdfFullTableForId(id){
     const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
     const ledger=_fuelLedger(from,to);
     const totals=ledger.rows.reduce((sum,r)=>({received:sum.received+_num(r.received_litres),receiptAmount:sum.receiptAmount+_num(r.receipt_amount),spend:sum.spend+_num(r.spend_amount),spendLitres:sum.spendLitres+_num(r.spend_litres)}),{received:0,receiptAmount:0,spend:0,spendLitres:0});
-    const balance=_allData.fuelBalance||{};
-    return pdfTableBlock('Fuel Ledger Book',['Date','Details','Remarks','Fuel Received','Unit Price','Receipt Amount','Fuel Spend'],[...ledger.rows.map(r=>[r.date,r.details,r.remarks||'—',r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`,r.unit_price==null?'—':fmtINR(r.unit_price),r.receipt_amount==null?'—':fmtINR(r.receipt_amount),r.spend_litres==null?'—':`${fmtNum(r.spend_litres,2)} L${r.spend_amount==null?'':` (${fmtINR(r.spend_amount)})`}`]),['TOTAL','','',`${fmtNum(totals.received,2)} L`,'',fmtINR(totals.receiptAmount),`${fmtNum(totals.spendLitres,2)} L (${fmtINR(totals.spend)})`],['Loctell Fuel in Plant','','',balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L`,'',balance.diesel_value==null?'—':fmtINR(balance.diesel_value),'']]);
+    return pdfTableBlock('Fuel Ledger Book',['Date','Details','Remarks','Fuel Received','Unit Price','Receipt Amount','Fuel Spend','Balance in Plant'],[...ledger.rows.map(r=>[r.date,r.details,r.remarks||'—',r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`,r.unit_price==null?'—':fmtINR(r.unit_price),r.receipt_amount==null?'—':fmtINR(r.receipt_amount),r.spend_litres==null?'—':`${fmtNum(r.spend_litres,2)} L${r.spend_amount==null?'':` (${fmtINR(r.spend_amount)})`}`,r.balance_litres==null?'—':`${fmtNum(r.balance_litres,2)} L`]),['TOTAL','','',`${fmtNum(totals.received,2)} L`,'',fmtINR(totals.receiptAmount),`${fmtNum(totals.spendLitres,2)} L (${fmtINR(totals.spend)})`,ledger.closing_litres==null?'—':`${fmtNum(ledger.closing_litres,2)} L`]]);
   }
   if(id==='erp-bank-tbl'||id==='erp-cash-tbl'){
     const channel=id==='erp-cash-tbl'?'cash':'bank';
@@ -2700,14 +3017,12 @@ function buildPdfBytes(report){
 function downloadPdfReport(payload){
   const pdf=buildPdfBytes(payload);
   const blob=new Blob([pdf],{type:'application/pdf'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  flash('PDF downloaded');
+  const filename=`${pdfSlug(payload.title)}_${new Date().toISOString().slice(0,10)}.pdf`;
+  const url=URL.createObjectURL(blob);
+  let file=null,canShare=false;
+  try{file=new File([blob],filename,{type:'application/pdf'});canShare=(isMobilePrint()||_isStandalonePWA())&&typeof navigator.share==='function'&&(!navigator.canShare||navigator.canShare({files:[file]}));}catch(e){}
+  if(canShare){navigator.share({title:pdfClean(payload.title),files:[file]}).catch(e=>{if(e?.name!=='AbortError')flash('Could not open PDF share sheet',false);});setTimeout(()=>URL.revokeObjectURL(url),300000);flash('Opening PDF share sheet…');return true;}
+  const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);flash('PDF downloaded');
   return true;
 }
 function openTablePdf(title,el,subtitle,printClass='report-print'){
@@ -2838,6 +3153,9 @@ async function printDashboardConsolidated(){
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
 async function _ensureDashboardPrintBooks(from,to){
+  // The dashboard books load asynchronously from the same selected range. Do
+  // not snapshot a half-rendered Control Room into a PDF: wait until both
+  // visible book blocks are populated, then allow one paint frame to settle.
   await renderDashboardCashBooks(from,to);
   await loadMachines(from,to);
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -2875,10 +3193,6 @@ function downloadCurrentPagePdf(){
 
 // ── Init ───────────────────────────────────────────────────────────────────
 window.onload=async function(){
-  if(isStaticSnapshotHost() && sessionStorage.getItem('otomy_static_unlocked')!=='1'){
-    showStaticLogin();
-    return;
-  }
   const t=today(),ym=monthNow();
   await applyAccessMode();
   refreshInstallButton();
@@ -2899,6 +3213,9 @@ window.onload=async function(){
   let _bootSection='dashboard';
   try{const s=sessionStorage.getItem('cx_active_section');const leftAt=parseInt(sessionStorage.getItem('cx_left_at')||'0',10);const awayLong=leftAt&&(Date.now()-leftAt)>AWAY_RESET_MS;if(s&&document.getElementById('section-'+s)&&!awayLong)_bootSection=s;sessionStorage.removeItem('cx_left_at');}catch(e){}
   if(_bootSection!=='dashboard'){nav(_bootSection);}else{await loadDash();}
+  // Warm the rolling range data only after the first screen is usable. Otomy
+  // then answers the added range tabs from memory instead of a cold R2/archive read.
+  if(isStaticSnapshotHost())setTimeout(prefetchDashboardPresets,900);
   startSyncAutoRefresh();
   startEngineStatusRefresh();
   if(new URLSearchParams(window.location.search).get('print')==='dashboard'){
@@ -2911,7 +3228,10 @@ window.onload=async function(){
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').then(()=>refreshInstallButton()).catch(()=>{});
+    navigator.serviceWorker.register('/service-worker.js').then(reg=>{
+      if(reg.update)reg.update();
+      refreshInstallButton();
+    }).catch(()=>{});
   });
 }
 
@@ -2930,8 +3250,9 @@ function _debouncedLoadDash(){ clearTimeout(_dashDebounceTimer); _dashDebounceTi
 // ── Dashboard ──────────────────────────────────────────────────────────────
 let _dashRetried=false;
 function _dashUnavailable(){
-  // Fetch came back empty/unavailable (expired session or a mid-deploy swap). Auto-retry once, then
-  // show a clear reload prompt instead of a raw "undefined is not an object" error.
+  // Fetch came back empty/unauthorized (usually an expired Cloudflare Access session or a mid-deploy
+  // swap). Auto-retry once after a short delay; if it still fails, show a clear reload prompt instead
+  // of a raw "undefined is not an object" error.
   const f=document.getElementById('dash-from').value||mtdStart();
   const t=document.getElementById('dash-to').value||today();
   if(!_dashRetried){_dashRetried=true;try{_dashCache.control.delete(`${f}|${t}`);}catch(e){}setTimeout(()=>loadDash(),1500);return;}
@@ -2939,18 +3260,18 @@ function _dashUnavailable(){
   if(el)el.innerHTML='<div class="control-alert danger"><strong>Couldn\'t load dashboard data</strong><span>Your session may have expired. <button onclick="location.reload()" style="background:#fff;color:#1f2937;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;cursor:pointer;margin-left:8px;font-weight:600">Reload</button></span></div>';
 }
 async function _attachDashboardMasterRows(controlData,from,to){
-  // A long-running localhost server can briefly serve a newly edited frontend
-  // before its Python control endpoint is restarted.  Fall back to the same
-  // page endpoints so the dashboard remains range-correct during that window.
-  if(controlData?.detail_rows_ready===true)return controlData;
+  // A frontend deployment can briefly precede its refreshed control snapshot.
+  // Use the same Customer/Vendor page sources until the canonical snapshot is
+  // available, keeping the selected dashboard range correct in that window.
+  if(Array.isArray(controlData?.customer_page_rows)&&Array.isArray(controlData?.vendor_page_rows))return controlData;
   const [customers,vendors,payments,ledgerSummary]=await Promise.all([
     api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`).catch(()=>null),
     api(`/api/vendors/?active_only=false&as_of=${to}`).catch(()=>null),
     api(`/api/vendors/payments/?from_date=${from}&to_date=${to}`).catch(()=>null),
     api('/api/vendors/ledger-summary').catch(()=>null),
   ]);
-  if(Array.isArray(customers))controlData.customer_page_rows=customers;
-  if(Array.isArray(vendors)){
+  if(!Array.isArray(controlData.customer_page_rows)&&Array.isArray(customers))controlData.customer_page_rows=customers;
+  if(!Array.isArray(controlData.vendor_page_rows)&&Array.isArray(vendors)){
     const paidByVendor=new Map();
     (payments||[]).forEach(payment=>{const key=_vendorRangeKey(payment);paidByVendor.set(key,(paidByVendor.get(key)||0)+_num(payment.amount));});
     const ledgers=ledgerSummary?.ledgers||{};
@@ -2960,7 +3281,6 @@ async function _attachDashboardMasterRows(controlData,from,to){
       return {...row,range_purchased:purchased,range_paid:paidByVendor.get(_vendorRangeKey(row))||0};
     });
   }
-  controlData.detail_rows_ready=true;
   return controlData;
 }
 async function loadDash(){
@@ -2969,23 +3289,24 @@ async function loadDash(){
   const f=document.getElementById('dash-from').value||mtdStart();
   const t=document.getElementById('dash-to').value||today();
   try{
-    const controlData=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}&include_detail_rows=false`);
+    const controlData=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     if(seq!==_dashLoadSeq)return;
     if(!controlData||!controlData.summary){_dashUnavailable();return;}
     _dashRetried=false;
+    await _attachDashboardMasterRows(controlData,f,t);
     renderDashSummary(controlData,d);
-    renderControlRoom(controlData);
-    void _attachDashboardMasterRows(controlData,f,t).then(()=>{if(seq===_dashLoadSeq)renderControlRoom(controlData);});
+    await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
 }
+
 
 async function loadControlRoom(){
   const f=document.getElementById('dash-from').value||mtdStart();
   const t=document.getElementById('dash-to').value||today();
   try{
-    const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}&include_detail_rows=false`);
-    renderControlRoom(data);
-    void _attachDashboardMasterRows(data,f,t).then(()=>renderControlRoom(data));
+    const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
+    await _attachDashboardMasterRows(data,f,t);
+    await renderControlRoom(data);
   }catch(e){
     const el=document.getElementById('control-room');
     if(el)el.innerHTML=`<div class="control-alert danger"><strong>Control room error</strong><span>${esc(e.message)}</span></div>`;
@@ -3080,9 +3401,133 @@ document.getElementById('d-exp-bank').textContent=fmtINR(_expenseBank);
   document.getElementById('d-profit-mt').textContent=fmtINR2(s.selected_period_profit_per_tonne ?? (salesQty ? (profit/salesQty) : 0));
 }
 
-function renderControlRoom(data){
+let _cashProfitDetailData=null;
+let _cashProfitDetailModalTitle='';
+function closeCashProfitDetail(){
+  const modal=document.getElementById('cash-profit-detail-modal');
+  if(!modal)return;
+  document.body.style.overflow=modal.dataset.previousOverflow||'';
+  modal.remove();
+}
+function printCashProfitDetailModal(){
+  const modal=document.getElementById('cash-profit-detail-modal');
+  const frame=modal?.querySelector('iframe');
+  const doc=frame?.contentDocument;
+  if(!doc?.body){flash('Cash Profit report is still loading. Please tap Print / PDF again.',false);return;}
+  const copy=doc.body.cloneNode(true);
+  copy.querySelectorAll('.print,.cash-profit-detail-close').forEach(node=>node.remove());
+  copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
+  const reportStyle=doc.querySelector('style')?.textContent||'';
+  runPrint(_cashProfitDetailModalTitle||'Cash Profit Calculation Detail',`<style>${reportStyle}#print-area .table-wrap{height:auto!important;max-height:none!important;overflow:visible!important}</style>${copy.innerHTML}`,'cash-profit-detail-print');
+}
+function _makeCashProfitTablesScrollable(doc){
+  doc?.querySelectorAll('.formula table').forEach(table=>{
+    if(table.parentElement?.classList.contains('table-wrap'))return;
+    const wrap=doc.createElement('div');wrap.className='table-wrap';wrap.style.cssText='overflow:auto;-webkit-overflow-scrolling:touch';
+    table.parentNode.insertBefore(wrap,table);wrap.appendChild(table);
+  });
+}
+function _replaceCashProfitDetailTables(doc,tables={}){
+  const sectionFor=title=>[...(doc?.querySelectorAll('.section')||[])].find(section=>section.querySelector('h2')?.textContent?.startsWith(title));
+  const replace=(title,html)=>{const table=sectionFor(title)?.querySelector('table');if(table&&html)table.innerHTML=html;};
+  replace('Sales Ledger',tables.sales);replace('Credit Repayment Ledger',tables.repayments);replace('Operating Expense Ledger',tables.expenses);
+}
+function _decorateCashProfitDetailDocument(doc,modalMode){
+  _makeCashProfitTablesScrollable(doc);
+  const print=doc?.querySelector('.print');
+  if(print)print.onclick=event=>{event.preventDefault();if(modalMode)printCashProfitDetailModal();else doc.defaultView?.print();};
+  const header=doc?.querySelector('.head');
+  if(!header||header.querySelector('.cash-profit-detail-close'))return;
+  const close=doc.createElement('button');
+  close.type='button';close.className='print cash-profit-detail-close';close.textContent='Close';close.style.marginLeft='8px';
+  close.onclick=event=>{event.preventDefault();if(modalMode)closeCashProfitDetail();else doc.defaultView?.close();};
+  header.appendChild(close);
+}
+function openCashProfitDetailModal(html,title,proofHtml='',consolidatedTables={}){
+  closeCashProfitDetail();
+  const modal=document.createElement('div');
+  modal.id='cash-profit-detail-modal';
+  modal.dataset.previousOverflow=document.body.style.overflow||'';
+  modal.style.cssText='position:fixed;inset:0;z-index:100000;background:#243d61;padding:env(safe-area-inset-top,10px) 10px env(safe-area-inset-bottom,10px);display:flex;flex-direction:column;min-height:0';
+  modal.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#1f4e79;color:#fff;padding:10px 12px;border-radius:9px 9px 0 0;flex:0 0 auto"><strong style="font-size:13px">${esc(title)}</strong><span style="display:flex;gap:8px"><button type="button" data-cash-print style="border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 10px;font-weight:800">Print / PDF</button><button type="button" data-cash-close style="border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 10px;font-weight:800">Close</button></span></div><iframe title="Cash Profit calculation detail" style="display:block;flex:1 1 auto;min-height:0;width:100%;border:0;border-radius:0 0 9px 9px;background:#fff;-webkit-overflow-scrolling:touch"></iframe>`;
+  document.body.appendChild(modal);document.body.style.overflow='hidden';
+  _cashProfitDetailModalTitle=title;
+  modal.querySelector('[data-cash-close]').onclick=closeCashProfitDetail;
+  modal.querySelector('[data-cash-print]').onclick=printCashProfitDetailModal;
+  const frame=modal.querySelector('iframe');
+  frame.onload=()=>{const doc=frame.contentDocument;const formula=doc?.querySelector('.formula');if(formula&&proofHtml){const proof=doc.createElement('section');proof.className='formula';proof.innerHTML=proofHtml;formula.insertAdjacentElement('afterend',proof);}_replaceCashProfitDetailTables(doc,consolidatedTables);_decorateCashProfitDetailDocument(doc,true);};
+  frame.srcdoc=html;
+}
+function _cashProfitRound(value){return Math.round(_num(value)*100)/100;}
+function openCashProfitDetail(){
+  const data=_cashProfitDetailData;
+  const s=data?.summary||{},period=data?.period||{};
+  const from=String(period.from||''),to=String(period.to||'');
+  const tonnes=_num(s.sales_qty_mt),profit=_num(s.selected_period_profit_director_adjusted??s.profit);
+  const creditSold=_num(s.credit_sale_for_liquidity),creditRepaid=_num(s.credit_recovery_for_liquidity);
+  const netCredit=_num(s.net_credit_change_for_liquidity),reported=s.cash_converted_profit_per_tonne;
+  if(!data||from<'2026-06-01'||s.credit_liquidity_available!==true||tonnes<=0||reported==null){flash('Cash Profit ₹/T is available from 1 Jun 2026 when sales tonnes are available.',false);return;}
+  const sales=data.customer_sales||[],expenses=(data.expense_rows||[]).filter(row=>row.is_operating_expense!==false),repayments=data.customer_repayments||[];
+  const salesTotal=_cashProfitRound(sales.reduce((sum,row)=>sum+_num(row.amount),0));
+  const expenseTotal=_cashProfitRound(expenses.reduce((sum,row)=>sum+_num(row.amount),0));
+  const creditSalesTotal=_cashProfitRound(sales.reduce((sum,row)=>sum+_num(row.credit_sale_amount),0));
+  const repaymentTotal=_cashProfitRound(repayments.reduce((sum,row)=>sum+_num(row.payment_received??row.amount),0));
+  const calculated=_cashProfitRound((profit-netCredit)/tonnes);
+  const mismatched=[
+    Math.abs(salesTotal-_num(s.sales)),Math.abs(expenseTotal-_num(s.expenses)),
+    Math.abs(creditSalesTotal-creditSold),Math.abs(repaymentTotal-creditRepaid),
+    Math.abs(calculated-_num(reported)),
+  ].some(value=>value>.01);
+  if(mismatched){flash('Cash Profit detail was not opened: the selected range did not reconcile to the existing tile.',false);return;}
+  const salesByCustomerMaterial=new Map();
+  sales.forEach(row=>{const customer=String(row.customer_name||'Cash Sale'),material=String(row.material||'—'),key=`${customer}\u0000${material}`,item=salesByCustomerMaterial.get(key)||{customer,material,qty:0,amount:0,bank:0,cash:0,credit:0};item.qty+=_num(row.qty_mt);item.amount+=_num(row.amount);item.bank+=_num(row.bank_received);item.cash+=_num(row.cash_received);item.credit+=_num(row.credit_sale_amount);salesByCustomerMaterial.set(key,item);});
+  const salesSummary=[...salesByCustomerMaterial.values()].sort((a,b)=>a.customer.localeCompare(b.customer)||a.material.localeCompare(b.material));
+  const salesBankTotal=_cashProfitRound(salesSummary.reduce((sum,row)=>sum+row.bank,0)),salesCashTotal=_cashProfitRound(salesSummary.reduce((sum,row)=>sum+row.cash,0)),salesPaidTotal=_cashProfitRound(salesBankTotal+salesCashTotal);
+  // Cash Profit uses only new credit sold in the selected range.  The actual
+  // amount a customer still has to pay is a different, as-of-end-date value
+  // from the Customer page.  Keep both visible and never call range credit a
+  // closing balance.
+  const customerBalanceByName=new Map();
+  (data.customer_page_rows||[]).forEach(row=>{const name=String(row.name||row.customer_name||'').trim(),balance=row.total_outstanding??row.outstanding??row.balance;if(name&&balance!=null)customerBalanceByName.set(name,_num(balance));});
+  const balanceShownForCustomer=new Set();
+  const shownCustomerOutstanding=_cashProfitRound([...new Set(salesSummary.map(row=>row.customer))].reduce((sum,customer)=>sum+Math.max(0,_num(customerBalanceByName.get(customer))),0));
+  const salesSummaryRows=salesSummary.map(row=>{const balance=customerBalanceByName.get(row.customer),showBalance=!balanceShownForCustomer.has(row.customer);balanceShownForCustomer.add(row.customer);const balanceClass=balance>0?'credit':balance<0?'cash':'';return `<tr><td>${esc(row.customer)}</td><td>${esc(row.material)}</td><td class="num">${fmtNum(row.qty,2)} MT</td><td class="num">${fmtINR2(row.amount)}</td><td class="num bank">${fmtINR2(row.bank)}</td><td class="num cash">${fmtINR2(row.cash)}</td><td class="num">${fmtINR2(row.bank+row.cash)}</td><td class="num credit">${fmtINR2(row.credit)}</td><td class="num ${balanceClass}">${showBalance&&balance!=null?fmtINR2(balance):'—'}</td></tr>`;}).join('')||'<tr><td colspan="9" class="empty">No sales rows</td></tr>';
+  const repaymentsByCustomer=new Map();
+  repayments.forEach(row=>{const customer=String(row.customer_name||'—'),amount=_num(row.payment_received??row.amount),mode=String(row.mode||'');let bank=_num(row.bank_received),cash=_num(row.cash_received);if(bank+cash===0&&amount){if(_payChannel(mode)==='cash')cash=amount;else bank=amount;}const item=repaymentsByCustomer.get(customer)||{customer,bank:0,cash:0,total:0};item.bank+=bank;item.cash+=cash;item.total+=amount;repaymentsByCustomer.set(customer,item);});
+  const repaymentSummary=[...repaymentsByCustomer.values()].sort((a,b)=>a.customer.localeCompare(b.customer));
+  const repaymentBankTotal=_cashProfitRound(repaymentSummary.reduce((sum,row)=>sum+row.bank,0)),repaymentCashTotal=_cashProfitRound(repaymentSummary.reduce((sum,row)=>sum+row.cash,0));
+  const repaymentSummaryRows=repaymentSummary.map(row=>`<tr><td>${esc(row.customer)}</td><td class="num bank">${fmtINR2(row.bank)}</td><td class="num cash">${fmtINR2(row.cash)}</td><td class="num">${fmtINR2(row.total)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">No credit repayments</td></tr>';
+  const expensesByCategory=new Map();
+  expenses.forEach(row=>{const category=String(row.category||'Expense'),item=expensesByCategory.get(category)||{category,amount:0};item.amount+=_num(row.amount);expensesByCategory.set(category,item);});
+  const expenseSummary=[...expensesByCategory.values()].sort((a,b)=>a.category.localeCompare(b.category));
+  const expenseSummaryRows=expenseSummary.map(row=>`<tr><td>${esc(row.category)}</td><td class="num expense">${fmtINR2(row.amount)}</td></tr>`).join('')||'<tr><td colspan="2" class="empty">No operating expenses</td></tr>';
+  const consolidatedTables={
+    sales:`<thead><tr><th>Customer</th><th>Material</th><th class="num">Material Taken</th><th class="num">Sale Amount</th><th class="num">Bank / UPI Paid</th><th class="num">Cash Paid</th><th class="num">Total Paid</th><th class="num">New Credit in Range</th><th class="num">Balance Payable as of ${esc(to)}</th></tr></thead><tbody>${salesSummaryRows}</tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${fmtNum(tonnes,2)} MT</td><td class="num">${fmtINR2(salesTotal)}</td><td class="num bank">${fmtINR2(salesBankTotal)}</td><td class="num cash">${fmtINR2(salesCashTotal)}</td><td class="num">${fmtINR2(salesPaidTotal)}</td><td class="num credit">${fmtINR2(creditSalesTotal)}</td><td class="num credit">${fmtINR2(shownCustomerOutstanding)}</td></tr></tfoot>`,
+    repayments:`<thead><tr><th>Customer</th><th class="num">Bank / UPI Paid</th><th class="num">Cash Paid</th><th class="num">Total Repaid</th></tr></thead><tbody>${repaymentSummaryRows}</tbody><tfoot><tr><td>Total Credit Repaid</td><td class="num bank">${fmtINR2(repaymentBankTotal)}</td><td class="num cash">${fmtINR2(repaymentCashTotal)}</td><td class="num">${fmtINR2(repaymentTotal)}</td></tr></tfoot>`,
+    expenses:`<thead><tr><th>Expense Category</th><th class="num">Operating Expense</th></tr></thead><tbody>${expenseSummaryRows}</tbody><tfoot><tr><td>Total Operating Expenses</td><td class="num expense">${fmtINR2(expenseTotal)}</td></tr></tfoot>`,
+  };
+  const salesRows=sales.map(row=>`<tr><td>${esc(row.customer_name||'Cash Sale')}</td><td>${esc(row.material||'—')}</td><td>${esc((row.ticket_nos||[]).join(', ')||'—')}</td><td class="num">${fmtNum(row.qty_mt,2)}</td><td class="num">${fmtINR2(row.amount)}</td><td class="num bank">${fmtINR2(row.bank_received||0)}</td><td class="num cash">${fmtINR2(row.cash_received||0)}</td><td class="num credit">${fmtINR2(row.credit_sale_amount||0)}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">No sales rows</td></tr>';
+  const repaymentRows=repayments.map(row=>{const amount=_num(row.payment_received??row.amount),mode=String(row.mode||'');let bank=_num(row.bank_received),cash=_num(row.cash_received);if(bank+cash===0&&amount){if(_payChannel(mode)==='cash')cash=amount;else bank=amount;}return `<tr><td>${esc(row.date||'—')}</td><td>${esc(row.customer_name||'—')}</td><td>${esc(mode||'—')}</td><td>${esc(row.reference||'—')}</td><td class="num bank">${fmtINR2(bank)}</td><td class="num cash">${fmtINR2(cash)}</td><td class="num">${fmtINR2(amount)}</td></tr>`;}).join('')||'<tr><td colspan="7" class="empty">No credit repayments</td></tr>';
+  const expenseRows=expenses.map(row=>`<tr><td>${esc(row.date||'—')}</td><td>${esc(row.category||'Expense')}</td><td>${esc(row.description||'—')}</td><td>${esc(row.party||'—')}</td><td>${esc(row.payment_mode||'—')}</td><td class="num expense">${fmtINR2(row.amount)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No operating expenses</td></tr>';
+  const creditLabel=netCredit>=0?'Less: credit newly locked':'Add: credit released from earlier sales';
+  const popup=(isMobilePrint()||_isStandalonePWA())?null:window.open('', '_blank', 'width=1240,height=900');
+  if(popup)try{popup.opener=null;}catch(e){}
+  const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cash Profit ₹/T — ${esc(from)} to ${esc(to)}</title><style>
+    :root{--navy:#1f4e79;--blue:#1565c0;--green:#2e7d32;--red:#c62828;--amber:#b45309;--paper:#fffdf5;--line:#c9b98f}*{box-sizing:border-box}body{margin:0;background:#eef3f8;color:#172033;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.page{max-width:1180px;margin:0 auto;background:var(--paper);min-height:100vh;padding:26px}.head{background:linear-gradient(135deg,#1f4e79,#14314c);color:#fff;border-radius:10px;padding:20px 22px;display:flex;justify-content:space-between;gap:16px}.head h1{font-size:23px;margin:0 0 6px}.head p{margin:0;color:#dbeafe;font-size:12px}.print{align-self:start;border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 12px;font-weight:800;cursor:pointer}.formula{margin:18px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.formula h2,.section h2{font-size:14px;margin:0;padding:10px 12px;background:#e8eef6;color:var(--navy)}.formula table{width:100%;border-collapse:collapse}.formula td{padding:10px 12px;border-top:1px solid #d8dee8;font-size:13px}.formula td:last-child{text-align:right;font-weight:800}.formula .result td{background:#e8f5e9;color:#14532d;font-size:15px;border-top:2px solid var(--green)}.formula .credit td:last-child{color:var(--amber)}.section{margin-top:18px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.section p{margin:0;padding:9px 12px;background:#f8fafc;color:#536273;font-size:11px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}th{background:#1f4e79;color:#fff;text-align:left;padding:9px 10px;white-space:nowrap}td{padding:8px 10px;border-bottom:1px solid #d8dee8;vertical-align:top}tbody tr:nth-child(even){background:#faf7ed}tfoot td{background:#e8eef6;font-weight:800;border-top:2px solid var(--navy)}.num{text-align:right;font-variant-numeric:tabular-nums}.bank{color:var(--blue);font-weight:700}.cash{color:var(--green);font-weight:700}.credit,.expense{color:var(--red);font-weight:700}.empty{text-align:center;color:#64748b}.note{margin-top:16px;border-left:4px solid var(--amber);padding:10px 12px;background:#fffbeb;font-size:11px;color:#713f12}@media print{body{background:#fff}.page{max-width:none;padding:10mm}.print{display:none}.head{border-radius:0}.section{break-inside:avoid}}
+  </style></head><body><main class="page"><header class="head"><div><h1>Cash Profit ₹/T — Calculation Detail</h1><p>Owner Control Room · ${esc(from)} to ${esc(to)} · Read-only report from the same published dashboard data.</p></div><button class="print" onclick="window.print()">Print / PDF</button></header><section class="formula"><h2>Exact tile formula</h2><table><tbody><tr><td>Selected Period Profit</td><td>Gross Sales − Operating Expenses</td><td>${fmtINR2(profit)}</td></tr><tr class="credit"><td>${creditLabel}</td><td>Credit Sales − Credit Repayments</td><td>${fmtINR2(netCredit)}</td></tr><tr><td>Cash-converted Profit</td><td>Selected Period Profit − Net Credit Change</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr><td>Total Sale Tonnes</td><td>Selected period sales quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr><tr class="result"><td>Cash Profit ₹/T</td><td>Cash-converted Profit ÷ Total Sale Tonnes</td><td>${fmtINR2(reported)}</td></tr></tbody></table></section><section class="section"><h2>Sales Ledger — source of Gross Sales and Credit Sales</h2><p>Bank is blue, cash is green, and new credit sold in the selected period is red. Customer balance payable is shown separately in the consolidated ledger as of ${esc(to)}.</p><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Material</th><th>Tickets</th><th class="num">Qty MT</th><th class="num">Sale Amount</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">New Credit in Range</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">${fmtNum(tonnes,2)}</td><td class="num">${fmtINR2(salesTotal)}</td><td></td><td></td><td class="num credit">${fmtINR2(creditSalesTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Credit Repayment Ledger — source of Credit Repaid</h2><p>These are the same credit-repayment rows used by the Cash Profit ₹/T calculation.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Reference</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">Total Repaid</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td colspan="6">Total Credit Repaid</td><td class="num">${fmtINR2(repaymentTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Operating Expense Ledger — source of Selected Period Profit</h2><p>Director drawings are excluded, exactly as in the Owner Control Room profit tile.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Particulars</th><th>Party</th><th>Mode</th><th class="num">Operating Expense</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td colspan="5">Total Operating Expenses</td><td class="num expense">${fmtINR2(expenseTotal)}</td></tr></tfoot></table></div></section><p class="note">This is a liquidity measure, not the closing cash or bank balance. It adjusts selected-period profit only for new credit sold and credit repaid during the same selected period.</p></main></body></html>`;
+  const ledgerConsolidation=`<h2>Consolidated ledger totals — selected period</h2><table><tbody><tr><td>Sales Ledger</td><td>Gross sales from listed tickets</td><td>${fmtINR2(salesTotal)}</td></tr><tr class="credit"><td>Credit Sales Ledger</td><td>New credit sold in the selected period</td><td>${fmtINR2(creditSold)}</td></tr><tr class="bank"><td>Credit Repayment Ledger</td><td>Customer repayments received</td><td>${fmtINR2(creditRepaid)}</td></tr><tr class="expense"><td>Operating Expense Ledger</td><td>All operating expense rows</td><td>${fmtINR2(expenseTotal)}</td></tr><tr class="cash"><td>Cash-converted Profit</td><td>Profit after selected-period credit movement</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr class="result"><td>Total Sale Tonnes</td><td>Sales Ledger total quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr></tbody></table>`;
+  const numericProof=`<h2>Numeric proof — exact amounts used for this tile</h2><table><tbody><tr><td>1. Gross Sales</td><td>Sales Ledger total</td><td>${fmtINR2(salesTotal)}</td></tr><tr class="expense"><td>2. Less: Operating Expenses</td><td>Operating Expense Ledger total</td><td>(${fmtINR2(expenseTotal)})</td></tr><tr class="cash"><td>3. Selected Period Profit</td><td>${fmtINR2(salesTotal)} − ${fmtINR2(expenseTotal)}</td><td>${fmtINR2(profit)}</td></tr><tr class="credit"><td>4. Less: Credit Sold in Period</td><td>Sales still unpaid by customers</td><td>(${fmtINR2(creditSold)})</td></tr><tr class="bank"><td>5. Add: Credit Repaid in Period</td><td>Customer credit-repayment ledger</td><td>${fmtINR2(creditRepaid)}</td></tr><tr class="cash"><td>6. Cash-converted Profit</td><td>${fmtINR2(profit)} − ${fmtINR2(creditSold)} + ${fmtINR2(creditRepaid)}</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr><td>7. Total Sale Tonnes</td><td>Sales Ledger total quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr><tr class="result"><td>8. Cash Profit ₹/T</td><td>${fmtINR2(profit-netCredit)} ÷ ${fmtNum(tonnes,2)} MT</td><td>${fmtINR2(reported)}</td></tr></tbody></table>`;
+  if(!popup){openCashProfitDetailModal(html,`Cash Profit ₹/T — ${from} to ${to}`,ledgerConsolidation+numericProof,consolidatedTables);return;}
+  popup.document.open();popup.document.write(html);popup.document.close();
+  const formula=popup.document.querySelector('.formula');
+  if(formula){const proof=popup.document.createElement('section');proof.className='formula';proof.innerHTML=ledgerConsolidation+numericProof;formula.insertAdjacentElement('afterend',proof);}
+  _replaceCashProfitDetailTables(popup.document,consolidatedTables);
+  _decorateCashProfitDetailDocument(popup.document,false);
+}
+
+async function renderControlRoom(data){
   const s=data.summary||{};
-  const detailRowsLoading=data.detail_rows_ready===false;
+  _cashProfitDetailData=data;
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const _rc=_reclassifySales(data);
   // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). Apply the
@@ -3121,7 +3566,7 @@ function renderControlRoom(data){
       <td>${fmtNum(r.qty_mt,2)}</td>
       <td>${fmtNum(r.ticket_count?(_num(r.mdp_ton)/r.ticket_count):_num(r.mdp_ton),2)}</td>
       <td>${fmtINR(r.qty_mt?r.amount/r.qty_mt:0)}</td>
-      <td>${fmtINR2(r.amount)}</td>
+      <td>${fmtINR(r.amount)}</td>
       <td>${fmtINR(r.bank_received||0)}</td>
       <td>${fmtINR(r.cash_received||0)}</td>
       <td>${fmtINR(r.paid_against_sale||0)}</td>
@@ -3159,14 +3604,10 @@ function renderControlRoom(data){
     const color=payable>500000?'#c62828':payable>0?'#e65100':'#2e7d32';
     return `<tr><td>${esc(row.name||'Vendor')}</td><td style="color:#1565c0;font-weight:700;text-align:right">${fmtINR(row.range_purchased||0)}</td><td style="color:#2e7d32;font-weight:700;text-align:right">${fmtINR(row.range_paid||0)}</td><td style="text-align:right">${fmtINR(row.total_purchases||0)}</td><td style="text-align:right">${fmtINR(row.total_payments||0)}</td><td style="text-align:right">${fmtINR(row.age_0_15||0)}</td><td style="text-align:right">${fmtINR(row.age_16_30||0)}</td><td style="text-align:right">${fmtINR(row.age_31_45||0)}</td><td style="color:#c62828;font-weight:700;text-align:right">${fmtINR(row.age_45_plus||0)}</td><td style="color:${color};font-weight:700;text-align:right">${fmtINR(payable)}</td></tr>`;
   }).join('')||'<tr><td colspan="10" class="empty">No vendors</td></tr>';
-  const customerPaymentBody=detailRowsLoading?'<tr><td colspan="8" class="empty">Loading current customer details…</td></tr>':customerPaymentRows;
-  const customerPaymentFooter=detailRowsLoading?'':`<tr><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue0to15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue16to30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue31to45Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue46PlusTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr>`;
-  const vendorPaymentBody=detailRowsLoading?'<tr><td colspan="10" class="empty">Loading current vendor details…</td></tr>':vendorPaymentRows;
-  const vendorPaymentFooter=detailRowsLoading?'':`<tr><td><strong>Total (${vendorPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_purchased)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_paid)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_purchases)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_payments)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_0_15)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_16_30)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_31_45)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_45_plus)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.payable)}</strong></td></tr>`;
   const salesTotals=data.customer_sales_totals||{};
   // GST Tax Money is bank money available to pay GST: customer bank receipts
-  // plus native Loctell cash-to-bank contra deposits. The latter is not sales,
-  // a customer receipt, vendor payment, expense, or tax liability.
+  // plus native Loctell cash-to-bank contra deposits. The contra is not sales,
+  // an expense, a vendor payment, or a GST-liability calculation.
   const internalTransferToBank=(data.internal_transfers||[]).reduce((sum,row)=>sum+_num(row.amount),0);
   const totalBankReceived=_num(salesTotals.bank_received)+repaymentBankTotal+internalTransferToBank;
   const totalMdpTonne=_num(salesTotals.mdp_ton)||((data.customer_sales||[]).reduce((sum,row)=>sum+_num(row.mdp_ton),0));
@@ -3195,10 +3636,12 @@ function renderControlRoom(data){
     </tr>`;
   }).join('')||'<tr><td colspan="6" class="empty">No expenses in this period</td></tr>';
   const expGrandTotal=expCashTotal+expBankTotal;
-  const creditLiquidityReady=s.credit_liquidity_available===true;
-  const creditPerTonne=value=>creditLiquidityReady&&value!=null?fmtINR2(value):'—';
   const rec=(data.top_receivables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No receivables</strong><span>₹0</span></li>';
   const pay=(data.top_payables||[]).map(r=>`<li><strong>${esc(r.name)}</strong><span>${fmtINR(r.balance)}</span></li>`).join('')||'<li><strong>No payables</strong><span>₹0</span></li>';
+  const cashProfitReady=s.credit_liquidity_available===true&&_num(s.sales_qty_mt)>0&&s.cash_converted_profit_per_tonne!=null;
+  const cashProfitTile=cashProfitReady
+    ? `<button type="button" class="control-metric glass-green control-metric-link" onclick="openCashProfitDetail()" title="Open the exact Cash Profit ₹/T calculation"><span>Cash Profit ₹/T</span><strong>${fmtINR2(s.cash_converted_profit_per_tonne)}</strong><small class="control-drill">View calculation →</small></button>`
+    : `<div class="control-metric glass-green" title="Available from 1 Jun 2026"><span>Cash Profit ₹/T</span><strong>—</strong></div>`;
   document.getElementById('control-room').innerHTML=`
     <div class="control-hero">
       <div class="control-panel">
@@ -3209,22 +3652,22 @@ function renderControlRoom(data){
           <div class="control-metric"><span>Gross Sale</span><strong>${fmtINR(s.sales)}</strong></div>
           <div class="control-metric"><span>Sales MT</span><strong>${fmtNum(s.sales_qty_mt,2)}</strong></div>
           <div class="control-metric"><span>Avg Rate / Tonne</span><strong>${fmtINR(s.avg_rate_per_mt)}</strong></div>
-          <div class="control-metric"><span>Bank Balance</span><strong>${fmtINR(s.bank_balance||0)}</strong></div>
+          <div class="control-metric"><span>Bank Balance</span><strong id="d-bank-bal">${fmtINR(s.bank_balance||0)}</strong></div>
           <!-- Row 2: Cost & Production -->
           <div class="control-metric"><span>Operating Expenses</span><strong>${fmtINR(s.expenses)}</strong></div>
           <div class="control-metric"><span>Boulder Input</span><strong>${fmtNum(s.boulder_input_mt,2)} MT</strong></div>
           <div class="control-metric"><span>Expenses / Tonne</span><strong>${fmtINR(s.sales_qty_mt ? (s.expenses / s.sales_qty_mt) : 0)}</strong></div>
-          <div class="control-metric"><span>Cash Balance In Office</span><strong>${fmtINR(s.cash_balance_office||0)}</strong></div>
+          <div class="control-metric"><span>Cash Balance In Office</span><strong id="d-cash-office">${fmtINR(s.cash_balance_office||0)}</strong></div>
           <!-- Row 3: Balances -->
           <div class="control-metric glass-green"><span>Selected Period Profit</span><strong>${fmtINR(s.selected_period_profit_director_adjusted ?? s.profit)}</strong></div>
           <div class="control-metric"><span>Expenses / Boulder Input</span><strong>${fmtINR(s.boulder_input_mt ? (s.expenses / s.boulder_input_mt) : 0)}</strong></div>
           <div class="control-metric glass-green"><span>Profit / Tonne</span><strong>${fmtINR2(s.selected_period_profit_per_tonne||0)}</strong></div>
           <div class="control-metric"><span>Credit Repayment</span><strong>${fmtINR(paymentReceivedTile)}</strong></div>
-          <!-- Credit liquidity: Loctell sales/repayments only; available from 01-Jun-2026. -->
-          <div class="control-metric glass-green"><span>Cash Profit ₹/T</span><strong>${creditPerTonne(s.cash_converted_profit_per_tonne)}</strong></div>
-          <div class="control-metric"><span>Credit Locked ₹/T</span><strong>${creditPerTonne(s.credit_locked_per_tonne)}</strong></div>
-          <div class="control-metric"><span>Credit Sold ₹/T</span><strong>${creditPerTonne(s.credit_sale_per_tonne)}</strong></div>
-          <div class="control-metric"><span>Credit Repaid ₹/T</span><strong>${creditPerTonne(s.credit_recovery_per_tonne)}</strong></div>
+          <!-- Credit liquidity: real Loctell tender splits and repayments, from 01-Jun-2026. -->
+          ${cashProfitTile}
+          <div class="control-metric"><span>Credit Locked ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_locked_per_tonne!=null?fmtINR2(s.credit_locked_per_tonne):'—'}</strong></div>
+          <div class="control-metric"><span>Credit Sold ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_sale_per_tonne!=null?fmtINR2(s.credit_sale_per_tonne):'—'}</strong></div>
+          <div class="control-metric"><span>Credit Repaid ₹/T</span><strong>${s.credit_liquidity_available===true&&s.credit_recovery_per_tonne!=null?fmtINR2(s.credit_recovery_per_tonne):'—'}</strong></div>
         </div>
       </div>
       <div class="card cash-card"><h3>Cash Position</h3>
@@ -3256,7 +3699,7 @@ function renderControlRoom(data){
         <table class="report-table customer-sales-table">
           <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>MDP/Tonne</th><th>Price (₹/MT)</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Total Paid</th><th>Credit Sale</th></tr></thead>
           <tbody>${customerSalesRows}</tbody>
-          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtNum(_num(salesTotals.mdp_ton),2)}</strong></td><td><strong>${fmtINR2(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtINR2(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
+          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtNum(_num(salesTotals.mdp_ton),2)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
@@ -3266,7 +3709,7 @@ function renderControlRoom(data){
       <div class="report-table-wrap">
         <table class="report-table dashboard-customer-payments-table">
           <thead><tr><th>Customer</th><th style="text-align:right">Collected in Range</th><th style="text-align:right">Sold in Range</th><th style="text-align:right">Credit Due 0–15</th><th style="text-align:right">Credit Due 16–30</th><th style="text-align:right">Credit Due 31–44</th><th style="text-align:right">Credit Due 45+</th><th style="text-align:right">Total Outstanding</th></tr></thead>
-          <tbody>${customerPaymentBody}</tbody><tfoot>${customerPaymentFooter}</tfoot>
+          <tbody>${customerPaymentRows}</tbody><tfoot><tr><td><strong>Total (${customerPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(customerPaymentTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerSalesTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue0to15Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue16to30Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue31to45Total)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerDue46PlusTotal)}</strong></td><td style="text-align:right"><strong>${fmtINR(customerOutstandingTotal)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Collected = spot cash/UPI paid against sales + later credit repayments. Credit sales remain receivable, with the selected-end customer balance.</div>
@@ -3288,7 +3731,7 @@ function renderControlRoom(data){
       <div class="report-table-wrap">
         <table class="report-table dashboard-vendor-payments-table">
           <thead><tr><th>Vendor</th><th style="text-align:right">Purchased in Range</th><th style="text-align:right">Paid in Range</th><th style="text-align:right">Purchases</th><th style="text-align:right">Payments Made</th><th style="text-align:right">Payable 0–15 Days</th><th style="text-align:right">Payable 16–30 Days</th><th style="text-align:right">Payable 31–45 Days</th><th style="text-align:right">Payable 45+ Days</th><th style="text-align:right">Payable</th></tr></thead>
-          <tbody>${vendorPaymentBody}</tbody><tfoot>${vendorPaymentFooter}</tfoot>
+          <tbody>${vendorPaymentRows}</tbody><tfoot><tr><td><strong>Total (${vendorPageData.length})</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_purchased)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.range_paid)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_purchases)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.total_payments)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_0_15)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_16_30)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_31_45)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.age_45_plus)}</strong></td><td style="text-align:right"><strong>${fmtINR(vendorTotals.payable)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Matches the Vendor page: supplier payments made in the selected range, with the selected-end payable balance.</div>
@@ -3298,7 +3741,7 @@ function renderControlRoom(data){
     <div class="card print-section" id="dash-machine-odometer-card"><h3 class="cashbook-title">⚙️ Live Machinery Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Live Machinery Readings','dash-machine-odometer-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-machine-odometer" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section" id="dash-fuel-ledger-card"><h3 class="cashbook-title">⛽ Fuel Ledger Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Fuel Ledger Book','dash-fuel-ledger-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-fuel-ledger" style="max-height:520px;overflow:auto"></div></div>
   `;
-  renderDashboardCashBooks(data.period.from,data.period.to);
+  await renderDashboardCashBooks(data.period.from,data.period.to);
   loadMachines(data.period.from,data.period.to);
 }
 // ── Sales ──────────────────────────────────────────────────────────────────
@@ -3337,7 +3780,7 @@ function renderSales(){
     html+=`<tr><td>${r.date}${r.sale_time?'<div style="font-size:10px;color:#888;font-weight:400">'+r.sale_time+'</div>':''}</td><td>${r.customer_name||'—'}</td><td>${r.material}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?(r.mdp_ton||0).toFixed(2):'—'}</td><td>${(r.qty_mt||0).toFixed(2)}</td><td>₹${r.rate_per_mt||0}</td><td>${fmtINR(r.amount)}</td><td>${fmtINR(r.transport_charge||0)}</td><td>${fmtINR2(_saleTotal(r))}</td><td>${ch.cash?fmtINR(ch.cash):'—'}</td><td>${ch.upi?fmtINR(ch.upi):'—'}</td><td>${ch.credit?fmtINR(ch.credit):'—'}</td><td><span class="badge b-${(r.payment_mode||'').toLowerCase()}">${r.payment_mode}</span></td><td>${r.vehicle_no||'—'}</td><td>${r.ticket_no||'—'}</td></tr>`;
   });
   if(!slice.length)html+='<tr><td colspan="15" class="empty">No sales for this period</td></tr>';
-  html+=`</tbody><tfoot><tr class="ledger-total-row"><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR2(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr class="ledger-total-row"><td><strong>TOTAL ${_allData.sales.length}</strong></td><td></td><td></td><td>${totmdp.toFixed(2)}</td><td>${totmt.toFixed(2)} MT</td><td></td><td></td><td>${fmtINR(totTransport)}</td><td>${fmtINR(tot)}</td><td><strong>${fmtINR(totCash)}</strong></td><td><strong>${fmtINR(totBank)}</strong></td><td><strong>${fmtINR(totCredit)}</strong></td><td></td><td></td><td></td></tr></tfoot></table>`;
   document.getElementById('sales-tbl').innerHTML=html;
   document.getElementById('sales-pager').innerHTML=pagerHTML('sales',_allData.sales.length);
   renderTransportLedger();
@@ -3445,7 +3888,7 @@ async function loadPL(){
   const from=document.getElementById('pl-from').value,to=document.getElementById('pl-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('pl-from').value=f;document.getElementById('pl-to').value=t;return loadPL();}
   try{
-    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}&include_detail_rows=false`);
+    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
     _allData.pl=data;
     _renderCache.pl=()=>renderPL();
     renderPL();
@@ -3638,9 +4081,9 @@ function renderCustLedger(){
   </div>`;
   html+='<div id="cust-sales-print"><h3 style="font-size:16px;margin:8px 0;color:#1565c0">Sales Data</h3>';
   html+='<table><thead><tr>'+thSort('custSales','date','Date','renderCustLedger')+thSort('custSales','ticket_no','Ticket','renderCustLedger')+thSort('custSales','vehicle_no','Vehicle','renderCustLedger')+thSort('custSales','material','Material','renderCustLedger')+thSort('custSales','mdp_ton','MDP Ton','renderCustLedger')+thSort('custSales','qty_mt','Qty MT','renderCustLedger')+thSort('custSales','rate_per_mt','Rate','renderCustLedger')+thSort('custSales','amount','Amount','renderCustLedger')+thSort('custSales','payment_mode','Mode','renderCustLedger')+'</tr></thead><tbody>';
-  rangeSales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR2(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
+  rangeSales.forEach(r=>{html+=`<tr><td>${r.date||'—'}</td><td>${r.ticket_no||'—'}</td><td>${r.vehicle_no||'—'}</td><td>${r.material||'—'}</td><td style="color:#1565c0;font-weight:600">${r.mdp_ton!=null?Number(r.mdp_ton||0).toFixed(2):'—'}</td><td>${Number(r.qty_mt||0).toFixed(2)}</td><td>${fmtINR(r.rate_per_mt||0)}</td><td><strong>${fmtINR(r.debit||r.amount||0)}</strong></td><td>${r.payment_mode||'—'}</td></tr>`;});
   if(!rangeSales.length)html+='<tr><td colspan="9" class="empty">No sales data for this customer</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${rangeSales.length})</strong></td><td>${fmtINR2(totalSales)}</td><td></td></tr></tfoot></table></div>`;
+  html+=`</tbody><tfoot><tr><td colspan="7"><strong>TOTAL (${rangeSales.length})</strong></td><td>${fmtINR(totalSales)}</td><td></td></tr></tfoot></table></div>`;
   // ── Tally-style Ledger Account (Sale=Debit, Receipt=Credit; balance is receivable = Dr), range-aware ──
   const cTotDebit=cInRange.reduce((s,r)=>s+(r.type==='sale'?(r.debit||r.amount||0):0),0);
   const cTotCredit=cInRange.reduce((s,r)=>s+(r.type==='receipt'?(r.credit||r.amount||0):0),0);
@@ -3673,8 +4116,8 @@ async function addVendor(){
 async function _vendorPurchasesInRange(vendors,from,to){
   const inRange=row=>{const d=String(row.date||'').slice(0,10);return d>=from&&d<=to;};
   try{
-    // One local summary read replaces one full Loctell ledger fetch per
-    // vendor.  The source rows and range formula stay exactly the same.
+    // One R2 summary read replaces one supplier-ledger request per vendor.
+    // It uses the same canonical ledger rows and range formula as before.
     const summary=await api('/api/vendors/ledger-summary');
     const ledgers=summary?.ledgers||{};
     return new Map(vendors.filter(row=>Number.isInteger(Number(row.id))).map(row=>{
@@ -3683,8 +4126,8 @@ async function _vendorPurchasesInRange(vendors,from,to){
       return [String(row.id),amount];
     }));
   }catch(_summaryError){
-    // A freshly deployed frontend can briefly precede the next data sync.
-    // Preserve the previous exact behaviour until its summary is available.
+    // Keep the prior exact path during the short interval before the first
+    // data sync publishes the new summary object.
     const purchases=await Promise.all(vendors.filter(row=>Number.isInteger(Number(row.id))).map(async row=>{
       const ledger=await api(`/api/vendors/ledger/${row.id}`);
       return [String(row.id),(ledger.entries||[]).filter(entry=>entry.type==='purchase'&&inRange(entry)).reduce((sum,entry)=>sum+_num(entry.credit??entry.amount),0)];
@@ -3860,12 +4303,12 @@ async function loadBankSummary(){
   const sumDiv=document.getElementById('bank-summary-cards');
   if(!sumDiv)return;
   try{
-    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}&include_detail_rows=false`);
+    const data=await api(`/api/dashboard/control?from_date=${from}&to_date=${to}`);
     const s=data.summary||{};
     const paymentReceivedTile=_reclassifySales(data).paymentReceived;
     sumDiv.innerHTML=`
-      <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(s.bank_balance||0)}</div><div class="kpi-sub">Dashboard logic · ${esc(from)} to ${esc(to)}</div></div>
-      <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(s.cash_balance_office||0)}</div><div class="kpi-sub">Dashboard logic · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
+      <div class="kpi navy"><div class="kpi-label">Bank Balance</div><div class="kpi-value">${fmtINR(_cashbook.bank?.closing ?? s.bank_balance ?? 0)}</div><div class="kpi-sub">Bank book (live) · ${esc(from)} to ${esc(to)}</div></div>
+      <div class="kpi green"><div class="kpi-label">Cash Balance In Office</div><div class="kpi-value">${fmtINR(_cashbook.cash?.closing ?? s.cash_balance_office ?? 0)}</div><div class="kpi-sub">Cash book (live) · opening from ${esc(s.operating_balance_from||'22 Jun')}</div></div>
       <div class="kpi blue"><div class="kpi-label">Credit Repayment</div><div class="kpi-value">${fmtINR(paymentReceivedTile)}</div><div class="kpi-sub">Credit repayment on older dues (same-day counts as Spot)</div></div>
       <div class="kpi red"><div class="kpi-label">Operating Expenses</div><div class="kpi-value">${fmtINR(s.expenses||0)}</div><div class="kpi-sub">Same as dashboard selected period</div></div>`;
   }catch(e){
@@ -4093,11 +4536,6 @@ async function addMachine(){
   catch(e){flash(e.message,false);}
 }
 const _machineDashboardRange={from:'',to:''};
-let _machineRefreshTimer=null;
-function _scheduleMachineRefresh(dashboardFrom,dashboardTo){
-  if(_machineRefreshTimer)return;
-  _machineRefreshTimer=setTimeout(()=>{_machineRefreshTimer=null;loadMachines(dashboardFrom,dashboardTo);},5000);
-}
 function _machineFuelForRange(from,to){
   return _machineFuelStatsForRange(from,to).liters;
 }
@@ -4112,9 +4550,40 @@ function _machineFuelStatsForRange(from,to,vehicleType=''){
   return {liters,reading:latest?.fuel_issue_reading??null};
 }
 function _machineRangeRows(from,to){
-  const fallback=_allData.machines||[];
-  const priorRows=_allData.machinePrior||[];
+  // Loctell can spell one machine differently across report days (for example
+  // "JAW CRUSHER" vs "Jaw").  Treat these as one physical machine before
+  // choosing the range boundaries, otherwise the dashboard and Operations
+  // table render the same machine twice.
+  const canonicalName=value=>{
+    const raw=String(value||'').trim(),key=raw.toUpperCase().replace(/[^A-Z0-9]+/g,' ');
+    if(key.includes('JAW'))return 'Jaw';
+    if(key.includes('CONE'))return 'Cone';
+    if(key.includes('VSI'))return 'VSI';
+    if(key.includes('HITACHI'))return 'Hitachi';
+    if(key.includes('LOADER'))return 'VMI Loader';
+    return raw;
+  };
+  const readingScore=row=>Number(Boolean(row?.has_reading||_num(row?.start_reading)||_num(row?.end_reading)));
+  const canonicalRows=rows=>{
+    const selected=new Map();
+    (rows||[]).forEach(row=>{
+      const name=canonicalName(row?.vehicle_type);if(!name)return;
+      const candidate={...row,vehicle_type:name},current=selected.get(name);
+      if(!current||readingScore(candidate)>readingScore(current))selected.set(name,candidate);
+    });
+    return [...selected.values()];
+  };
+  const fallback=canonicalRows(_allData.machines||[]);
+  const allHistory=(_allData.machineHistory||[]).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const history=allHistory.filter(day=>day.date>=from&&day.date<=to);
+  const priorRows=canonicalRows(_allData.machinePrior||[]);
+  const priorHistory=allHistory.filter(day=>day.date<from).sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(day=>({...day,readings:canonicalRows(day.readings)}));
   const priorEndFor=vehicleType=>{
+    for(const day of priorHistory){
+      const row=day.readings.find(candidate=>candidate.vehicle_type===vehicleType);
+      const measured=row&&(row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)!==0||_num(row.end_reading)!==0)));
+      if(measured&&row.end_reading!=null)return _num(row.end_reading);
+    }
     const row=priorRows.find(candidate=>candidate.vehicle_type===vehicleType);
     const measured=row&&(row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)!==0||_num(row.end_reading)!==0)));
     return measured&&row.end_reading!=null?_num(row.end_reading):null;
@@ -4122,15 +4591,15 @@ function _machineRangeRows(from,to){
   const withPriorStart=row=>{
     const priorEnd=priorEndFor(row.vehicle_type);
     if(priorEnd==null||row.end_reading==null)return row;
-    const measured=row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)!==0||_num(row.end_reading)!==0));
+    const measured=row.has_reading===true||(row.has_reading==null&&(_num(row.start_reading)||_num(row.end_reading)));
     return {...row,start_reading:priorEnd,difference:measured?Math.round((_num(row.end_reading)-priorEnd)*100)/100:0};
   };
-  const history=(_allData.machineHistory||[]).filter(day=>day.date>=from&&day.date<=to).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   if(!history.length)return fallback.map(withPriorStart);
   const preferred=['Jaw','Cone','VSI','Hitachi','VMI Loader'];
-  const names=[...new Set([...preferred,...fallback.map(row=>row.vehicle_type),...history.flatMap(day=>(day.readings||[]).map(row=>row.vehicle_type))].filter(Boolean))];
+  const normalisedHistory=history.map(day=>({...day,readings:canonicalRows(day.readings)}));
+  const names=[...new Set([...preferred,...fallback.map(row=>row.vehicle_type),...normalisedHistory.flatMap(day=>day.readings.map(row=>row.vehicle_type))])].filter(Boolean);
   return names.map(vehicle_type=>{
-    const points=history.map(day=>(day.readings||[]).find(row=>row.vehicle_type===vehicle_type)).filter(Boolean);
+    const points=normalisedHistory.map(day=>day.readings.find(row=>row.vehicle_type===vehicle_type)).filter(Boolean);
     // Loctell emits an all-zero placeholder for a day with no odometer
     // reading.  Such a row is not a range boundary: its own report begins at
     // the first non-zero reading and finishes at the last non-zero reading.
@@ -4139,12 +4608,12 @@ function _machineRangeRows(from,to){
     const first=rangePoints.find(row=>row.start_reading!=null);
     const last=rangePoints.slice().reverse().find(row=>row.end_reading!=null);
     if(!first||!last)return {vehicle_type,end_reading:null,start_reading:null,difference:null};
-    // Each 6 AM operating day opens at the previous measured close.  If no
-    // prior-day reading exists (for example FY opening), retain Loctell's
-    // own range start instead of fabricating one.
+    // The 6 AM operating-day start is yesterday's final measured reading.
+    // At the FY opening, where no predecessor exists, keep Loctell's own
+    // range start so the displayed difference remains source-derived.
     const priorEnd=priorEndFor(vehicle_type);
     const start_reading=priorEnd==null?_num(first.start_reading):priorEnd,end_reading=_num(last.end_reading);
-    const lastMeasured=last.has_reading===true||(last.has_reading==null&&(_num(last.start_reading)!==0||_num(last.end_reading)!==0));
+    const lastMeasured=last.has_reading===true||(last.has_reading==null&&(_num(last.start_reading)||_num(last.end_reading)));
     return {vehicle_type,start_reading,end_reading,difference:lastMeasured?Math.round((end_reading-start_reading)*100)/100:0};
   });
 }
@@ -4168,25 +4637,10 @@ async function loadMachines(dashboardFrom,dashboardTo){
       const [odometer,fuel_issued,fuel_received,fuel_balance]=await Promise.all([api(`/api/machines/odometer${rangeQuery}`),api('/api/machines/fuel-issued'),api('/api/machines/fuel-received'),api('/api/machines/fuel-balance')]);
       summary={odometer,fuel_issued,fuel_received,fuel_balance};
     }
-    const rows=summary.odometer||[],history=summary.odometer_history||[],priorRows=summary.prior_odometer||[],fuelRows=summary.fuel_issued||[],fuelReceivedRows=summary.fuel_received||[],fuelBalance=summary.fuel_balance||{};
-    _allData.machines=rows;_allData.machineHistory=history;_allData.machinePrior=priorRows;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
+    const rows=summary.odometer||[],history=summary.odometer_history||[],fuelRows=summary.fuel_issued||[],fuelReceivedRows=summary.fuel_received||[],fuelBalance=summary.fuel_balance||{};
+    _allData.machines=rows;_allData.machineHistory=history;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
-    // A cold combined summary intentionally returns immediately rather than
-    // holding the page behind a slow odometer request. Hydrate the independent
-    // fuel feeds as they arrive, so a genuine issue is never hidden by that
-    // temporary odometer delay.
-    if(summary.refreshing&&!summary.cached){
-      const hydrateFuel=(field,path)=>api(path).then(value=>{_allData[field]=value;renderMachines();}).catch(()=>{});
-      hydrateFuel('machineFuel','/api/machines/fuel-issued');
-      hydrateFuel('fuelReceived','/api/machines/fuel-received');
-      hydrateFuel('fuelBalance','/api/machines/fuel-balance');
-    }
-    if(summary.refreshing){
-      const age=Number(summary.cache_age_seconds),noteText=summary.cached&&Number.isFinite(age)?`Showing the last verified Loctell reading (${age}s old) while a fresh reading loads in the background.`:'Loctell machinery readings are loading in the background. This page remains usable.';
-      ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el){const note=document.createElement('div');note.className='metric-note';note.textContent=noteText;el.prepend(note);}});
-      _scheduleMachineRefresh(dashboardFrom,dashboardTo);
-    }
   }catch(e){
     ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
   }
@@ -4205,56 +4659,65 @@ function renderMachines(){
 }
 function _fuelLedger(from,to){
   const diesel=row=>String(row.fuel_type||'DIESEL').toUpperCase()==='DIESEL';
-  const trackingFrom=String((_allData.fuelBalance||{}).spend_tracking_from||'9999-12-31');
+  const sourceBalance=_allData.fuelBalance||{};
+  const trackingFrom=String(sourceBalance.spend_tracking_from||'9999-12-31');
+  const requestedFrom=String(from||trackingFrom),requestedTo=String(to||today());
+  const openingDate=requestedFrom>trackingFrom?requestedFrom:trackingFrom;
   const events=[
     ...(_allData.fuelReceived||[]).filter(diesel).map(row=>({kind:'receipt',date:row.date,order:String(row.received_at||row.received_date||row.date).replace('[Etc/UTC]','+00:00'),row})),
     ...(_allData.machineFuel||[]).filter(row=>diesel(row)&&row.date>=trackingFrom).map(row=>({kind:'issue',date:row.date,order:String(row.issued_at||row.date).replace('[Etc/UTC]','+00:00'),row})),
   ].sort((a,b)=>a.order.localeCompare(b.order)||(a.kind==='receipt'?-1:1));
-  let balanceLitres=0,balanceValue=0,closingLitres=0,closingValue=0,latestReceiptRate=null;
-  const rows=[];
+  let latestReceiptRate=null,netLitres=0;
+  const sourceRows=[];
   events.forEach(event=>{
     let entry;
     if(event.kind==='receipt'){
       const quantity=_num(event.row.quantity),amount=_num(event.row.amount),listedRate=_num(event.row.unit_price);
       const receiptRate=listedRate>0?listedRate:(quantity>0&&amount>0?amount/quantity:null),displayedRate=receiptRate==null?null:Math.round(receiptRate*100)/100;
-      balanceLitres+=quantity;balanceValue+=amount;
       latestReceiptRate=displayedRate==null?latestReceiptRate:displayedRate;
-      entry={date:event.date,details:`Received from ${event.row.supplier_name||'—'}`,remarks:event.row.remarks||'',received_litres:quantity,unit_price:displayedRate,receipt_amount:amount,spend_litres:null,spend_amount:null};
+      if(event.date>=trackingFrom)netLitres+=quantity;
+      entry={date:event.date,details:`Received from ${event.row.supplier_name||'—'}`,remarks:event.row.remarks||'',received_litres:quantity,unit_price:displayedRate,receipt_amount:amount,spend_litres:null,spend_amount:null,delta_litres:quantity};
     }else{
       // An issue is valued at the latest official Loctell diesel receipt rate,
       // matching the visible Fuel Received Unit Price rather than a blended rate.
       const liters=_num(event.row.fuel_issued),rate=latestReceiptRate,spend=rate==null?null:Math.round(liters*rate*100)/100;
-      balanceLitres-=liters;if(spend!=null)balanceValue-=spend;
-      entry={date:event.date,details:`Issued to ${event.row.vehicle_type||'Machine'}`,remarks:event.row.remarks||'',received_litres:null,unit_price:rate==null?null:Math.round(rate*100)/100,receipt_amount:null,spend_litres:liters,spend_amount:spend};
+      netLitres-=liters;
+      entry={date:event.date,details:`Issued to ${event.row.vehicle_type||'Machine'}`,remarks:event.row.remarks||'',received_litres:null,unit_price:rate==null?null:Math.round(rate*100)/100,receipt_amount:null,spend_litres:liters,spend_amount:spend,delta_litres:-liters};
     }
-    entry.balance_litres=Math.round(balanceLitres*100)/100;entry.balance_value=Math.round(balanceValue*100)/100;
-    if(event.date<=to){closingLitres=entry.balance_litres;closingValue=entry.balance_value;}
-    if(event.date>=from&&event.date<=to)rows.push(entry);
+    sourceRows.push(entry);
   });
-  return {rows,closing_litres:closingLitres,closing_value:closingValue,tracking_from:trackingFrom};
+  const hasSourceBalance=Number.isFinite(Number(sourceBalance.diesel_litres));
+  const monthOpening=hasSourceBalance?Math.round((Number(sourceBalance.diesel_litres)-netLitres)*100)/100:null;
+  let runningLitres=monthOpening;
+  sourceRows.filter(row=>row.date<trackingFrom?false:row.date<openingDate).forEach(row=>{if(runningLitres!=null)runningLitres=Math.round((runningLitres+row.delta_litres)*100)/100;});
+  const openingRemarks=openingDate===trackingFrom?`Opening stock as of ${trackingFrom}`:`Balance brought forward from ${openingDate}`;
+  const rows=[{kind:'opening',date:openingDate,details:'Opening fuel balance in plant',remarks:openingRemarks,received_litres:null,unit_price:null,receipt_amount:null,spend_litres:null,spend_amount:null,balance_litres:runningLitres}];
+  sourceRows.filter(row=>row.date>=openingDate&&row.date<=requestedTo).forEach(row=>{
+    if(runningLitres!=null)runningLitres=Math.round((runningLitres+row.delta_litres)*100)/100;
+    rows.push({...row,balance_litres:runningLitres});
+  });
+  return {rows,opening_litres:monthOpening,closing_litres:runningLitres,tracking_from:trackingFrom,opening_date:openingDate};
 }
 function renderFuelReceived(){
   const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
   const ledger=_fuelLedger(from,to),rows=ledger.rows,cur=_page.fuelReceived||1,size=pageSizeFor('fuelReceived',rows.length),slice=rows.slice((cur-1)*size,cur*size);
-  const totalQty=rows.reduce((sum,r)=>sum+_num(r.received_litres),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.receipt_amount),0),totalSpend=rows.reduce((sum,r)=>sum+_num(r.spend_amount),0),totalSpendLitres=rows.reduce((sum,r)=>sum+_num(r.spend_litres),0),balance=_allData.fuelBalance||{};
-  const plantText=balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L${balance.diesel_value==null?'':` · ${fmtINR(balance.diesel_value)} (${fmtINR(balance.diesel_unit_price)}/L)`}`;
-  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Remarks</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th></tr></thead><tbody>';
-  slice.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`${fmtNum(r.spend_litres,2)} L`:`<strong>${fmtNum(r.spend_litres,2)} L <span style="font-weight:400">(${fmtINR(r.spend_amount)})</span></strong>`;html+=`<tr><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.remarks?esc(r.remarks):'—'}</td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td></tr>`;});
-  if(!slice.length)html+='<tr><td colspan="7" class="empty">No diesel ledger entries in the selected period</td></tr>';
-  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtNum(totalSpendLitres,2)} L <span style="font-weight:400">(${fmtINR(totalSpend)})</span></strong></td></tr><tr><td colspan="6"><strong>Loctell Fuel Dashboard — Fuel in Plant</strong></td><td><strong>${plantText}</strong></td></tr></tfoot></table>`;
+  const totalQty=rows.reduce((sum,r)=>sum+_num(r.received_litres),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.receipt_amount),0),totalSpend=rows.reduce((sum,r)=>sum+_num(r.spend_amount),0),totalSpendLitres=rows.reduce((sum,r)=>sum+_num(r.spend_litres),0);
+  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Remarks</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th><th>Balance in Plant</th></tr></thead><tbody>';
+  slice.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`${fmtNum(r.spend_litres,2)} L`:`<strong>${fmtNum(r.spend_litres,2)} L <span style="font-weight:400">(${fmtINR(r.spend_amount)})</span></strong>`;const stock=r.balance_litres==null?'—':`<strong>${fmtNum(r.balance_litres,2)} L</strong>`;html+=`<tr${r.kind==='opening'?' class="ledger-opening-row"':''}><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.remarks?esc(r.remarks):'—'}</td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td><td>${stock}</td></tr>`;});
+  if(!slice.length)html+='<tr><td colspan="8" class="empty">No diesel ledger entries in the selected period</td></tr>';
+  html+=`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtNum(totalSpendLitres,2)} L <span style="font-weight:400">(${fmtINR(totalSpend)})</span></strong></td><td><strong>${ledger.closing_litres==null?'—':`${fmtNum(ledger.closing_litres,2)} L`}</strong></td></tr></tfoot></table>`;
   const table=document.getElementById('fuel-received-tbl');if(table)table.innerHTML=html;
   const pager=document.getElementById('fuel-received-pager');if(pager)pager.innerHTML=pagerHTML('fuelReceived',rows.length);
-  const summary=document.getElementById('fuel-received-summary');if(summary)summary.innerHTML=`<div class="kpi blue"><div class="kpi-label">Fuel Received</div><div class="kpi-value">${fmtNum(totalQty,2)} L</div></div><div class="kpi green"><div class="kpi-label">Fuel Spend (from ${esc(ledger.tracking_from)})</div><div class="kpi-value">${fmtNum(totalSpendLitres,2)} L <span style="font-size:14px;font-weight:400">(${fmtINR(totalSpend)})</span></div></div><div class="kpi navy"><div class="kpi-label">Fuel in Plant (Loctell)</div><div class="kpi-value">${balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L`}</div><div class="metric-note">${balance.diesel_value==null?'Value unavailable':`${fmtINR(balance.diesel_value)} at ${fmtINR(balance.diesel_unit_price)}/L`}</div></div>`;
+  const summary=document.getElementById('fuel-received-summary');if(summary)summary.innerHTML=`<div class="kpi blue"><div class="kpi-label">Fuel Received</div><div class="kpi-value">${fmtNum(totalQty,2)} L</div></div><div class="kpi green"><div class="kpi-label">Fuel Spend (from ${esc(ledger.tracking_from)})</div><div class="kpi-value">${fmtNum(totalSpendLitres,2)} L <span style="font-size:14px;font-weight:400">(${fmtINR(totalSpend)})</span></div></div><div class="kpi navy"><div class="kpi-label">Fuel in Plant (Ledger)</div><div class="kpi-value">${ledger.closing_litres==null?'—':`${fmtNum(ledger.closing_litres,2)} L`}</div><div class="metric-note">Opening balance from ${esc(ledger.opening_date)}</div></div>`;
 }
 function renderDashboardFuelLedger(from,to){
   const table=document.getElementById('dash-fuel-ledger');if(!table||!from||!to)return;
-  const ledger=_fuelLedger(from,to),rows=ledger.rows,balance=_allData.fuelBalance||{};
+  const ledger=_fuelLedger(from,to),rows=ledger.rows;
   const totalQty=rows.reduce((sum,r)=>sum+_num(r.received_litres),0),totalAmount=rows.reduce((sum,r)=>sum+_num(r.receipt_amount),0),totalSpend=rows.reduce((sum,r)=>sum+_num(r.spend_amount),0),totalSpendLitres=rows.reduce((sum,r)=>sum+_num(r.spend_litres),0);
-  const plantText=balance.diesel_litres==null?'—':`${fmtNum(balance.diesel_litres,2)} L${balance.diesel_value==null?'':` · ${fmtINR(balance.diesel_value)} (${fmtINR(balance.diesel_unit_price)}/L)`}`;
-  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Remarks</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th></tr></thead><tbody>';
-  rows.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`${fmtNum(r.spend_litres,2)} L`:`<strong>${fmtNum(r.spend_litres,2)} L <span style="font-weight:400">(${fmtINR(r.spend_amount)})</span></strong>`;html+=`<tr><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.remarks?esc(r.remarks):'—'}</td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td></tr>`;});
-  if(!rows.length)html+='<tr><td colspan="7" class="empty">No diesel ledger entries in the selected period</td></tr>';
-  table.innerHTML=html+`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtNum(totalSpendLitres,2)} L <span style="font-weight:400">(${fmtINR(totalSpend)})</span></strong></td></tr><tr><td colspan="6"><strong>Loctell Fuel Dashboard — Fuel in Plant</strong></td><td><strong>${plantText}</strong></td></tr></tfoot></table>`;
+  let html='<table><thead><tr><th>Date</th><th>Details</th><th>Remarks</th><th>Fuel Received</th><th>Unit Price</th><th>Receipt Amount</th><th>Fuel Spend</th><th>Balance in Plant</th></tr></thead><tbody>';
+  rows.forEach(r=>{const spend=r.spend_litres==null?'—':r.spend_amount==null?`${fmtNum(r.spend_litres,2)} L`:`<strong>${fmtNum(r.spend_litres,2)} L <span style="font-weight:400">(${fmtINR(r.spend_amount)})</span></strong>`;const stock=r.balance_litres==null?'—':`<strong>${fmtNum(r.balance_litres,2)} L</strong>`;html+=`<tr${r.kind==='opening'?' class="ledger-opening-row"':''}><td>${esc(r.date)}</td><td><strong>${esc(r.details)}</strong></td><td>${r.remarks?esc(r.remarks):'—'}</td><td>${r.received_litres==null?'—':`${fmtNum(r.received_litres,2)} L`}</td><td>${r.unit_price==null?'—':fmtINR(r.unit_price)}</td><td>${r.receipt_amount==null?'—':fmtINR(r.receipt_amount)}</td><td>${spend}</td><td>${stock}</td></tr>`;});
+  if(!rows.length)html+='<tr><td colspan="8" class="empty">No diesel ledger entries in the selected period</td></tr>';
+  table.innerHTML=html+`</tbody><tfoot><tr><td colspan="3"><strong>TOTAL</strong></td><td><strong>${fmtNum(totalQty,2)} L</strong></td><td></td><td><strong>${fmtINR(totalAmount)}</strong></td><td><strong>${fmtNum(totalSpendLitres,2)} L <span style="font-weight:400">(${fmtINR(totalSpend)})</span></strong></td><td><strong>${ledger.closing_litres==null?'—':`${fmtNum(ledger.closing_litres,2)} L`}</strong></td></tr></tfoot></table>`;
 }
 async function delMachine(id){flash('Please make changes in Loctell ERP/source. Local changes are disabled.',false);}
 
@@ -4418,34 +4881,32 @@ async function downloadCACanonical(){try{const d=await _caData();_jsonDownload(`
 async function downloadCAJson(){try{const d=await _caData(),audit=_auditFromCompliance(d);_jsonDownload(`audit_ca_${audit.period.from}_${audit.period.to}.json`,audit);flash('CA audit JSON downloaded');}catch(e){flash(e.message,false);}}
 function _csvCell(v){const s=String(v??'');return /[",\n]/.test(s)?`"${s.replaceAll('"','""')}"`:s;}
 async function downloadCADailyCSV(){try{const d=await _caData(),cols=['date','sales_count','gross_sales','taxable_sales','output_tax','qty_mt','expenses','receipts','vendor_payments'];const csv=[cols.join(','),...(d.daily||[]).map(r=>cols.map(c=>_csvCell(r[c])).join(','))].join('\n');downloadBlob(`audit_ca_daily_${d.period.from}_${d.period.to}.csv`,csv,'text/csv');flash('Daily CA CSV downloaded');}catch(e){flash(e.message,false);}}
-function _tallyEntry(name,deemedPositive,amount){return `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${xmlEsc(name||'Unmapped Ledger')}</LEDGERNAME><ISDEEMEDPOSITIVE>${deemedPositive?'Yes':'No'}</ISDEEMEDPOSITIVE><AMOUNT>${deemedPositive?'-':''}${Math.abs(_complianceRound(amount)).toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;}
-function _tallyXMLFromCompliance(dataset){let messages='',voucherNo=1;for(const row of dataset.sales||[]){const rate=_complianceRound(row.gst_rate),party=row.customer_name||'Cash',salesLedger=rate===18?'Sales @ 18%':(String(row.material||'').toUpperCase().includes('MURRAM')?'MURRAM MT':'AGGREGATE SALES'),taxes=[];if(Number(row.igst||0))taxes.push([`Output IGST @ ${rate}%`,row.igst]);else{if(Number(row.cgst||0))taxes.push([`Output CGST @ ${rate/2}%`,row.cgst]);if(Number(row.sgst||0))taxes.push([`Output SGST @ ${rate/2}%`,row.sgst]);}const entries=_tallyEntry(party,true,row.gross_value)+_tallyEntry(salesLedger,false,row.taxable_value)+taxes.map(x=>_tallyEntry(x[0],false,x[1])).join('');messages+=`<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View"><DATE>${String(row.date||'').replace(/-/g,'')}</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>${xmlEsc(row.invoice_no||`ERP-SALE-${voucherNo}`)}</VOUCHERNUMBER><ISINVOICE>Yes</ISINVOICE><PARTYLEDGERNAME>${xmlEsc(party)}</PARTYLEDGERNAME><NARRATION>${xmlEsc(`ERP sale ${row.invoice_no||voucherNo}`)}</NARRATION>${entries}</VOUCHER></TALLYMESSAGE>`;voucherNo++;}for(const row of dataset.expenses||[]){const amount=_complianceRound(row.amount),bankLedger=String(row.payment_mode||'Cash').toUpperCase().includes('CASH')?'Cash':'Bank';messages+=`<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Payment" ACTION="Create"><DATE>${String(row.date||'').replace(/-/g,'')}</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>ERP-EXP-${row.id??voucherNo}</VOUCHERNUMBER><NARRATION>${xmlEsc(row.description||row.category||'Expense')}</NARRATION>${_tallyEntry(row.category||'General Expenses',true,amount)}${_tallyEntry(bankLedger,false,amount)}</VOUCHER></TALLYMESSAGE>`;voucherNo++;}for(const row of dataset.receipts||[]){const amount=_complianceRound(row.amount),bankLedger=String(row.mode||'Cash').toUpperCase().includes('CASH')?'Cash':'Bank';messages+=`<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Receipt" ACTION="Create"><DATE>${String(row.date||'').replace(/-/g,'')}</DATE><VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME><VOUCHERNUMBER>ERP-REC-${row.id??voucherNo}</VOUCHERNUMBER><NARRATION>${xmlEsc(row.reference||'Customer receipt')}</NARRATION>${_tallyEntry(bankLedger,true,amount)}${_tallyEntry(row.customer_name||'Customer',false,amount)}</VOUCHER></TALLYMESSAGE>`;voucherNo++;}for(const row of dataset.vendor_payments||[]){const amount=_complianceRound(row.amount),bankLedger=String(row.mode||'Cash').toUpperCase().includes('CASH')?'Cash':'Bank';messages+=`<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Payment" ACTION="Create"><DATE>${String(row.date||'').replace(/-/g,'')}</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>ERP-VPAY-${row.id??voucherNo}</VOUCHERNUMBER><NARRATION>${xmlEsc(row.reference||'Vendor payment')}</NARRATION>${_tallyEntry(row.vendor_name||'Vendor',true,amount)}${_tallyEntry(bankLedger,false,amount)}</VOUCHER></TALLYMESSAGE>`;voucherNo++;}return `<?xml version="1.0" encoding="UTF-8"?><ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC><REQUESTDATA>${messages}</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;}
-async function downloadCATally(){try{const d=await _caData(),xml=_tallyXMLFromCompliance(d);if(!xml)throw new Error('Tally data is not available for this period yet');downloadBlob(`Tally_Audit_CA_${d.period.from}_${d.period.to}.xml`,xml,'application/xml');flash('Tally XML downloaded — review ledger/company before import');}catch(e){flash(e.message,false);}}
+function engineTallyEnvelope(vouchers){const messages=(vouchers||[]).map(v=>String(v?.content||'')).filter(Boolean).join('');return messages?`<?xml version="1.0" encoding="UTF-8"?><ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC><REQUESTDATA>${messages}</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`:'';}
+ async function downloadCATally(){try{const d=await _caData(),vouchers=(d.tally_vouchers||[]).filter(v=>_complianceInRange(v,d.period.from,d.period.to)),xml=engineTallyEnvelope(vouchers);if(!xml)throw new Error('Canonical Tally vouchers are not available for this period yet');downloadBlob(`Tally_Audit_CA_${d.period.from}_${d.period.to}.xml`,xml,'application/xml');flash('Tally XML downloaded — review ledger/company before import');}catch(e){flash(e.message,false);}}
 
 // ── ERP Bank Transactions ─────────────────────────────────────────────────────
 // ── Cash Book / Bank Book ─────────────────────────────────────────────────────
-// Both books are built from the SAME movement streams + verified anchors the dashboard uses
-// (spot sales, customer payments, ALL expenses incl. cash payments not booked in loctell's cash
-// ledger), so every payment shows and the running balance ties out to the dashboard tiles.
-// Opening balance is carried forward to the chosen from-date.
+// Financial balances are supplied only by the canonical cloud cashbook.  The browser must never
+// reconstruct a fallback book: an unavailable snapshot is safer than a guessed financial figure.
 const _cashbook={cash:null,bank:null};
+async function _buildCashBook(from,to){
+  // The server-generated book is built once from the canonical data used by Dashboard and Daily Book.
+  // Do not fall back to browser arithmetic: a missing canonical snapshot must stay visible as an error.
+  try{
+    const canonical=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
+    if(canonical&&canonical.cash&&canonical.bank)return canonical;
+  }catch(e){}
+  throw new Error('Canonical cash/bank data is temporarily unavailable. No fallback calculation was used; please retry after the next engine sync.');
+}
 async function loadErpBank(){
   const from=document.getElementById('eb-from').value,to=document.getElementById('eb-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('eb-from').value=f;document.getElementById('eb-to').value=t;return loadErpBank();}
-  try{
-    _cashbook.bank=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
-    renderCashBook('bank','erp-bank-tbl','erp-bank-pager');
-    loadBankSummary();
-  }catch(e){flash(e.message,false);}
+  try{_cashbook.bank=await _buildCashBook(from,to);renderCashBook('bank','erp-bank-tbl','erp-bank-pager');loadBankSummary();}catch(e){_cashbook.bank=null;document.getElementById('erp-bank-tbl').innerHTML='<div class="empty">Canonical bank book unavailable — retry after the next engine sync.</div>';flash(e.message,false);}
 }
 async function loadErpCash(){
   const from=document.getElementById('ec-from').value,to=document.getElementById('ec-to').value;
   if(!from||!to){const[f,t]=calcPreset('today');document.getElementById('ec-from').value=f;document.getElementById('ec-to').value=t;return loadErpCash();}
-  try{
-    _cashbook.cash=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
-    renderCashBook('cash','erp-cash-tbl','erp-cash-pager');
-    loadBankSummary();
-  }catch(e){flash(e.message,false);}
+  try{_cashbook.cash=await _buildCashBook(from,to);renderCashBook('cash','erp-cash-tbl','erp-cash-pager');loadBankSummary();}catch(e){_cashbook.cash=null;document.getElementById('erp-cash-tbl').innerHTML='<div class="empty">Canonical cash book unavailable — retry after the next engine sync.</div>';flash(e.message,false);}
 }
 // Spot-sale portion of a movement row (its channel amount) — cash portion in the cash book,
 // UPI/bank portion in the bank book. Cash-book total + Bank-book total = the Spot Sale tile.
@@ -4472,16 +4933,28 @@ function renderCashBook(channel,tblId,pagerId){
   document.getElementById(tblId).innerHTML=_cashBookHTML(_cashbook[channel],channel);
   const pager=document.getElementById(pagerId);if(pager)pager.innerHTML='';
 }
-// Dashboard embeds the same Cash Book + Bank Book for the control-room date range.
+// Dashboard embeds the same Cash Book + Bank Book for the control-room date range (client-built).
 async function renderDashboardCashBooks(from,to){
   const bb=document.getElementById('dash-bank-book'),cb=document.getElementById('dash-cash-book');
   if(!bb&&!cb)return;
   try{
-    const book=await api(`/api/sync/erp/cashbook?from_date=${from}&to_date=${to}`);
+    const book=await _buildCashBook(from,to);
+    // Every balance tile and both embedded books use this exact object. The previous code only
+    // painted the embedded tables, leaving other balance cards on a separate/stale source.
+    _cashbook.bank=book.bank;
+    _cashbook.cash=book.cash;
     if(bb)bb.innerHTML=_cashBookHTML(book,'bank');
     if(cb)cb.innerHTML=_cashBookHTML(book,'cash');
-  }catch(e){if(bb)bb.innerHTML='<div class="empty">Cash/Bank book unavailable</div>';}
+    // Balance tiles read the SAME live book closing shown below (opening from the control snapshot +
+    // itemised movements). Since the repayment reconciliation (named/deduped receipts) the book now
+    // matches localhost to the rupee AND stays current intraday — unlike a static snapshot — so the
+    // tile tracks the live cash/bank exactly.
+    const _bt=document.getElementById('d-bank-bal'),_ct=document.getElementById('d-cash-office');
+    if(_bt&&book.bank)_bt.textContent=fmtINR(book.bank.closing);
+    if(_ct&&book.cash)_ct.textContent=fmtINR(book.cash.closing);
+  }catch(e){_cashbook.bank=null;_cashbook.cash=null;if(bb)bb.innerHTML='<div class="empty">Canonical bank book unavailable — retry after the next engine sync.</div>';if(cb)cb.innerHTML='<div class="empty">Canonical cash book unavailable — retry after the next engine sync.</div>';}
 }
+
 
 </script>
 </body>

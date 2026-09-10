@@ -174,7 +174,7 @@ async def require_basic_auth(request: Request, call_next):
 async def _start_background_sync():
     """
     1. On first boot: full historical sync from 2026-06-01 → yesterday (once, in background).
-    2. Then every 15 minutes: sync yesterday + today (keeps data fresh).
+    2. Then every 10 minutes: sync yesterday + today (keeps data fresh).
     """
     await asyncio.sleep(10)          # give server a moment to fully start
     loop = asyncio.get_running_loop()
@@ -220,7 +220,7 @@ async def _start_background_sync():
         if not username or not password:
             continue
         try:
-            print(f"[auto_sync] Running 15-min sync at {datetime.now().strftime('%H:%M')}…")
+            print(f"[auto_sync] Running 10-min sync at {datetime.now().strftime('%H:%M')}…")
             sess  = await loop.run_in_executor(None,
                 lambda: erp_sync_router.erp_auth(erp_base, org, username, password))
             today = date.today()
@@ -241,7 +241,14 @@ async def _start_background_sync():
             finally:
                 db.close()
         except Exception as e:
-            print(f"[auto_sync] 15-min sync error: {e}")
+            message = f"ERP login/sync failed: {e}"
+            print(f"[auto_sync] 10-min sync error: {e}")
+            # Keep the last verified data intact, while making the Engine
+            # status truthful about a failed scheduled attempt.
+            cfg2 = erp_sync_router.load_config()
+            cfg2["last_sync_errors"] = [message]
+            cfg2["last_sync_attempt"] = datetime.now().isoformat()
+            erp_sync_router.save_config(cfg2)
 
 # ── Static + routers ────────────────────────────────────────────────────────────
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
