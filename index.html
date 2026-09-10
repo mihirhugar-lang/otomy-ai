@@ -2524,16 +2524,27 @@ function isMobilePrint(){
 function printStyles(){
   return document.querySelector('style')?.textContent || '';
 }
-function openMobilePrintPage(title, content, className=''){
+function openMobilePrintPage(title, content, className='',existingWindow=null){
   const safeTitle=esc(title);
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
-  const win=window.open('', '_blank');
+  const win=existingWindow||window.open('', '_blank');
   if(!win){
     flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
     return false;
   }
   win.document.open();
   win.document.write(html);
+  win.document.close();
+  return true;
+}
+// Use this for reports which already carry their complete document stylesheet
+// (for example Cash Profit). It deliberately has no dashboard CSS wrapper, so
+// the app print window is byte-for-byte the same report document as the web popup.
+function openExactMobilePrintPage(title, style, content){
+  const win=window.open('', '_blank');
+  if(!win){flash('Popup blocked. Allow popups for Otomy, then tap Print / PDF again.',false);return false;}
+  win.document.open();
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+style+'</style></head><body>'+content+'<script>setTimeout(function(){try{window.print();}catch(e){}},300);<\/script></body></html>');
   win.document.close();
   return true;
 }
@@ -2884,23 +2895,6 @@ function pdfBuildPayload(title,root,subtitle=''){
   const sub=[subtitle||pdfSubtitleFromRoot(root),`Generated: ${pdfGeneratedStamp()}`].filter(Boolean).join(' | ');
   return {title:pdfClean(`CrusherOps - ${title}`),subtitle:pdfClean(sub),tables};
 }
-// Turn a completed HTML report into the same compact vector-PDF model used by
-// the app share sheet. The off-screen staging node stays measurable so every
-// table row is retained; it is removed before the share sheet is opened.
-function pdfPayloadFromReportHtml(title,subtitle,content){
-  const stage=document.createElement('div');
-  stage.style.cssText='position:fixed;left:-12000px;top:0;width:1120px;display:block;opacity:0;pointer-events:none';
-  stage.innerHTML=content;
-  document.body.appendChild(stage);
-  try{
-    const tables=[];
-    const metrics=pdfMetricRows(stage);
-    if(metrics)tables.push(metrics);
-    tables.push(...pdfTablesFromElement(stage,title));
-    if(!tables.length)tables.push({title:'No printable data',rows:[['Message'],['No report rows are available.']]});
-    return {title:pdfClean(`CrusherOps - ${title}`),subtitle:pdfClean(`${subtitle||''} | Generated: ${pdfGeneratedStamp()}`),tables};
-  }finally{stage.remove();}
-}
 function pdfColumnWidths(rows,available,fontSize){
   const cols=Math.max(...rows.map(r=>r.length));
   const min=cols>10?34:cols>8?42:52;
@@ -3118,6 +3112,11 @@ async function printDashboardConsolidated(){
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
+  // Reserve the real print window while this button still has the user's tap.
+  // The report data is assembled asynchronously below, then written into that
+  // same window with the identical website print stylesheet.
+  const mobilePrintWindow=isMobilePrint()?window.open('', '_blank'):null;
+  if(isMobilePrint()&&!mobilePrintWindow){flash('Allow pop-ups for Otomy, then tap Consolidated Report again.',false);return;}
   try{
     const data=await cachedJson(_dashCache.control,`${f}|${t}`,`/api/dashboard/control?from_date=${f}&to_date=${t}`);
     if(!data||!data.summary)throw new Error('Dashboard data is not ready');
@@ -3166,9 +3165,9 @@ async function printDashboardConsolidated(){
       ${vendorPayments}
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
       ${machineReadings}${fuelLedger}`;
-    if(isMobilePrint())return downloadPdfReport(pdfPayloadFromReportHtml('Dashboard Consolidated Report',`Period: ${f} to ${t}`,content));
+    if(isMobilePrint())return openMobilePrintPage('Dashboard Consolidated Report',content,'dashboard-print',mobilePrintWindow);
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
-  }catch(e){flash(e.message||'Could not build consolidated report',false);}
+  }catch(e){try{mobilePrintWindow?.close();}catch(_){}flash(e.message||'Could not build consolidated report',false);}
 }
 async function _ensureDashboardPrintBooks(from,to){
   // The dashboard books load asynchronously from the same selected range. Do
@@ -3427,28 +3426,6 @@ function closeCashProfitDetail(){
   document.body.style.overflow=modal.dataset.previousOverflow||'';
   modal.remove();
 }
-// The installed iOS app cannot reliably print a hidden HTML frame. Use the
-// same small, sharp, native-share PDF engine used by the other app reports.
-// Every Cash Profit source table is passed separately, so no section can be
-// omitted or cropped at a page boundary.
-function cashProfitDetailPdfPayload(title, copy){
-  const page=copy.querySelector('.page')||copy;
-  const formula=page.querySelector('.formula table');
-  const section=(startsWith,label)=>{
-    const node=[...page.querySelectorAll('.section')].find(item=>item.querySelector('h2')?.textContent?.startsWith(startsWith));
-    const table=node?.querySelector('table');
-    return table?{title:label,rows:pdfRowsFromTable(table)}:null;
-  };
-  const formulaRows=formula?pdfRowsFromTable(formula):[];
-  const tables=[];
-  if(formulaRows.length)tables.push({title:'Exact tile formula',rows:[['Metric','Calculation','Amount'],...formulaRows]});
-  ['Sales Ledger — source of Gross Sales and Credit Sales','Credit Repayment Ledger — source of Credit Repaid','Operating Expense Ledger — source of Selected Period Profit'].forEach((label,index)=>{
-    const starts=['Sales Ledger','Credit Repayment Ledger','Operating Expense Ledger'][index];
-    const block=section(starts,label);if(block)tables.push(block);
-  });
-  if(!tables.length)tables.push({title:'Cash Profit Calculation Detail',rows:[['Message'],['No printable report rows are available.']]});
-  return {title:pdfClean(title),subtitle:pdfClean(page.querySelector('.head p')?.textContent||''),tables};
-}
 function printCashProfitDetailModal(){
   const modal=document.getElementById('cash-profit-detail-modal');
   const frame=modal?.querySelector('iframe');
@@ -3459,7 +3436,7 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
   const title=_cashProfitDetailModalTitle||'Cash Profit Calculation Detail';
-  if(isMobilePrint())return downloadPdfReport(cashProfitDetailPdfPayload(title,copy));
+  if(isMobilePrint())return openExactMobilePrintPage(title,reportStyle,copy.innerHTML);
   runPrint(title,`<style>${reportStyle}</style>${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
