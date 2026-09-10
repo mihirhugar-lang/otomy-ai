@@ -2577,7 +2577,6 @@ function printViaBlob(title, content, className=''){
 // The desktop route remains the browser's normal print preview.
 async function shareStyledMobilePdf(title, content, className=''){
   if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
-  const isCashProfitDetail=className==='cash-profit-detail-print';
   const pa=document.getElementById('print-area');
   const oldStyle=pa.getAttribute('style');
   pa.className=`${className} pdf-capture`;
@@ -2589,7 +2588,7 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('width','1120px','important');
   pa.style.setProperty('max-width','none','important');
   pa.style.setProperty('padding','6px','important');
-  pa.style.setProperty('background',isCashProfitDetail?'#fffdf5':'linear-gradient(160deg,#31507c,#243d61)','important');
+  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
   pa.style.setProperty('overflow','visible','important');
   // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
   pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
@@ -2598,14 +2597,6 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
-  // The Cash Profit detail is an iframe report.  Capture it as finished
-  // report blocks below, not as one long dashboard canvas: iOS otherwise can
-  // split an Expenses table through the middle of a row.
-  if(isCashProfitDetail){
-    pa.querySelectorAll('.page').forEach(page=>{page.style.setProperty('min-height','0','important');page.style.setProperty('max-width','none','important');page.style.setProperty('width','100%','important');page.style.setProperty('padding','22px','important');});
-    pa.querySelectorAll('.formula,.section,.note').forEach(block=>{block.style.setProperty('overflow','visible','important');block.style.setProperty('break-inside','auto','important');block.style.setProperty('page-break-inside','auto','important');});
-    pa.querySelectorAll('table').forEach(table=>{table.style.setProperty('min-width','0','important');table.style.setProperty('width','100%','important');});
-  }
   // Keep normal dashboard cards in natural order. The final two live-data
   // cards are captured separately to stay below iOS's canvas limit, but are
   // flowed into the same PDF pages so no blank page-gap is introduced.
@@ -2625,7 +2616,6 @@ async function shareStyledMobilePdf(title, content, className=''){
     const reportRect=pa.getBoundingClientRect();
     const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
     const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
-    const pdfBackground=isCashProfitDetail?'#fffdf5':'#243d61';
     const flushActivePage=()=>{
       if(!activePage||!activePageUsed)return;
       if(pageCount++)pdf.addPage('a4','landscape');
@@ -2639,7 +2629,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
       const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
       for(let y=0;y<contentHeight;){
-        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle=pdfBackground;activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
+        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle='#243d61';activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
         const target=Math.min(y+(activePage.height-activePageUsed),contentHeight);let end=target;
         while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
         const height=Math.max(1,end-y),ctx=activePage.getContext('2d');
@@ -2648,27 +2638,17 @@ async function shareStyledMobilePdf(title, content, className=''){
         if(activePageUsed>=activePage.height)flushActivePage();
       }
     };
-    if(isCashProfitDetail){
-      const blocks=[...pa.querySelectorAll('.page > .head,.page > .formula,.page > .section,.page > .note')].filter(block=>block.getClientRects().length);
-      for(const block of blocks){
-        const blockRect=block.getBoundingClientRect();
-        const blockRows=[...block.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-blockRect.top,bottom:box.bottom-blockRect.top};}).filter(row=>row.bottom>row.top);
-        const canvas=await window.html2canvas(block,{backgroundColor:'#fffdf5',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.ceil(Math.max(block.scrollHeight,blockRect.height))});
-        appendCanvasPages(canvas,0,blockRect.height,blockRows,blockRect);
-      }
-    }else{
-      // Render every other report in continuous safe-height segments. This
-      // prevents a browser canvas limit from removing any late table/block.
-      const maxCaptureHeight=5000;
-      for(let cropTop=0;cropTop<reportBottom;){
-        let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-        const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
-        if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
-        if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-        const cropHeight=Math.max(1,cropEnd-cropTop);
-        const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
-        appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
-      }
+    // Render every report in continuous safe-height segments. This prevents a
+    // browser canvas limit from removing any late table/block on any page.
+    const maxCaptureHeight=5000;
+    for(let cropTop=0;cropTop<reportBottom;){
+      let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+      const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
+      if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
+      if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+      const cropHeight=Math.max(1,cropEnd-cropTop);
+      const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
+      appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
     }
     for(const card of deferredFinalCards){
       card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -3429,6 +3409,25 @@ function closeCashProfitDetail(){
   document.body.style.overflow=modal.dataset.previousOverflow||'';
   modal.remove();
 }
+// Cash Profit is a self-contained report. On the installed app, print that
+// exact document rather than applying the dashboard canvas renderer, whose
+// global PDF CSS changes table metrics and page breaks.
+function printCashProfitDetailIframe(title, reportStyle, content){
+  try{const old=document.getElementById('__printFrame');if(old)old.remove();}catch(e){}
+  const iframe=document.createElement('iframe');
+  iframe.id='__printFrame';
+  iframe.setAttribute('aria-hidden','true');
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(iframe);
+  const cw=iframe.contentWindow,doc=cw.document;
+  doc.open();
+  doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+reportStyle+'</style></head><body>'+content+'</body></html>');
+  doc.close();
+  let done=false;
+  const fire=()=>{if(done)return;done=true;try{cw.focus();cw.print();}catch(e){}setTimeout(()=>{try{iframe.remove();}catch(e){}},2000);};
+  iframe.onload=()=>setTimeout(fire,350);
+  setTimeout(()=>{if(!done&&cw&&cw.document&&cw.document.readyState!=='loading')fire();},1000);
+}
 function printCashProfitDetailModal(){
   const modal=document.getElementById('cash-profit-detail-modal');
   const frame=modal?.querySelector('iframe');
@@ -3438,16 +3437,9 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.print,.cash-profit-detail-close').forEach(node=>node.remove());
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
-  const mobileStyle=`<style>${reportStyle}
-    #print-area.cash-profit-detail-print{background:#fffdf5!important;color:#172033!important}
-    #print-area.cash-profit-detail-print .page{min-height:0!important;max-width:none!important;width:100%!important;padding:22px!important;background:#fffdf5!important}
-    #print-area.cash-profit-detail-print .table-wrap{height:auto!important;max-height:none!important;overflow:visible!important}
-    #print-area.cash-profit-detail-print .formula,#print-area.cash-profit-detail-print .section,#print-area.cash-profit-detail-print .note{overflow:visible!important;break-inside:auto!important;page-break-inside:auto!important}
-    #print-area.cash-profit-detail-print table{width:100%!important;min-width:0!important}
-    #print-area.cash-profit-detail-print th,#print-area.cash-profit-detail-print td{white-space:normal!important;overflow-wrap:anywhere!important}
-    #print-area.cash-profit-detail-print td.num{white-space:nowrap!important}
-  </style>`;
-  runPrint(_cashProfitDetailModalTitle||'Cash Profit Calculation Detail',`${mobileStyle}${copy.innerHTML}`,'cash-profit-detail-print');
+  const title=_cashProfitDetailModalTitle||'Cash Profit Calculation Detail';
+  if(isMobilePrint())return printCashProfitDetailIframe(title,reportStyle,copy.innerHTML);
+  runPrint(title,`<style>${reportStyle}</style>${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
   doc?.querySelectorAll('.formula table').forEach(table=>{
