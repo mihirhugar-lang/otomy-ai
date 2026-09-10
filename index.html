@@ -2577,6 +2577,7 @@ function printViaBlob(title, content, className=''){
 // The desktop route remains the browser's normal print preview.
 async function shareStyledMobilePdf(title, content, className=''){
   if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
+  const isCashProfitDetail=className==='cash-profit-detail-print';
   const pa=document.getElementById('print-area');
   const oldStyle=pa.getAttribute('style');
   pa.className=`${className} pdf-capture`;
@@ -2588,7 +2589,7 @@ async function shareStyledMobilePdf(title, content, className=''){
   pa.style.setProperty('width','1120px','important');
   pa.style.setProperty('max-width','none','important');
   pa.style.setProperty('padding','6px','important');
-  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
+  pa.style.setProperty('background',isCashProfitDetail?'#fffdf5':'linear-gradient(160deg,#31507c,#243d61)','important');
   pa.style.setProperty('overflow','visible','important');
   // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
   pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
@@ -2597,6 +2598,14 @@ async function shareStyledMobilePdf(title, content, className=''){
     wrap.style.setProperty('min-height','0','important');
     wrap.style.setProperty('overflow','visible','important');
   });
+  // The Cash Profit detail is an iframe report.  Capture it as finished
+  // report blocks below, not as one long dashboard canvas: iOS otherwise can
+  // split an Expenses table through the middle of a row.
+  if(isCashProfitDetail){
+    pa.querySelectorAll('.page').forEach(page=>{page.style.setProperty('min-height','0','important');page.style.setProperty('max-width','none','important');page.style.setProperty('width','100%','important');page.style.setProperty('padding','22px','important');});
+    pa.querySelectorAll('.formula,.section,.note').forEach(block=>{block.style.setProperty('overflow','visible','important');block.style.setProperty('break-inside','auto','important');block.style.setProperty('page-break-inside','auto','important');});
+    pa.querySelectorAll('table').forEach(table=>{table.style.setProperty('min-width','0','important');table.style.setProperty('width','100%','important');});
+  }
   // Keep normal dashboard cards in natural order. The final two live-data
   // cards are captured separately to stay below iOS's canvas limit, but are
   // flowed into the same PDF pages so no blank page-gap is introduced.
@@ -2616,6 +2625,7 @@ async function shareStyledMobilePdf(title, content, className=''){
     const reportRect=pa.getBoundingClientRect();
     const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
     const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
+    const pdfBackground=isCashProfitDetail?'#fffdf5':'#243d61';
     const flushActivePage=()=>{
       if(!activePage||!activePageUsed)return;
       if(pageCount++)pdf.addPage('a4','landscape');
@@ -2629,7 +2639,7 @@ async function shareStyledMobilePdf(title, content, className=''){
       const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
       const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
       for(let y=0;y<contentHeight;){
-        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle='#243d61';activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
+        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle=pdfBackground;activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
         const target=Math.min(y+(activePage.height-activePageUsed),contentHeight);let end=target;
         while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
         const height=Math.max(1,end-y),ctx=activePage.getContext('2d');
@@ -2638,17 +2648,27 @@ async function shareStyledMobilePdf(title, content, className=''){
         if(activePageUsed>=activePage.height)flushActivePage();
       }
     };
-    // Render every report in continuous safe-height segments. This prevents a
-    // browser canvas limit from removing any late table/block on any page.
-    const maxCaptureHeight=5000;
-    for(let cropTop=0;cropTop<reportBottom;){
-      let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-      const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
-      if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
-      if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-      const cropHeight=Math.max(1,cropEnd-cropTop);
-      const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
-      appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
+    if(isCashProfitDetail){
+      const blocks=[...pa.querySelectorAll('.page > .head,.page > .formula,.page > .section,.page > .note')].filter(block=>block.getClientRects().length);
+      for(const block of blocks){
+        const blockRect=block.getBoundingClientRect();
+        const blockRows=[...block.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-blockRect.top,bottom:box.bottom-blockRect.top};}).filter(row=>row.bottom>row.top);
+        const canvas=await window.html2canvas(block,{backgroundColor:'#fffdf5',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.ceil(Math.max(block.scrollHeight,blockRect.height))});
+        appendCanvasPages(canvas,0,blockRect.height,blockRows,blockRect);
+      }
+    }else{
+      // Render every other report in continuous safe-height segments. This
+      // prevents a browser canvas limit from removing any late table/block.
+      const maxCaptureHeight=5000;
+      for(let cropTop=0;cropTop<reportBottom;){
+        let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+        const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
+        if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
+        if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
+        const cropHeight=Math.max(1,cropEnd-cropTop);
+        const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
+        appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
+      }
     }
     for(const card of deferredFinalCards){
       card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
@@ -3418,7 +3438,16 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.print,.cash-profit-detail-close').forEach(node=>node.remove());
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
-  runPrint(_cashProfitDetailModalTitle||'Cash Profit Calculation Detail',`<style>${reportStyle}#print-area .table-wrap{height:auto!important;max-height:none!important;overflow:visible!important}</style>${copy.innerHTML}`,'cash-profit-detail-print');
+  const mobileStyle=`<style>${reportStyle}
+    #print-area.cash-profit-detail-print{background:#fffdf5!important;color:#172033!important}
+    #print-area.cash-profit-detail-print .page{min-height:0!important;max-width:none!important;width:100%!important;padding:22px!important;background:#fffdf5!important}
+    #print-area.cash-profit-detail-print .table-wrap{height:auto!important;max-height:none!important;overflow:visible!important}
+    #print-area.cash-profit-detail-print .formula,#print-area.cash-profit-detail-print .section,#print-area.cash-profit-detail-print .note{overflow:visible!important;break-inside:auto!important;page-break-inside:auto!important}
+    #print-area.cash-profit-detail-print table{width:100%!important;min-width:0!important}
+    #print-area.cash-profit-detail-print th,#print-area.cash-profit-detail-print td{white-space:normal!important;overflow-wrap:anywhere!important}
+    #print-area.cash-profit-detail-print td.num{white-space:nowrap!important}
+  </style>`;
+  runPrint(_cashProfitDetailModalTitle||'Cash Profit Calculation Detail',`${mobileStyle}${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
   doc?.querySelectorAll('.formula table').forEach(table=>{
@@ -3513,7 +3542,7 @@ function openCashProfitDetail(){
   const popup=(isMobilePrint()||_isStandalonePWA())?null:window.open('', '_blank', 'width=1240,height=900');
   if(popup)try{popup.opener=null;}catch(e){}
   const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cash Profit ₹/T — ${esc(from)} to ${esc(to)}</title><style>
-    :root{--navy:#1f4e79;--blue:#1565c0;--green:#2e7d32;--red:#c62828;--amber:#b45309;--paper:#fffdf5;--line:#c9b98f}*{box-sizing:border-box}body{margin:0;background:#eef3f8;color:#172033;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.page{max-width:1180px;margin:0 auto;background:var(--paper);min-height:100vh;padding:26px}.head{background:linear-gradient(135deg,#1f4e79,#14314c);color:#fff;border-radius:10px;padding:20px 22px;display:flex;justify-content:space-between;gap:16px}.head h1{font-size:23px;margin:0 0 6px}.head p{margin:0;color:#dbeafe;font-size:12px}.print{align-self:start;border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 12px;font-weight:800;cursor:pointer}.formula{margin:18px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.formula h2,.section h2{font-size:14px;margin:0;padding:10px 12px;background:#e8eef6;color:var(--navy)}.formula table{width:100%;border-collapse:collapse}.formula td{padding:10px 12px;border-top:1px solid #d8dee8;font-size:13px}.formula td:last-child{text-align:right;font-weight:800}.formula .result td{background:#e8f5e9;color:#14532d;font-size:15px;border-top:2px solid var(--green)}.formula .credit td:last-child{color:var(--amber)}.section{margin-top:18px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.section p{margin:0;padding:9px 12px;background:#f8fafc;color:#536273;font-size:11px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}table.cash-profit-sales-table{min-width:0;table-layout:fixed;font-size:11px}table.cash-profit-sales-table th,table.cash-profit-sales-table td{padding:7px 6px;white-space:normal;overflow-wrap:anywhere}table.cash-profit-sales-table th:nth-child(1){width:22%}table.cash-profit-sales-table th:nth-child(2){width:13%}table.cash-profit-sales-table th:nth-child(3),table.cash-profit-sales-table th:nth-child(4){width:12%}table.cash-profit-sales-table th:nth-child(5){width:13%}table.cash-profit-sales-table th:nth-child(6),table.cash-profit-sales-table th:nth-child(7){width:14%}th{background:#1f4e79;color:#fff;text-align:left;padding:9px 10px;white-space:nowrap}td{padding:8px 10px;border-bottom:1px solid #d8dee8;vertical-align:top}tbody tr:nth-child(even){background:#faf7ed}tfoot td{background:#e8eef6;font-weight:800;border-top:2px solid var(--navy)}.num{text-align:right;font-variant-numeric:tabular-nums}.bank{color:var(--blue);font-weight:700}.cash{color:var(--green);font-weight:700}.credit,.expense{color:var(--red);font-weight:700}.empty{text-align:center;color:#64748b}.note{margin-top:16px;border-left:4px solid var(--amber);padding:10px 12px;background:#fffbeb;font-size:11px;color:#713f12}@media print{body{background:#fff}.page{max-width:none;padding:10mm}.print{display:none}.head{border-radius:0}.section{break-inside:avoid}table.cash-profit-sales-table{font-size:9.5px}table.cash-profit-sales-table th,table.cash-profit-sales-table td{padding:5px 4px}}
+    :root{--navy:#1f4e79;--blue:#1565c0;--green:#2e7d32;--red:#c62828;--amber:#b45309;--paper:#fffdf5;--line:#c9b98f}*{box-sizing:border-box}body{margin:0;background:#eef3f8;color:#172033;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.page{max-width:1180px;margin:0 auto;background:var(--paper);min-height:100vh;padding:26px}.head{background:linear-gradient(135deg,#1f4e79,#14314c);color:#fff;border-radius:10px;padding:20px 22px;display:flex;justify-content:space-between;gap:16px}.head h1{font-size:23px;margin:0 0 6px}.head p{margin:0;color:#dbeafe;font-size:12px}.print{align-self:start;border:1px solid #fef3c7;border-radius:5px;background:#fff;color:#1f4e79;padding:8px 12px;font-weight:800;cursor:pointer}.formula{margin:18px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}.formula h2,.section h2{font-size:14px;margin:0;padding:10px 12px;background:#e8eef6;color:var(--navy)}.formula table{width:100%;border-collapse:collapse}.formula td{padding:10px 12px;border-top:1px solid #d8dee8;font-size:13px}.formula td:last-child{text-align:right;font-weight:800}.formula .result td{background:#e8f5e9;color:#14532d;font-size:15px;border-top:2px solid var(--green)}.formula .credit td:last-child{color:var(--amber)}.section{margin-top:18px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.section p{margin:0;padding:9px 12px;background:#f8fafc;color:#536273;font-size:11px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}table.cash-profit-sales-table{min-width:0;table-layout:fixed;font-size:11px}table.cash-profit-sales-table th,table.cash-profit-sales-table td{padding:7px 6px;white-space:normal;overflow-wrap:anywhere}table.cash-profit-sales-table th:nth-child(1){width:22%}table.cash-profit-sales-table th:nth-child(2){width:13%}table.cash-profit-sales-table th:nth-child(3),table.cash-profit-sales-table th:nth-child(4){width:12%}table.cash-profit-sales-table th:nth-child(5){width:13%}table.cash-profit-sales-table th:nth-child(6),table.cash-profit-sales-table th:nth-child(7){width:14%}th{background:#1f4e79;color:#fff;text-align:left;padding:9px 10px;white-space:nowrap}td{padding:8px 10px;border-bottom:1px solid #d8dee8;vertical-align:top}tbody tr:nth-child(even){background:#faf7ed}tfoot td{background:#e8eef6;font-weight:800;border-top:2px solid var(--navy)}.num{text-align:right;font-variant-numeric:tabular-nums}.bank{color:var(--blue);font-weight:700}.cash{color:var(--green);font-weight:700}.credit,.expense{color:var(--red);font-weight:700}.empty{text-align:center;color:#64748b}.note{margin-top:16px;border-left:4px solid var(--amber);padding:10px 12px;background:#fffbeb;font-size:11px;color:#713f12}@page{size:A4 landscape;margin:7mm}@media print{body{background:#fff}.page{max-width:none;min-height:0;padding:0;background:var(--paper)}.print{display:none}.head{border-radius:0;break-after:avoid;page-break-after:avoid}.formula,.section,.note{overflow:visible;break-inside:auto;page-break-inside:auto}.formula{break-after:avoid;page-break-after:avoid}.section h2,.section p{break-after:avoid;page-break-after:avoid}.table-wrap{overflow:visible!important}table{width:100%;min-width:0;font-size:9.5px}th,td{padding:5px 4px;white-space:normal}td.num{white-space:nowrap}thead{display:table-header-group}tfoot{display:table-footer-group}tr{break-inside:avoid;page-break-inside:avoid}table.cash-profit-sales-table{font-size:8.7px;table-layout:fixed}table.cash-profit-sales-table th,table.cash-profit-sales-table td{padding:4px 3px}}
   </style></head><body><main class="page"><header class="head"><div><h1>Cash Profit ₹/T — Calculation Detail</h1><p>Owner Control Room · ${esc(from)} to ${esc(to)} · Read-only report from the same published dashboard data.</p></div><button class="print" onclick="window.print()">Print / PDF</button></header><section class="formula"><h2>Exact tile formula</h2><table><tbody><tr><td>Selected Period Profit</td><td>Gross Sales − Operating Expenses</td><td>${fmtINR2(profit)}</td></tr><tr class="credit"><td>${creditLabel}</td><td>Credit Sales − Credit Repayments</td><td>${fmtINR2(netCredit)}</td></tr><tr><td>Cash-converted Profit</td><td>Selected Period Profit − Net Credit Change</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr><td>Total Sale Tonnes</td><td>Selected period sales quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr><tr class="result"><td>Cash Profit ₹/T</td><td>Cash-converted Profit ÷ Total Sale Tonnes</td><td>${fmtINR2(reported)}</td></tr></tbody></table></section><section class="section"><h2>Sales Ledger — source of Gross Sales and Credit Sales</h2><p>Bank is blue, cash is green, and new credit sold in the selected period is red. Customer balance payable is shown separately in the consolidated ledger as of ${esc(to)}.</p><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Material</th><th>Tickets</th><th class="num">Qty MT</th><th class="num">Sale Amount</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">New Credit in Range</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">${fmtNum(tonnes,2)}</td><td class="num">${fmtINR2(salesTotal)}</td><td></td><td></td><td class="num credit">${fmtINR2(creditSalesTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Credit Repayment Ledger — source of Credit Repaid</h2><p>These are the same credit-repayment rows used by the Cash Profit ₹/T calculation.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Customer</th><th>Mode</th><th>Reference</th><th class="num">Bank / UPI</th><th class="num">Cash</th><th class="num">Total Repaid</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td colspan="6">Total Credit Repaid</td><td class="num">${fmtINR2(repaymentTotal)}</td></tr></tfoot></table></div></section><section class="section"><h2>Operating Expense Ledger — source of Selected Period Profit</h2><p>Director drawings are excluded, exactly as in the Owner Control Room profit tile.</p><div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Particulars</th><th>Party</th><th>Mode</th><th class="num">Operating Expense</th></tr></thead><tbody>${expenseRows}</tbody><tfoot><tr><td colspan="5">Total Operating Expenses</td><td class="num expense">${fmtINR2(expenseTotal)}</td></tr></tfoot></table></div></section><p class="note">This is a liquidity measure, not the closing cash or bank balance. It adjusts selected-period profit only for new credit sold and credit repaid during the same selected period.</p></main></body></html>`;
   const ledgerConsolidation=`<h2>Consolidated ledger totals — selected period</h2><table><tbody><tr><td>Sales Ledger</td><td>Gross sales from listed tickets</td><td>${fmtINR2(salesTotal)}</td></tr><tr class="credit"><td>Credit Sales Ledger</td><td>New credit sold in the selected period</td><td>${fmtINR2(creditSold)}</td></tr><tr class="bank"><td>Credit Repayment Ledger</td><td>Customer repayments received</td><td>${fmtINR2(creditRepaid)}</td></tr><tr class="expense"><td>Operating Expense Ledger</td><td>All operating expense rows</td><td>${fmtINR2(expenseTotal)}</td></tr><tr class="cash"><td>Cash-converted Profit</td><td>Profit after selected-period credit movement</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr class="result"><td>Total Sale Tonnes</td><td>Sales Ledger total quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr></tbody></table>`;
   const numericProof=`<h2>Numeric proof — exact amounts used for this tile</h2><table><tbody><tr><td>1. Gross Sales</td><td>Sales Ledger total</td><td>${fmtINR2(salesTotal)}</td></tr><tr class="expense"><td>2. Less: Operating Expenses</td><td>Operating Expense Ledger total</td><td>(${fmtINR2(expenseTotal)})</td></tr><tr class="cash"><td>3. Selected Period Profit</td><td>${fmtINR2(salesTotal)} − ${fmtINR2(expenseTotal)}</td><td>${fmtINR2(profit)}</td></tr><tr class="credit"><td>4. Less: Credit Sold in Period</td><td>Sales still unpaid by customers</td><td>(${fmtINR2(creditSold)})</td></tr><tr class="bank"><td>5. Add: Credit Repaid in Period</td><td>Customer credit-repayment ledger</td><td>${fmtINR2(creditRepaid)}</td></tr><tr class="cash"><td>6. Cash-converted Profit</td><td>${fmtINR2(profit)} − ${fmtINR2(creditSold)} + ${fmtINR2(creditRepaid)}</td><td>${fmtINR2(profit-netCredit)}</td></tr><tr><td>7. Total Sale Tonnes</td><td>Sales Ledger total quantity</td><td>${fmtNum(tonnes,2)} MT</td></tr><tr class="result"><td>8. Cash Profit ₹/T</td><td>${fmtINR2(profit-netCredit)} ÷ ${fmtNum(tonnes,2)} MT</td><td>${fmtINR2(reported)}</td></tr></tbody></table>`;
