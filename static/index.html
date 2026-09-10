@@ -2715,9 +2715,15 @@ function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // iPhone/iPad app reports use Web Share directly, never a Blob tab or link.
-  // This capture keeps the website layout while presenting the native share sheet.
-  if(isMobilePrint())return shareStyledMobilePdf(title,content,className);
+  // In the app, render the same website report in an isolated document before
+  // sharing. This keeps every PDF button visually aligned with website print,
+  // without opening a second window or using a Blob link.
+  if(isMobilePrint()){
+    const light=className==='cash-profit-detail-print';
+    const background=light?'#fffdf5':'#243d61';
+    const report=`<div id="print-area" class="${esc(className)} pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:${light?'22px':'6px'}!important;background:${background}!important">${content}</div>`;
+    return shareIsolatedMobilePdf(title,printStyles(),report,'#print-area',background);
+  }
   setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
