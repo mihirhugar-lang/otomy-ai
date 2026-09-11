@@ -1,5 +1,9 @@
 name: Otomy engine control
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +22,7 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Write and verify engine state
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

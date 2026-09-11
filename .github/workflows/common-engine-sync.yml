@@ -1,5 +1,9 @@
 name: Common engine sync
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 on:
   # The common engine is the only Otomy data writer. It runs in GitHub Actions,
   # so a sleeping/offline Mac cannot make the cloud dashboard stale.
