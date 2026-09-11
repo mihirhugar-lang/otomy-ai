@@ -2734,7 +2734,8 @@ async function shareIsolatedMobilePdf(title, style, content, rootSelector, backg
     flash('PDF share is unavailable on this device.',false);
   }finally{iframe.remove();}
 }
-function runPrint(title, content, className='',existingWindow=null){
+function runPrint(title, content, className=''){
+  const existingWindow=arguments[3]||null;
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
