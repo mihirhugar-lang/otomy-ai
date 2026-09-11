@@ -1,4 +1,6 @@
 name: Verify Otomy guards
+permissions:
+  contents: read
 defaults:
   run:
     shell: python3 scripts/private_workflow_step.py {0}
