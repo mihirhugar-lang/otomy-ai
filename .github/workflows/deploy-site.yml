@@ -1,5 +1,8 @@
 name: Deploy site to Pages
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: python3 scripts/private_workflow_step.py {0}
@@ -10,6 +13,8 @@ defaults:
 # R2 current and the site reads it live. Run this only when the frontend/Function changes.
 on:
   push:
+    branches:
+      - main
     paths:
       - "index.html"
       - "static/**"
@@ -25,6 +30,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
