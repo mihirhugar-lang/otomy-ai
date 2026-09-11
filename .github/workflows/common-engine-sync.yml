@@ -44,6 +44,7 @@ concurrency:
 
 jobs:
   refresh:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # A complete manifest/readback over the growing R2 cache can exceed the
     # former 30-minute cap even after the engine and publish have succeeded.
