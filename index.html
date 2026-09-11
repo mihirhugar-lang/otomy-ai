@@ -2526,7 +2526,10 @@ function printStyles(){
 }
 function openMobilePrintPage(title, content, className='',existingWindow=null){
   const safeTitle=esc(title);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
+  // The shared stylesheet hides #print-area on screen and reveals it only
+  // under @media print. A standalone iOS print page needs the report visible
+  // while its print sheet is loading, otherwise Safari shows a blank tab.
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()} #print-area{display:block!important}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
   const win=existingWindow||window.open('', '_blank');
   if(!win){
     flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
