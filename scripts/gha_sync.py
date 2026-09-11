@@ -3072,8 +3072,11 @@ def snapshot_key(url):
 def write_snapshot(url, data):
     SNAPSHOT_API_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{snapshot_key(url)}.json"
-    with open(SNAPSHOT_API_DIR / filename, "w") as f:
-        json.dump(data, f, default=str, separators=(",", ":"))
+    from r2_working_set import skip_cold_unchanged, reserve_snapshot_write
+    payload = json.dumps(data, default=str, separators=(",", ":")).encode("utf-8")
+    if not skip_cold_unchanged(DATA_DIR, "snapshot/api/" + filename, payload):
+        reserve_snapshot_write(DATA_DIR, "snapshot/api/" + filename, len(payload))
+        (SNAPSHOT_API_DIR / filename).write_bytes(payload)
     _WRITTEN_SNAPSHOT_FILES.add(filename)
 
 
@@ -3098,7 +3101,12 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
     """
     removed_count = removed_bytes = 0
     removed_keys = []
-    for path in SNAPSHOT_API_DIR.glob("*.json"):
+    from r2_working_set import previous_files
+    previous = previous_files()
+    candidates = set(SNAPSHOT_API_DIR.glob("*.json")) | {
+        DATA_DIR / key for key in previous if key.startswith("snapshot/api/")
+    }
+    for path in sorted(candidates):
         if path.name in _WRITTEN_SNAPSHOT_FILES:
             continue
         url = _snapshot_url_from_path(path)
@@ -3111,8 +3119,9 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
         if parts.path == "/api/sync/erp/cashbook":
             continue
         try:
-            removed_bytes += path.stat().st_size
-            path.unlink()
+            key = path.relative_to(SNAPSHOT_API_DIR.parent.parent).as_posix()
+            removed_bytes += path.stat().st_size if path.exists() else previous[key]["size"]
+            path.unlink(missing_ok=True)
             removed_count += 1
             # This key is an archive-reconstructible browser cache, not
             # financial source data nor a canonical Cash/Bank book.  Recovery
@@ -3179,6 +3188,9 @@ def write_compliance_snapshots(dataset, from_date, to_date):
 
 def read_snapshot_payload(url):
     path = SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json"
+    from r2_working_set import hydrate
+    # Hydration failures must escape the optional-payload fallback below.
+    hydrate(DATA_DIR, path.relative_to(DATA_DIR).as_posix())
     try:
         with open(path, "r") as f:
             return json.load(f)

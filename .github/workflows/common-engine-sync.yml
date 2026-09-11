@@ -90,13 +90,46 @@ jobs:
             echo "Common engine is RUNNING."
           fi
 
-      - name: Pull current R2 state
+      - name: Install private input-cache dependencies
+        if: steps.initial_control.outputs.enabled == 'true'
+        run: python3 -m pip install --quiet 'boto3==1.42.97' 'cryptography==46.0.7'
+
+      # Public-repository caches are readable by other workflows. Store ONLY
+      # authenticated ciphertext, never plaintext data/ or its metadata.
+      - name: Restore encrypted R2 input cache
+        if: steps.initial_control.outputs.enabled == 'true'
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/otomy-r2-input.enc
+          key: otomy-r2-input-v2-sparse-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            otomy-r2-input-v2-sparse-${{ runner.os }}-${{ github.ref_name }}-
+
+      - name: Pull current R2 state with verified incremental downloads
+        id: input_pull
         if: steps.initial_control.outputs.enabled == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-        run: aws s3 sync "s3://otomy-data" data --endpoint-url "${{ secrets.R2_ENDPOINT }}" --exclude "recovery/*" --exact-timestamps --only-show-errors
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          REPAIR_FROM: ${{ github.event.inputs.full_from || '' }}
+          REPAIR_TO: ${{ github.event.inputs.sync_mode == 'vendor_history' && github.event.inputs.history_to || github.event.inputs.repair_to || '' }}
+        run: |
+          python3 scripts/pull_r2_incremental.py \
+            --root data --cache "$RUNNER_TEMP/otomy-r2-input.enc" \
+            --working-set-state "$RUNNER_TEMP/otomy-working-set.json" \
+            --repair-from "$REPAIR_FROM" --repair-to "$REPAIR_TO"
+          echo "OTOMY_WORKING_SET_STATE=$RUNNER_TEMP/otomy-working-set.json" >> "$GITHUB_ENV"
+
+      - name: Save encrypted verified R2 input cache
+        if: steps.input_pull.outcome == 'success'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/otomy-r2-input.enc
+          key: otomy-r2-input-v2-sparse-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save R2 baseline for a protected historical repair
         if: steps.initial_control.outputs.enabled == 'true'
@@ -117,6 +150,8 @@ jobs:
 
       - name: Run canonical cashbook fixture guard
         if: steps.initial_control.outputs.enabled == 'true'
+        env:
+          OTOMY_WORKING_SET_STATE: ""
         run: |
           python3 scripts/test_cashbook_parity.py
           python3 scripts/test_machinery_range_readings.py
@@ -124,10 +159,14 @@ jobs:
           python3 scripts/test_vendor_aging.py
           python3 scripts/test_dashboard_balance_parity.py
           python3 scripts/test_machinery_range_readings.py
+          python3 scripts/test_pull_r2_incremental.py
+          python3 scripts/test_r2_working_set.py
 
       - name: Run the single Loctell common engine
         if: steps.initial_control.outputs.enabled == 'true'
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           ERP_BASE: ${{ secrets.ERP_BASE }}
           ERP_ORG: ${{ secrets.ERP_ORG }}
           ERP_USER: ${{ secrets.ERP_USER }}
@@ -156,6 +195,10 @@ jobs:
           else
             python3 scripts/gha_sync.py
           fi
+
+      - name: Check bounded working-tree disk budget
+        if: steps.initial_control.outputs.enabled == 'true'
+        run: python3 scripts/r2_working_set.py --root data
 
       - name: Restrict protected historical repair publish scope
         if: steps.initial_control.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && github.event.inputs.repair_to != ''
@@ -285,6 +328,10 @@ jobs:
           fi
 
           recovery_prefix="recovery/$recovery_id/objects"
+          # A changed historical snapshot may have stayed cold in the input.
+          # Fetch just its verified old bytes before making any recovery write.
+          python3 scripts/r2_working_set.py \
+            --root "$RUNNER_TEMP/otomy-r2-baseline" --backup-list "$recovery_backup_list"
           publish_mode="$(jq -r '.mode' "$recovery_meta")"
           if [ "$publish_mode" = "full" ]; then
             # A full rebuild can delete any live data key, so retain the full

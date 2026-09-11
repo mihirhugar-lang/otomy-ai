@@ -9,8 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install cashbook fixture dependency
-        run: python3 -m pip install --quiet requests
+      - name: Install fixture dependencies
+        run: python3 -m pip install --quiet requests 'boto3==1.42.97' 'cryptography==46.0.7'
+      - name: Verify private incremental R2 input cache
+        run: |
+          python3 scripts/test_pull_r2_incremental.py
+          python3 scripts/test_r2_working_set.py
       - name: Run canonical cashbook fixture guard
         run: python3 scripts/test_cashbook_parity.py
       - name: Run rollback recovery fixture guard
