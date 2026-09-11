@@ -2525,19 +2525,21 @@ function printStyles(){
   return document.querySelector('style')?.textContent || '';
 }
 function openMobilePrintPage(title, content, className='',existingWindow=null){
-  const safeTitle=esc(title);
-  // The shared stylesheet hides #print-area on screen and reveals it only
-  // under @media print. A standalone iOS print page needs the report visible
-  // while its print sheet is loading, otherwise Safari shows a blank tab.
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()} #print-area{display:block!important}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
-  const win=existingWindow||window.open('', '_blank');
-  if(!win){
-    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
+  const key=`otomy-print-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try{
+    localStorage.setItem(key,JSON.stringify({title:String(title||'CrusherOps PDF'),content,className,style:printStyles()}));
+  }catch(e){
+    flash('Unable to prepare the PDF print page. Please try again.',false);
     return false;
   }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  const url=`/print.html?key=${encodeURIComponent(key)}`;
+  const win=existingWindow||window.open(url, '_blank');
+  if(!win){
+    try{localStorage.removeItem(key);}catch(e){}
+    flash('Popup blocked. Allow popups for Otomy, then tap Print again.', false);
+    return false;
+  }
+  if(existingWindow&&!existingWindow.closed)win.location.replace(url);
   return true;
 }
 // Use this for reports which already carry their complete document stylesheet
