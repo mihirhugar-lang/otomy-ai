@@ -386,15 +386,6 @@ def root():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-store, must-revalidate"})
 
 
-@app.get("/print.html")
-def print_page():
-    # The iOS PWA opens this same-origin document for report printing. The
-    # report payload is transferred through localStorage; the page itself is
-    # deliberately static so Safari never receives an about:blank document.
-    return FileResponse(os.path.join(STATIC_DIR, "print.html"), media_type="text/html",
-                        headers={"Cache-Control": "no-store, must-revalidate"})
-
-
 @app.get("/service-worker.js")
 def service_worker():
     return FileResponse(

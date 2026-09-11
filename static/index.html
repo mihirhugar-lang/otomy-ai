@@ -2525,21 +2525,16 @@ function printStyles(){
   return document.querySelector('style')?.textContent || '';
 }
 function openMobilePrintPage(title, content, className='',existingWindow=null){
-  const key=`otomy-print-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  try{
-    localStorage.setItem(key,JSON.stringify({title:String(title||'CrusherOps PDF'),content,className,style:printStyles()}));
-  }catch(e){
-    flash('Unable to prepare the PDF print page. Please try again.',false);
-    return false;
-  }
-  const url=`/print.html?key=${encodeURIComponent(key)}`;
-  const win=existingWindow||window.open(url, '_blank');
+  const safeTitle=esc(title);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
+  const win=existingWindow||window.open('', '_blank');
   if(!win){
-    try{localStorage.removeItem(key);}catch(e){}
-    flash('Popup blocked. Allow popups for Otomy, then tap Print again.', false);
+    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
     return false;
   }
-  if(existingWindow&&!existingWindow.closed)win.location.replace(url);
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
   return true;
 }
 // Use this for reports which already carry their complete document stylesheet
@@ -2580,19 +2575,9 @@ function _isIOS(){
 }
 // iOS installed app (standalone) can't print in-place. Open the report as a real page (blob URL) so it
 // loads in a Safari view with a Share/Print button, and auto-trigger print there.
-function printViaBlob(title, content, className='',existingWindow=null){
+function printViaBlob(title, content, className=''){
   const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+printStyles()+' #print-area{display:block!important}</style></head><body><div id="print-area" class="'+className+'">'+content+'</div><scr'+'ipt>setTimeout(function(){try{window.print();}catch(e){}},600);</scr'+'ipt></body></html>';
   try{
-    // Async report builders can outlive the original tap gesture on iOS. An
-    // already-open blank page keeps the native print sheet available after
-    // the data has finished loading, while retaining exactly the same HTML
-    // print document as the normal website route.
-    if(existingWindow&&!existingWindow.closed){
-      existingWindow.document.open();
-      existingWindow.document.write(html);
-      existingWindow.document.close();
-      return true;
-    }
     const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
     const w=window.open(url,'_blank');
     if(!w){flash('Allow pop-ups for this app, then tap Print again.',false);}
@@ -2740,15 +2725,18 @@ async function shareIsolatedMobilePdf(title, style, content, rootSelector, backg
   }finally{iframe.remove();}
 }
 function runPrint(title, content, className=''){
-  const existingWindow=arguments[3]||null;
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // iOS standalone can reject window.print() after an async report build. Use
-  // a real HTML print page with the exact website stylesheet in that case;
-  // this is not a Blob/canvas PDF and Safari applies the same @media print
-  // rules and page geometry as the website.
-  if(isMobilePrint())return openMobilePrintPage(title,content,className,existingWindow);
+  // In the app, render the same website report in an isolated document before
+  // sharing. This keeps every PDF button visually aligned with website print,
+  // without opening a second window or using a Blob link.
+  if(isMobilePrint()){
+    const light=className==='cash-profit-detail-print';
+    const background=light?'#fffdf5':'#243d61';
+    const report=`<div id="print-area" class="${esc(className)} pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:${light?'22px':'6px'}!important;background:${background}!important">${content}</div>`;
+    return shareIsolatedMobilePdf(title,printStyles(),report,'#print-area',background);
+  }
   setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
 function pdfGeneratedStamp(){return new Date().toLocaleString('en-IN');}
@@ -3096,14 +3084,14 @@ function downloadPdfReport(payload){
   const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);flash('PDF downloaded');
   return true;
 }
-function openTablePdf(title,el,subtitle,printClass='report-print',existingWindow=null){
+function openTablePdf(title,el,subtitle,printClass='report-print'){
   if(!el){flash('Nothing to print',false);return false;}
   const detail=subtitle?`${esc(subtitle)} &nbsp;|&nbsp; `:'';
   const copy=el.cloneNode(true);
   copy.querySelectorAll('.no-print,button,input,select,textarea').forEach(node=>node.remove());
   copy.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{wrap.style.removeProperty('height');wrap.style.removeProperty('max-height');wrap.style.removeProperty('overflow');});
   const content=`<div class="print-ph"><h1>CrusherOps — ${esc(title)}</h1><p>${detail}Printed: ${pdfGeneratedStamp()}</p></div>${copy.outerHTML}`;
-  runPrint(title, content,printClass,existingWindow);
+  runPrint(title, content,printClass);
   return true;
 }
 function printSection(title,tableContainerId){
@@ -3169,8 +3157,6 @@ function _dashboardBookCopy(id){
   return _dashboardCardCopy(id)||'<div class="card print-section"><h3>Cash / Bank Book</h3><div class="empty">Book data is not ready yet</div></div>';
 }
 async function printDashboardConsolidated(){
-  const mobilePrintWindow=isMobilePrint()?window.open('', '_blank'):null;
-  if(isMobilePrint()&&!mobilePrintWindow){flash('Allow pop-ups for Otomy so Safari can open the PDF print page.',false);return;}
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
@@ -3222,7 +3208,8 @@ async function printDashboardConsolidated(){
       ${vendorPayments}
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
       ${machineReadings}${fuelLedger}`;
-    runPrint('Dashboard Consolidated Report',content,'dashboard-print',mobilePrintWindow);
+    if(isMobilePrint())return shareIsolatedMobilePdf('Dashboard Consolidated Report',printStyles(),`<div id="print-area" class="dashboard-print pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:6px!important;background:#243d61!important">${content}</div>`,'#print-area','#243d61');
+    runPrint('Dashboard Consolidated Report',content,'dashboard-print');
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
 async function _ensureDashboardPrintBooks(from,to){
@@ -3234,8 +3221,6 @@ async function _ensureDashboardPrintBooks(from,to){
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 }
 async function printDashboard(doPrint=true){
-  const mobilePrintWindow=doPrint&&isMobilePrint()?window.open('', '_blank'):null;
-  if(doPrint&&isMobilePrint()&&!mobilePrintWindow){flash('Allow pop-ups for Otomy so Safari can open the PDF print page.',false);return;}
   const d=document.getElementById('dash-date').value;
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
@@ -3247,7 +3232,7 @@ async function printDashboard(doPrint=true){
   const landscape='<style media="print">@page{size:A4 landscape;margin:4mm}</style>';
   const content=`${landscape}<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
   const printClass=_isPrintWeekOrMore(f,t)?'dashboard-print ticket-grid-print':'dashboard-print';
-  if(doPrint)runPrint('Dashboard Daily Report', content, printClass,mobilePrintWindow);
+  if(doPrint)runPrint('Dashboard Daily Report', content, printClass);
   else{const pa=document.getElementById('print-area');pa.className=printClass;pa.innerHTML=content;}
 }
 function printCurrentOpsTab(){
@@ -3494,6 +3479,7 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
   const title=_cashProfitDetailModalTitle||'Cash Profit Calculation Detail';
+  if(isMobilePrint())return shareIsolatedMobilePdf(title,reportStyle,copy.innerHTML,'.page','#fffdf5');
   runPrint(title,`<style>${reportStyle}</style>${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
@@ -4092,8 +4078,6 @@ function _customerAgingBands(row){
 function _customerHasThreeMonthActivity(row){return (Number(row.range_total_sales??0)||0)>0||(Number(row.range_payment_received??0)||0)>0;}
 async function printThreeMonthActiveCustomers(){
   const from=threeMonthCustomerStart(),to=today();
-  const mobilePrintWindow=isMobilePrint()?window.open('', '_blank'):null;
-  if(isMobilePrint()&&!mobilePrintWindow){flash('Allow pop-ups for Otomy so Safari can open the PDF print page.',false);return;}
   try{
     const rows=await api(`/api/customers/?active_only=false&from_date=${from}&to_date=${to}&as_of=${to}`);
     const active=rows.filter(r=>r.active&&_customerHasThreeMonthActivity(r)&&_customerOutstandingAmount(r)>0)
@@ -4106,7 +4090,7 @@ async function printThreeMonthActiveCustomers(){
     active.forEach(r=>{html+=`<tr><td>${esc(r.name||'Customer')}</td><td>${esc(r.material_sold||'No sale')}</td><td>${fmtINR(r.range_total_sales??0)}</td><td>${fmtINR(r.range_credit_sales??0)}</td><td style="color:#2e7d32;font-weight:700">${fmtINR(r.range_payment_received??0)}</td><td style="color:#c62828;font-weight:700">${fmtINR(r.credit_due_15_plus??0)}</td><td style="color:#ad1457;font-weight:700">${fmtINR(r.credit_due_30_plus??0)}</td><td>${esc(r.range_latest_sale_date||'—')}</td><td style="color:#c62828;font-weight:700">${fmtINR(_customerOutstandingAmount(r))}</td></tr>`;});
     if(!active.length)html+='<tr><td colspan="9" class="empty">No active customers with a positive outstanding balance</td></tr>';
     block.innerHTML=html+'</tbody></table>';
-    openTablePdf('Active Customers — Last 3 Months',block,`Period: ${from} to ${to} | Positive outstanding balances only`,'report-print',mobilePrintWindow);
+    openTablePdf('Active Customers — Last 3 Months',block,`Period: ${from} to ${to} | Positive outstanding balances only`);
   }catch(e){flash(e.message,false);}
 }
 async function showCustLedger(id,name){
