@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Build a content-addressed publish plan for the Otomy R2 bundle.
 
-The engine still works against the complete local ``data`` tree so its financial
-logic is unchanged.  This module only decides which already-verified files need
-to be published and records the complete expected key set for a cheap remote
-read-back check.
+The engine retains complete source history, with optional sparse historical
+snapshot bodies. This module merges verified local changes with cold manifest
+entries and records the complete expected key set for remote read-back checks.
 """
 
 from __future__ import annotations
@@ -121,6 +120,17 @@ def prepare_plan(
     manifest = build_manifest(root, requested_mode=requested_mode, run_id=run_id)
     current_files = manifest["files"]
     previous_files = (previous or {}).get("files") or {}
+    from r2_working_set import context, merge_manifest_files
+    sparse = context()
+    if sparse:
+        if previous is None:
+            raise ValueError("Sparse publication requires a complete previous manifest")
+        expired_path = root / "control" / "retention_expired_snapshot_keys.txt"
+        expired = set(expired_path.read_text().splitlines()) if expired_path.exists() else set()
+        current_files = merge_manifest_files(current_files, previous_files, sparse, expired)
+        manifest["files"] = current_files
+        manifest["file_count"] = len(current_files)
+        manifest["root_sha256"] = _root_hash(current_files)
     bootstrap = previous is None
     # Fetch scope and publish scope are deliberately separate. A full ERP
     # rebuild re-creates the entire FY locally, but an existing R2 bundle still

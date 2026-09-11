@@ -39,6 +39,9 @@ jobs:
             exit 1
           fi
 
+      - name: Install bounded streaming verification dependency
+        run: python3 -m pip install --quiet 'boto3==1.42.97'
+
       - name: Resolve the verified recovery pack
         id: recovery
         env:
@@ -132,12 +135,8 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           RECOVERY_ID: ${{ steps.recovery.outputs.id }}
         run: |
-          readback_dir="$(mktemp -d)"
-          aws s3 sync "s3://otomy-data" "$readback_dir" \
-            --exclude "control/*" --exclude "recovery/*" \
-            --endpoint-url "$R2_ENDPOINT" --exact-timestamps --only-show-errors
           python3 scripts/verify_recovery_restore.py \
-            "$RUNNER_TEMP/otomy-previous-publish-manifest.json" "$readback_dir"
+            "$RUNNER_TEMP/otomy-previous-publish-manifest.json" --remote
           jq -n \
             --arg now "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --arg recovery_id "$RECOVERY_ID" \
