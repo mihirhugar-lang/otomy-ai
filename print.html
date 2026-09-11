@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CrusherOps PDF</title>
+  <style id="report-style"></style>
+</head>
+<body>
+  <div id="print-error" style="display:none;padding:24px;font:16px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#172033">
+    This report is no longer available. Return to Otomy and tap Print / PDF again.
+  </div>
+  <div class="no-print" style="padding:10px 14px;text-align:right;background:#f8fafc;border-bottom:1px solid #d8dee8">
+    <button id="print-now" type="button" style="padding:8px 14px;border:1px solid #1a237e;border-radius:5px;background:#fff;color:#1a237e;font-weight:700">Print / Save PDF</button>
+  </div>
+  <div id="print-area"></div>
+  <script>
+    (function(){
+      const key=new URLSearchParams(location.search).get('key');
+      const fail=()=>{document.getElementById('print-error').style.display='block';};
+      if(!key){fail();return;}
+      let payload;
+      try{payload=JSON.parse(localStorage.getItem(key)||'');localStorage.removeItem(key);}catch(e){fail();return;}
+      if(!payload||typeof payload.content!=='string'){fail();return;}
+      document.title=payload.title||'CrusherOps PDF';
+      document.getElementById('report-style').textContent=(payload.style||'')+' #print-area{display:block!important}';
+      const area=document.getElementById('print-area');
+      area.className=payload.className||'';
+      area.innerHTML=payload.content;
+      const print=()=>{try{window.focus();window.print();}catch(e){}};
+      document.getElementById('print-now').addEventListener('click',print);
+      const ready=()=>setTimeout(print,650);
+      if(document.fonts&&document.fonts.ready)document.fonts.ready.then(ready).catch(ready);else ready();
+    })();
+  </script>
+</body>
+</html>
