@@ -1,5 +1,9 @@
 name: Common engine control
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 # Use the GitHub Actions UI to pause or resume the single Otomy data writer.
 # Pausing never deletes or rewrites financial data: it only writes a small
 # control marker, and the last verified R2 bundle remains live.
@@ -29,6 +33,7 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Write engine control marker to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

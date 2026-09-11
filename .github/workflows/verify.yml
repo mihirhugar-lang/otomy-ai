@@ -1,4 +1,7 @@
 name: Verify Otomy guards
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
 on:
   push:
   pull_request:
@@ -10,7 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install fixture dependencies
-        run: python3 -m pip install --quiet requests 'boto3==1.42.97' 'cryptography==46.0.7'
+        run: python3 -m pip install --quiet requests 'boto3==1.42.97' 'cryptography==46.0.7' 'PyYAML==6.0.3'
+      - name: Verify public workflow privacy boundary
+        run: python3 scripts/test_private_workflow_step.py
       - name: Verify private incremental R2 input cache
         run: |
           python3 scripts/test_pull_r2_incremental.py

@@ -1,5 +1,9 @@
 name: Inspect Otomy dashboard snapshot
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +23,7 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Read dashboard snapshot from R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

@@ -1,5 +1,9 @@
 name: Roll back common engine data
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 # Restores the newest pre-publish recovery pack (or an explicitly selected one)
 # and deliberately leaves the engine paused.  It shares the writer concurrency
 # group, so an in-flight sync finishes before rollback begins and cannot race

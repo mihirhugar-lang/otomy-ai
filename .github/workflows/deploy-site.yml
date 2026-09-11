@@ -1,5 +1,9 @@
 name: Deploy site to Pages
 
+defaults:
+  run:
+    shell: python3 scripts/private_workflow_step.py {0}
+
 # Publishes the FRONTEND + the /data/ Pages Function. Data itself is served LIVE
 # from R2 by functions/data/[[path]].js (binding OTOMY_DATA), so this deploy no
 # longer bundles data and does NOT need to run on a schedule — the 10-min sync keeps
