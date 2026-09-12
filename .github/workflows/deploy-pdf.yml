@@ -27,8 +27,20 @@ jobs:
         run: npm ci --prefix pdf_worker --ignore-scripts --no-audit --no-fund
       - name: Verify PDF security boundary
         run: node scripts/test_pdf_route.mjs
-      - name: Deploy private Worker without public URLs
+      - name: Check optional Worker deployment token
+        id: token
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_WORKERS_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+        run: |
+          if [ -n "$CLOUDFLARE_WORKERS_API_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Worker source verified; automatic deploy skipped until CLOUDFLARE_WORKERS_API_TOKEN is configured."
+          fi
+      - name: Deploy private Worker without public URLs
+        if: steps.token.outputs.configured == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "95339738c3c36e84444485e07178e635"
         run: npm run deploy --prefix pdf_worker
