@@ -2169,6 +2169,23 @@ async function _currentSyncStamp(){
   const r=await _fetchT(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'}).catch(()=>null);
   if(!r||!r.ok)return null;
   const data=await r.json();
+  if(data.backup?.enabled){
+    let note=document.getElementById('otomy-backup-status');
+    if(!note){
+      note=document.createElement('div');
+      note.id='otomy-backup-status';
+      note.setAttribute('role','status');
+      note.style.cssText='padding:8px 14px;background:#fff3cd;color:#664d03;font-size:13px;border-bottom:1px solid #ffe69c';
+      document.body.prepend(note);
+    }
+    const b=data.backup;
+    const active=['inventory','downloading','verifying_live_generation','encrypting','copying_to_icloud','verifying_restore'].includes(b.phase);
+    note.hidden=!b.overdue && b.phase!=='failed' && b.phase!=='icloud_upload_pending';
+    note.textContent=b.phase==='failed' ? 'iCloud backup needs attention. ERP sync continues. Check the backup status or contact your administrator.'
+      : b.phase==='icloud_upload_pending' ? 'Encrypted backup passed its restore test; waiting for iCloud to confirm upload.'
+      : active ? `Encrypted iCloud backup in progress${b.total_objects ? ': '+(b.verified_objects||0)+' / '+b.total_objects+' objects verified' : ''}. ERP sync continues.`
+      : 'iCloud backup is overdue. It will retry while localhost is running.';
+  }
   return data.last_sync||data.generated_at||data.updated_at||null;
 }
 async function checkForFreshSync(force=false){

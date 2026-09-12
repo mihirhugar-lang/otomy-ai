@@ -1837,8 +1837,10 @@ def save_erp_config(body: dict):
 
 @router.get("/erp/status")
 def sync_status():
+    from otomy_backup import status as backup_status
     cfg = load_config()
     return {
+        "backup":                 backup_status(),
         "last_sync":              cfg.get("last_sync"),
         "historical_done":        cfg.get("historical_sync_done", False),
         "auto_sync_interval_min": 10,

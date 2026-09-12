@@ -178,6 +178,8 @@ async def _start_background_sync():
     """
     await asyncio.sleep(10)          # give server a moment to fully start
     loop = asyncio.get_running_loop()
+    from otomy_backup import kick_if_due
+    kick_if_due()
 
     cfg = erp_sync_router.load_config()
     org      = cfg.get("erp_org", "")
@@ -187,7 +189,14 @@ async def _start_background_sync():
 
     if not username or not password:
         print("[auto_sync] ERP credentials not set — skipping background sync.")
-        return
+        # The independent backup still needs its daily/catch-up opportunity.
+        while not username or not password:
+            await asyncio.sleep(10 * 60)
+            kick_if_due()
+            cfg = erp_sync_router.load_config()
+            username, password = cfg.get("erp_username", ""), cfg.get("erp_password", "")
+        org = cfg.get("erp_org", "")
+        erp_base = cfg.get("erp_base", erp_sync_router.ERP_BASE)
 
     # ── Historical full sync (June 1 to yesterday) ─────────────────────────────
     if not cfg.get("historical_sync_done"):
@@ -214,6 +223,7 @@ async def _start_background_sync():
     # ── Rolling 10-minute sync loop ────────────────────────────────────────────
     while True:
         await asyncio.sleep(10 * 60)       # 10 minutes
+        kick_if_due()
         cfg = erp_sync_router.load_config()
         username = cfg.get("erp_username", "")
         password = cfg.get("erp_password", "")
