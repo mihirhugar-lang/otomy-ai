@@ -153,6 +153,28 @@ jobs:
         if: steps.initial_control.outputs.enabled == 'true'
         run: python3 -m pip install --quiet requests
 
+      - name: Hydrate private financial control inputs
+        if: steps.initial_control.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          private_dir="$RUNNER_TEMP/otomy-private-seed"
+          mkdir -p "$private_dir"
+          for file in \
+            balance_anchors.json \
+            bank_statement_icici_2026-04-01_2026-06-28.json \
+            book_balance_accounts.json \
+            vendor_master.json; do
+            aws s3 cp "s3://otomy-data/control/private-seed/$file" "$private_dir/$file" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            test -s "$private_dir/$file"
+          done
+          echo "OTOMY_PRIVATE_SEED_DIR=$private_dir" >> "$GITHUB_ENV"
+
       - name: Run canonical cashbook fixture guard
         if: steps.initial_control.outputs.enabled == 'true'
         env:
