@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 const source = readFileSync(resolve("functions/data/[[path]].js"), "utf8");
 for (const required of [
+  'verifyAccess(request.headers.get("cf-access-jwt-assertion"), audience)',
   'key.startsWith("control/")',
   'key.startsWith("recovery/")',
   'return new Response("Not found", { status: 404 })',
