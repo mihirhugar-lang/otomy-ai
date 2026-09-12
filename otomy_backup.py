@@ -459,6 +459,7 @@ def backup(cfg):
     update_status(phase='copying_to_icloud', snapshot_id=sid)
     stored = append_repository(BASE / 'repository', target, cfg['max_repository_bytes'])
     restored = verify_restore(cfg, sid, target, full=full)
+    cleanup_plaintext_staging()
     update_status(local_verified_at=stamp(), verified_snapshot_id=sid,
                   repository_bytes=stored, restored_objects=restored,
                   last_full_restore_month=now.strftime('%Y-%m') if full else read_json(STATE).get('last_full_restore_month'))
@@ -474,6 +475,25 @@ def confirm_cloud(cfg):
                   icloud_upload=cloud)
     if cloud['state'] == 'uploaded':
         update_status(icloud_verified_at=stamp(), cloud_snapshot_at=s['local_verified_at'])
+
+
+def cleanup_plaintext_staging():
+    """Remove generated plaintext R2 bodies after encrypted restore verification."""
+    staging = BASE / 'staging'
+    if not staging.exists() or staging.is_symlink() or staging.resolve() == Path('/'):
+        return
+    for child in staging.iterdir():
+        if child.name not in ('objects', 'backup-inventory.json'):
+            continue
+        if child.is_symlink():
+            raise ValueError('Unexpected staging symlink')
+        if child.is_dir():
+            for p in sorted(child.rglob('*'), key=lambda x: len(x.parts), reverse=True):
+                if p.is_symlink() or p.is_file(): p.unlink()
+                elif p.is_dir(): p.rmdir()
+            child.rmdir()
+        else:
+            child.unlink()
 
 
 def initialize(account_email):

@@ -116,5 +116,15 @@ class BackupTests(unittest.TestCase):
         b.update_status(local_verified_at=b.stamp(),snapshot_id='new',verified_snapshot_id='old')
         with self.assertRaises(RuntimeError): b.confirm_cloud({})
 
+    def test_plaintext_staging_cleanup_is_scoped(self):
+        staging=self.root/'staging'; objects=staging/'objects'; objects.mkdir(parents=True)
+        (objects/'private.json').write_text('financial fixture')
+        (staging/'backup-inventory.json').write_text('{}')
+        (staging/'keep-me.txt').write_text('diagnostic')
+        b.cleanup_plaintext_staging()
+        self.assertFalse(objects.exists())
+        self.assertFalse((staging/'backup-inventory.json').exists())
+        self.assertTrue((staging/'keep-me.txt').exists())
+
 
 if __name__=='__main__': unittest.main()
