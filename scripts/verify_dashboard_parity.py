@@ -957,8 +957,8 @@ def verify_pdf_export_guard() -> None:
         "downloadCurrentPagePdf()",
         "function downloadCurrentPagePdf()",
         "function runPrint(title, content, className='')",
-        "function printViaIframe(",
-        "function printViaBlob(",
+        "window.OtomyPdf.share(",
+        "/static/pdf-share.js?v=2026-09-12-browser-pdf-v1",
         "window.print()",
         "function printDashboard(doPrint=true)",
         "Print / PDF",
@@ -970,13 +970,15 @@ def verify_pdf_export_guard() -> None:
         if needle not in root_html:
             fail(f"PDF print guard missing {needle!r}")
     forbidden = (
+        "shareIsolatedMobilePdf(",
+        "function printViaBlob(",
         "return downloadPdfReport(pdfBuildPayload(",
         "downloadPdfReport(pdfBuildPayload('Dashboard Daily Report'",
     )
     for needle in forbidden:
         if needle in root_html:
             fail(f"PDF print guard found direct downloader path: {needle!r}")
-    print("PDF print guard passed: all page PDF buttons use the browser print flow.")
+    print("PDF print guard passed: desktop prints and mobile browser-rendered file sharing are wired.")
 
 
 def verify_compliance_code_guard() -> None:
