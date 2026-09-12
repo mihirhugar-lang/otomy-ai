@@ -5,13 +5,17 @@
 // Security: only serve on the real, Cloudflare-Access-protected hostnames. The
 // per-deployment *.pages.dev preview URLs are NOT behind Access, so serving live
 // financial data there would leak it — refuse those.
-const ALLOWED_HOSTS = new Set(["otomy.ai", "www.otomy.ai", "otomy-ai.pages.dev"]);
+import { AUDIENCES, verifyAccess } from "../api/report/pdf.js";
+
+const ALLOWED_HOSTS = new Set(Object.keys(AUDIENCES));
 
 export async function onRequestGet(context) {
   const { params, env, request } = context;
   const url = new URL(request.url);
 
-  if (!ALLOWED_HOSTS.has(url.hostname)) {
+  const audience = AUDIENCES[url.hostname];
+  if (!ALLOWED_HOSTS.has(url.hostname) ||
+      !(await verifyAccess(request.headers.get("cf-access-jwt-assertion"), audience))) {
     return new Response("Forbidden", { status: 403 });
   }
 
