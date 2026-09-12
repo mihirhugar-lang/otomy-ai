@@ -460,6 +460,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   #print-area tbody td{padding:4px 6px;border-bottom:1px solid #eee}
   #print-area tbody tr:nth-child(even){background:#f9f9f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   #print-area .tbl-wrap,#print-area .report-table-wrap{overflow:visible!important;max-height:none!important}
+  #print-area #sales-tbl,#print-area #transport-ledger-tbl,#print-area #ledger-tbl{height:auto!important;max-height:none!important;overflow:visible!important}
   #print-area tr{break-inside:auto!important;page-break-inside:auto!important}
   #print-area .report-table{font-size:9.5px}
   /* Daily Book print includes the exact live total and Average / Day tile blocks. */
@@ -758,8 +759,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 #print-area.pdf-capture table tfoot{position:static!important}
 /* ============================================================ END TALLY SITE THEME ============ */
 </style>
-<script src="/static/vendor/html2canvas-1.4.1.min.js"></script>
-<script src="/static/vendor/jspdf-2.5.1.umd.min.js"></script>
+<script src="/static/pdf-share.js?v=2026-09-12-browser-pdf-v1"></script>
 <script src="/static/insights.js"></script>
 <script src="/static/insights-v2.js"></script>
 </head>
@@ -2519,53 +2519,10 @@ function opsReload(){loadBoulders();loadMachines();}
 
 // ── PDF download ───────────────────────────────────────────────────────────
 function isMobilePrint(){
-  return window.matchMedia('(max-width: 760px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return _isStandalonePWA() || _isIOS() || window.matchMedia('(max-width: 760px)').matches || /Android/i.test(navigator.userAgent);
 }
 function printStyles(){
   return document.querySelector('style')?.textContent || '';
-}
-function openMobilePrintPage(title, content, className='',existingWindow=null){
-  const safeTitle=esc(title);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${safeTitle}</title><style>${printStyles()}</style></head><body><div id="print-area" class="${className}">${content}</div><script>setTimeout(function(){try{window.print();}catch(e){}},700);<\/script></body></html>`;
-  const win=existingWindow||window.open('', '_blank');
-  if(!win){
-    flash('Popup blocked. Allow popups for CrusherOps, then tap Print again.', false);
-    return false;
-  }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  return true;
-}
-// Use this for reports which already carry their complete document stylesheet
-// (for example Cash Profit). It deliberately has no dashboard CSS wrapper, so
-// the app print window is byte-for-byte the same report document as the web popup.
-function openExactMobilePrintPage(title, style, content){
-  const win=window.open('', '_blank');
-  if(!win){flash('Popup blocked. Allow popups for Otomy, then tap Print / PDF again.',false);return false;}
-  win.document.open();
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+style+'</style></head><body>'+content+'<script>setTimeout(function(){try{window.print();}catch(e){}},300);<\/script></body></html>');
-  win.document.close();
-  return true;
-}
-// Print a section via a hidden iframe — no new window/tab, so it works smoothly inside the installed
-// app (PWA standalone) and in Safari without a blank page or a tab you have to switch back from. The
-// print/share sheet appears over the app and dismisses right back to it.
-function printViaIframe(title, content, className=''){
-  try{const old=document.getElementById('__printFrame');if(old)old.remove();}catch(e){}
-  const iframe=document.createElement('iframe');
-  iframe.id='__printFrame';
-  iframe.setAttribute('aria-hidden','true');
-  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
-  document.body.appendChild(iframe);
-  const cw=iframe.contentWindow, doc=cw.document;
-  doc.open();
-  doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+printStyles()+' #print-area{display:block!important}</style></head><body><div id="print-area" class="'+className+'">'+content+'</div></body></html>');
-  doc.close();
-  let done=false;
-  const fire=()=>{if(done)return;done=true;try{cw.focus();cw.print();}catch(e){}setTimeout(()=>{try{iframe.remove();}catch(e){}},2000);};
-  iframe.onload=()=>setTimeout(fire,350);
-  setTimeout(()=>{if(!done&&cw&&cw.document&&cw.document.readyState!=='loading')fire();},1000);  // Safari doc.write onload fallback
 }
 function _isStandalonePWA(){
   try{return (window.navigator.standalone===true)||window.matchMedia('(display-mode: standalone)').matches;}catch(e){return false;}
@@ -2573,169 +2530,14 @@ function _isStandalonePWA(){
 function _isIOS(){
   try{return /iPad|iPhone|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}catch(e){return false;}
 }
-// iOS installed app (standalone) can't print in-place. Open the report as a real page (blob URL) so it
-// loads in a Safari view with a Share/Print button, and auto-trigger print there.
-function printViaBlob(title, content, className=''){
-  const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+printStyles()+' #print-area{display:block!important}</style></head><body><div id="print-area" class="'+className+'">'+content+'</div><scr'+'ipt>setTimeout(function(){try{window.print();}catch(e){}},600);</scr'+'ipt></body></html>';
-  try{
-    const url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
-    const w=window.open(url,'_blank');
-    if(!w){flash('Allow pop-ups for this app, then tap Print again.',false);}
-    setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},120000);
-  }catch(e){try{window.print();}catch(e2){}}
-}
-// On phones and installed apps, make the same styled report into a real PDF file.
-// The desktop route remains the browser's normal print preview.
-async function shareStyledMobilePdf(title, content, className=''){
-  if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
-  const pa=document.getElementById('print-area');
-  const oldStyle=pa.getAttribute('style');
-  pa.className=`${className} pdf-capture`;
-  pa.innerHTML=content;
-  pa.style.setProperty('display','block','important');
-  pa.style.setProperty('position','fixed','important');
-  pa.style.setProperty('left','-12000px','important');
-  pa.style.setProperty('top','0','important');
-  pa.style.setProperty('width','1120px','important');
-  pa.style.setProperty('max-width','none','important');
-  pa.style.setProperty('padding','6px','important');
-  pa.style.setProperty('background','linear-gradient(160deg,#31507c,#243d61)','important');
-  pa.style.setProperty('overflow','visible','important');
-  // The dashboard uses scroll boxes on screen. Expand only this off-screen print clone so every row is rendered.
-  pa.querySelectorAll('.tbl-wrap,.report-table-wrap').forEach(wrap=>{
-    wrap.style.setProperty('height','auto','important');
-    wrap.style.setProperty('max-height','none','important');
-    wrap.style.setProperty('min-height','0','important');
-    wrap.style.setProperty('overflow','visible','important');
-  });
-  // Keep normal dashboard cards in natural order. The final two live-data
-  // cards are captured separately to stay below iOS's canvas limit, but are
-  // flowed into the same PDF pages so no blank page-gap is introduced.
-  const deferredFinalCards=[...pa.querySelectorAll('#dash-machine-odometer-card,#dash-fuel-ledger-card')];
-  deferredFinalCards.forEach(card=>card.style.setProperty('display','none','important'));
-  try{
-    if(document.fonts?.ready)await document.fonts.ready;
-    await new Promise(resolve=>requestAnimationFrame(resolve));
-    // 2.25x preserves fine rules and readable figures at A4 size, while JPEG
-    // compression keeps multi-page reports small enough to share from iPhone.
-    const pdfRenderScale=2.25;
-    const {jsPDF}=window.jspdf;
-    const pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
-    const pageWidth=pdf.internal.pageSize.getWidth();
-    const pageHeight=pdf.internal.pageSize.getHeight();
-    let pageCount=0,activePage=null,activePageUsed=0;
-    const reportRect=pa.getBoundingClientRect();
-    const reportBottom=Math.max(1,...[...pa.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length).map(node=>node.getBoundingClientRect().bottom-reportRect.top))+6;
-    const reportRows=[...pa.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top&&row.top<reportBottom);
-    const flushActivePage=()=>{
-      if(!activePage||!activePageUsed)return;
-      if(pageCount++)pdf.addPage('a4','landscape');
-      pdf.addImage(activePage.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageWidth,activePageUsed*(pageWidth/activePage.width),undefined,'FAST');
-      activePage=null;activePageUsed=0;
-    };
-    const appendCanvasPages=(canvas,cropTop,cropHeight,rows=reportRows,referenceRect=reportRect)=>{
-      const sliceHeight=Math.max(1,Math.floor(canvas.width*(pageHeight/pageWidth)));
-      const verticalScale=canvas.width/Math.max(referenceRect.width,1);
-      const contentHeight=Math.min(canvas.height,Math.max(1,Math.ceil(cropHeight*verticalScale)));
-      const rowBounds=rows.map(row=>({top:Math.round((row.top-cropTop)*verticalScale),bottom:Math.round((row.bottom-cropTop)*verticalScale)})).filter(row=>row.bottom>0&&row.top<contentHeight);
-      const minimumSlice=Math.min(160,Math.floor(sliceHeight*.2));
-      for(let y=0;y<contentHeight;){
-        if(!activePage){activePage=document.createElement('canvas');activePage.width=canvas.width;activePage.height=sliceHeight;activePage.getContext('2d').fillStyle='#243d61';activePage.getContext('2d').fillRect(0,0,activePage.width,activePage.height);}
-        const target=Math.min(y+(activePage.height-activePageUsed),contentHeight);let end=target;
-        while(end<contentHeight){const crossing=rowBounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=minimumSlice);if(!crossing.length)break;const beforeRow=Math.min(...crossing.map(row=>row.top));if(beforeRow-y<minimumSlice)break;end=beforeRow;}
-        const height=Math.max(1,end-y),ctx=activePage.getContext('2d');
-        ctx.drawImage(canvas,0,y,canvas.width,height,0,activePageUsed,activePage.width,height);
-        activePageUsed+=height;y=end;
-        if(activePageUsed>=activePage.height)flushActivePage();
-      }
-    };
-    // Render every report in continuous safe-height segments. This prevents a
-    // browser canvas limit from removing any late table/block on any page.
-    const maxCaptureHeight=5000;
-    for(let cropTop=0;cropTop<reportBottom;){
-      let cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-      const crossing=reportRows.filter(row=>row.top<cropEnd&&row.bottom>cropEnd&&row.top-cropTop>=160);
-      if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top));
-      if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+maxCaptureHeight,reportBottom);
-      const cropHeight=Math.max(1,cropEnd-cropTop);
-      const canvas=await window.html2canvas(pa,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(reportRect.width),height:cropHeight});
-      appendCanvasPages(canvas,cropTop,cropHeight);cropTop=cropEnd;
-    }
-    for(const card of deferredFinalCards){
-      card.style.removeProperty('display');await new Promise(resolve=>requestAnimationFrame(resolve));
-      const cardRect=card.getBoundingClientRect(),cardTop=cardRect.top-reportRect.top;
-      const cardRows=[...card.querySelectorAll('tr')].map(row=>{const box=row.getBoundingClientRect();return {top:box.top-reportRect.top,bottom:box.bottom-reportRect.top};}).filter(row=>row.bottom>row.top);
-      const cardCanvas=await window.html2canvas(card,{backgroundColor:'#243d61',scale:pdfRenderScale,useCORS:true,logging:false,windowWidth:1120,windowHeight:Math.max(card.scrollHeight,1)});
-      appendCanvasPages(cardCanvas,cardTop,cardRect.height,cardRows,cardRect);
-    }
-    flushActivePage();
-    const fileName=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
-    const file=new File([pdf.output('blob')],fileName,{type:'application/pdf'});
-    if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
-      try{await navigator.share({title,files:[file]});return;}
-      catch(error){if(error?.name==='AbortError')return;}
-    }
-    flash('PDF share is unavailable on this device.',false);
-  }finally{
-    deferredFinalCards.forEach(card=>card.style.removeProperty('display'));
-    pa.className=className;
-    if(oldStyle===null)pa.removeAttribute('style');else pa.setAttribute('style',oldStyle);
-  }
-}
-// The installed app shares a PDF file, but its visible result must stay
-// identical to the website. Render the report inside an isolated document that
-// owns the website CSS, then make the native share-sheet PDF from those exact
-// painted blocks. This never opens a second app window or a Blob URL.
-async function shareIsolatedMobilePdf(title, style, content, rootSelector, background='#fffdf5'){
-  if(!window.html2canvas || !window.jspdf?.jsPDF)throw new Error('PDF renderer unavailable');
-  const iframe=document.createElement('iframe');
-  iframe.style.cssText='position:fixed;left:-13000px;top:0;width:1200px;height:900px;border:0;opacity:0;pointer-events:none';
-  document.body.appendChild(iframe);
-  try{
-    const doc=iframe.contentDocument;
-    doc.open();doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+style+'</style></head><body>'+content+'</body></html>');doc.close();
-    if(doc.fonts?.ready)await doc.fonts.ready;
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-    const root=doc.querySelector(rootSelector);if(!root)throw new Error('Report is not ready');
-    const blocks=[...root.children].filter(node=>node.tagName!=='STYLE'&&node.getClientRects().length);
-    const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'landscape',unit:'pt',format:'a4',compress:true});
-    const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),scale=2.25;
-    let count=0,active=null,used=0;
-    const flush=()=>{if(!active||!used)return;if(count++)pdf.addPage('a4','landscape');pdf.addImage(active.toDataURL('image/jpeg',0.9),'JPEG',0,0,pageW,used*(pageW/active.width),undefined,'FAST');active=null;used=0;};
-    const append=(canvas,rows,rect,cropTop=0)=>{const slice=Math.max(1,Math.floor(canvas.width*(pageH/pageW))),factor=canvas.width/Math.max(rect.width,1),bounds=rows.map(row=>({top:Math.round((row.top-rect.top-cropTop)*factor),bottom:Math.round((row.bottom-rect.top-cropTop)*factor)})).filter(row=>row.bottom>0&&row.top<canvas.height);for(let y=0;y<canvas.height;){if(!active){active=document.createElement('canvas');active.width=canvas.width;active.height=slice;const c=active.getContext('2d');c.fillStyle=background;c.fillRect(0,0,active.width,active.height);}let end=Math.min(y+(slice-used),canvas.height);const crossing=bounds.filter(row=>row.top<end&&row.bottom>end&&row.top-y>=150);if(crossing.length)end=Math.min(...crossing.map(row=>row.top));if(end<=y)end=Math.min(y+(slice-used),canvas.height);const h=end-y;active.getContext('2d').drawImage(canvas,0,y,canvas.width,h,0,used,active.width,h);used+=h;y=end;if(used>=slice)flush();}};
-    for(const block of blocks){
-      const rect=block.getBoundingClientRect(),rows=[...block.querySelectorAll('tr')].map(row=>row.getBoundingClientRect()).filter(box=>box.height>0),height=Math.ceil(Math.max(block.scrollHeight,rect.height));
-      // Keep every source canvas below iOS's reliable pixel limit. Break only
-      // before a table row, so a long Expenses ledger stays complete and neat.
-      for(let cropTop=0;cropTop<height;){
-        let cropEnd=Math.min(cropTop+2600,height);
-        const crossing=rows.filter(row=>row.top-rect.top<cropEnd&&row.bottom-rect.top>cropEnd&&row.top-rect.top-cropTop>=140);
-        if(crossing.length)cropEnd=Math.min(...crossing.map(row=>row.top-rect.top));
-        if(cropEnd<=cropTop)cropEnd=Math.min(cropTop+2600,height);
-        const cropHeight=Math.max(1,cropEnd-cropTop);
-        const canvas=await window.html2canvas(block,{backgroundColor:background,scale,useCORS:true,logging:false,windowWidth:1200,windowHeight:cropHeight,x:0,y:cropTop,width:Math.ceil(rect.width),height:cropHeight});
-        append(canvas,rows,rect,cropTop);cropTop=cropEnd;
-      }
-    }
-    flush();
-    const filename=(String(title||'CrusherOps Report').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||'CrusherOps-Report')+'.pdf';
-    const file=new File([pdf.output('blob')],filename,{type:'application/pdf'});
-    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){try{await navigator.share({title,files:[file]});return;}catch(error){if(error?.name==='AbortError')return;}}
-    flash('PDF share is unavailable on this device.',false);
-  }finally{iframe.remove();}
-}
 function runPrint(title, content, className=''){
   const pa=document.getElementById('print-area');
   pa.className=className;
   pa.innerHTML=content;
-  // In the app, render the same website report in an isolated document before
-  // sharing. This keeps every PDF button visually aligned with website print,
-  // without opening a second window or using a Blob link.
+  // Share a real browser-print PDF using the desktop report CSS and body.
   if(isMobilePrint()){
-    const light=className==='cash-profit-detail-print';
-    const background=light?'#fffdf5':'#243d61';
-    const report=`<div id="print-area" class="${esc(className)} pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:${light?'22px':'6px'}!important;background:${background}!important">${content}</div>`;
-    return shareIsolatedMobilePdf(title,printStyles(),report,'#print-area',background);
+    const report=`<div id="print-area" class="${esc(className)}">${content}</div>`;
+    return window.OtomyPdf.share(title,printStyles(),report);
   }
   setTimeout(()=>{try{window.print();}catch(e){}},50);
 }
@@ -3208,7 +3010,6 @@ async function printDashboardConsolidated(){
       ${vendorPayments}
       ${_dashboardBookCopy('dash-bank-book-card')}${_dashboardBookCopy('dash-cash-book-card')}
       ${machineReadings}${fuelLedger}`;
-    if(isMobilePrint())return shareIsolatedMobilePdf('Dashboard Consolidated Report',printStyles(),`<div id="print-area" class="dashboard-print pdf-capture" style="display:block!important;width:1120px!important;max-width:none!important;padding:6px!important;background:#243d61!important">${content}</div>`,'#print-area','#243d61');
     runPrint('Dashboard Consolidated Report',content,'dashboard-print');
   }catch(e){flash(e.message||'Could not build consolidated report',false);}
 }
@@ -3479,7 +3280,7 @@ function printCashProfitDetailModal(){
   copy.querySelectorAll('.table-wrap').forEach(wrap=>wrap.style.cssText+=';height:auto!important;max-height:none!important;overflow:visible!important');
   const reportStyle=doc.querySelector('style')?.textContent||'';
   const title=_cashProfitDetailModalTitle||'Cash Profit Calculation Detail';
-  if(isMobilePrint())return shareIsolatedMobilePdf(title,reportStyle,copy.innerHTML,'.page','#fffdf5');
+  if(isMobilePrint())return window.OtomyPdf.share(title,reportStyle,copy.innerHTML);
   runPrint(title,`<style>${reportStyle}</style>${copy.innerHTML}`,'cash-profit-detail-print');
 }
 function _makeCashProfitTablesScrollable(doc){
