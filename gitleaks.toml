@@ -1,0 +1,50 @@
+title = "Otomy secret scanning"
+
+# Keep Gitleaks' maintained provider rules and add Otomy-specific names that
+# GitHub's provider-only scanning cannot cover on the current plan.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "otomy-cloudflare-credential"
+description = "Cloudflare or Workers API credential"
+regex = '''(?i)(?:cloudflare|cf|workers?)[A-Za-z0-9_.-]*(?:api[_-]?token|api[_-]?key|token)\s*[:=]\s*["']?([A-Za-z0-9_\-/+=]{30,})'''
+secretGroup = 1
+keywords = ["cloudflare", "cf", "workers", "api_token", "api-key"]
+
+[[rules]]
+id = "otomy-r2-credential"
+description = "R2 or S3-compatible access credential"
+regex = '''(?i)(?:r2|aws)[A-Za-z0-9_.-]*(?:access[_-]?key[_-]?id|secret[_-]?access[_-]?key)\s*[:=]\s*["']?([A-Za-z0-9_\-/+=]{20,})'''
+secretGroup = 1
+keywords = ["r2", "aws", "access_key_id", "secret_access_key"]
+
+[[rules]]
+id = "otomy-jwt"
+description = "Signed JWT bearer token"
+regex = '''\b(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b'''
+secretGroup = 1
+keywords = ["eyJ"]
+
+[[rules]]
+id = "otomy-erp-credential"
+description = "ERP, Loctell, or Tally credential"
+regex = '''(?i)(?:erp|loctell|tally)[A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|credential)\s*[:=]\s*["']?([^\s"',;]{12,})'''
+secretGroup = 1
+keywords = ["erp", "loctell", "tally", "password", "secret", "token"]
+
+[[rules]]
+id = "otomy-financial-credential"
+description = "Banking, GST, UPI, or financial-system credential"
+regex = '''(?i)(?:bank|financial|gst|upi|account)[A-Za-z0-9_.-]*(?:password|passwd|secret|token|api[_-]?key|credential|pin)\s*[:=]\s*["']?([^\s"',;]{12,})'''
+secretGroup = 1
+keywords = ["bank", "financial", "gst", "upi", "account", "password", "secret", "token"]
+
+# Configuration examples and CI expressions are not credentials. Keep these
+# out of findings while still failing on a real assigned value.
+[[rules.allowlists]]
+description = "Known placeholders and GitHub expressions"
+regexes = [
+  '''(?i)(?:example|dummy|placeholder|changeme|test-only|your[_-]?value)''',
+  '''\$\{\{[^}]+\}\}''',
+]
