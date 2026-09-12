@@ -1,0 +1,15 @@
+{
+  "name": "otomy-private-pdf",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.118.0"
+  }
+}

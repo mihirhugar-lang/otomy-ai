@@ -28,5 +28,7 @@ jobs:
         run: python3 scripts/test_recovery_plan.py
       - name: Verify internal R2 prefixes stay private
         run: node scripts/test_data_route_guard.mjs
+      - name: Verify private PDF authentication and sharing boundary
+        run: node scripts/test_pdf_route.mjs
       - name: Verify dashboard parity guard
         run: python3 scripts/verify_dashboard_parity.py --code-only
