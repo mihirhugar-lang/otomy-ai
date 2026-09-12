@@ -34,13 +34,18 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", ROOT / "data"))
+# Reviewed financial control inputs are kept outside the public repository.
+# GitHub Actions hydrates this directory from the private R2 ``control/``
+# prefix before starting the engine.  The seed directory remains the local
+# development fallback so localhost checks continue to work offline.
+PRIVATE_SEED_DIR = Path(os.environ.get("OTOMY_PRIVATE_SEED_DIR", ROOT / "seed"))
 SNAPSHOT_API_DIR = DATA_DIR / "snapshot" / "api"
 ARCHIVE_DIR = DATA_DIR / "archive"
 LOCAL_SEED_PATH = DATA_DIR / "local_seed.json"
 CUSTOMER_MASTER_OVERRIDES_PATH = DATA_DIR / "customer_master_overrides.json"
-VENDOR_MASTER_PATH = Path(__file__).resolve().parent.parent / "seed" / "vendor_master.json"
-BOOK_BALANCE_ACCOUNTS_PATH = ROOT / "seed" / "book_balance_accounts.json"
-BANK_STATEMENT_PATH = DATA_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
+VENDOR_MASTER_PATH = PRIVATE_SEED_DIR / "vendor_master.json"
+BOOK_BALANCE_ACCOUNTS_PATH = PRIVATE_SEED_DIR / "book_balance_accounts.json"
+BANK_STATEMENT_PATH = PRIVATE_SEED_DIR / "bank_statement_icici_2026-04-01_2026-06-28.json"
 IST = ZoneInfo("Asia/Kolkata")
 # The workbook is retained only as audit evidence.  It is never a financial
 # ledger source: cash books use Loctell movements and named physical anchors.
@@ -2537,7 +2542,7 @@ def stage_balance_overlay_config():
     being ignored by the common engine.
     """
     global _BALANCE_OVERLAY
-    source = ROOT / "seed" / "balance_anchors.json"
+    source = PRIVATE_SEED_DIR / "balance_anchors.json"
     target = DATA_DIR / "balance_anchors.json"
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     content = source.read_bytes()
@@ -3358,7 +3363,7 @@ def _balance_overlay():
             # The reviewed anchor/reconciliation policy is source-controlled;
             # R2 data is intentionally a generated working copy and must not
             # overwrite this financial rule during startup.
-            with open(ROOT / "seed" / "balance_anchors.json") as f:
+            with open(PRIVATE_SEED_DIR / "balance_anchors.json") as f:
                 cfg = json.load(f)
         except Exception:
             try:
