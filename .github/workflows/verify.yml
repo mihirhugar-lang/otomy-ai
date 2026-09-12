@@ -1,6 +1,7 @@
 name: Verify Otomy guards
 permissions:
   contents: read
+  pull-requests: read
 defaults:
   run:
     shell: python3 scripts/private_workflow_step.py {0}
@@ -13,7 +14,19 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Scan repository history for secrets
+        # Pinned v3 action; comments, SARIF artifacts, and summaries stay off
+        # so a finding cannot copy sensitive source into another GitHub surface.
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          GITLEAKS_ENABLE_SUMMARY: "false"
       - name: Install fixture dependencies
         run: python3 -m pip install --quiet requests 'boto3==1.42.97' 'cryptography==46.0.7' 'PyYAML==6.0.3'
       - name: Verify public workflow privacy boundary

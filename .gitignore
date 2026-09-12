@@ -4,3 +4,5 @@
 # Private financial control inputs are hydrated from R2 in CI and must never
 # be added back to the public repository.
 /seed/*.json
+# Gitleaks writes this temporary report in CI/local runs; never publish it.
+results.sarif
