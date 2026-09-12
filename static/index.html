@@ -2231,22 +2231,32 @@ async function loadEngineStatus(){
   if(!el)return;
   try{
     const stamp=Date.now();
-    const [stateResponse,engineResponse]=await Promise.all([
-      fetch(`/data/control/engine_state.json?_=${stamp}`,{cache:'no-store'}),
-      fetch(`/data/common_engine.json?_=${stamp}`,{cache:'no-store'})
-    ]);
-    const state=stateResponse.ok?await stateResponse.json():{state:'running'};
-    const engine=engineResponse.ok?await engineResponse.json():{};
+    let state={state:'running'}, engine={};
+    if(isStaticSnapshotHost()){
+      const [stateResponse,engineResponse]=await Promise.all([
+        fetch(`/data/control/engine_state.json?_=${stamp}`,{cache:'no-store'}),
+        fetch(`/data/common_engine.json?_=${stamp}`,{cache:'no-store'})
+      ]);
+      state=stateResponse.ok?await stateResponse.json():state;
+      engine=engineResponse.ok?await engineResponse.json():engine;
+    }else{
+      // Localhost has no /data/common_engine.json; its authoritative marker is
+      // the authenticated ERP sync status endpoint.
+      const syncResponse=await fetch(`/api/sync/erp/status?_=${stamp}`,{cache:'no-store'});
+      if(!syncResponse.ok)throw new Error(`sync status ${syncResponse.status}`);
+      const sync=await syncResponse.json();
+      engine={generated_at:sync.last_sync, local:true, errors:sync.last_sync_errors||[]};
+    }
     const paused=state.state==='paused';
     const generated=engine.generated_at?String(engine.generated_at).replace('T',' ').replace(/([+]).*$/,''):'last verified data unknown';
     const compactGenerated=engine.generated_at
       ? new Date(engine.generated_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','')
-      : 'checking';
+      : 'not yet';
     el.className=`engine-status ${paused?'paused':'running'}`;
     el.textContent=`Engine · ${compactGenerated}`;
     el.title=paused
       ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
-      : `Last verified sync: ${generated}`;
+      : `${engine.local?'Last successful localhost sync':'Last verified sync'}: ${generated}${engine.errors?.length?` — ${engine.errors.length} warning${engine.errors.length===1?'':'s'}`:''}`;
   }catch(e){
     el.className='engine-status unknown';
     el.textContent='Engine · unavailable';
