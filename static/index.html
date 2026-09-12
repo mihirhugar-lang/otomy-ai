@@ -1912,6 +1912,7 @@ const _sort={
 };
 const PAGE_SIZE=100;
 const _allData={sales:[],expenses:[],boulders:[],machines:[],labour:[],parts:[],erpbank:[],erpcash:[],bankstmt:[]};
+let _machineRefreshTimer=null;
 const TRANSPORT_LEDGER_MINIMUM=100;
 let _transportLedgerRows=[];
 let _currentCustLedger=null,_currentVendLedger=null;
@@ -4730,6 +4731,8 @@ async function loadMachines(dashboardFrom,dashboardTo){
     _allData.machines=rows;_allData.machineHistory=history;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
+    clearTimeout(_machineRefreshTimer);
+    _machineRefreshTimer=summary.refreshing?setTimeout(()=>loadMachines(dashboardFrom,dashboardTo),3000):null;
   }catch(e){
     ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
   }

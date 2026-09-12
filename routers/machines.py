@@ -4,7 +4,11 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, model_validator
 from concurrent.futures import ThreadPoolExecutor
+import json
 import logging
+import os
+from pathlib import Path
+import tempfile
 import threading
 import time
 import requests
@@ -42,6 +46,13 @@ _MACHINE_SUMMARY_CACHE: dict[tuple[str, str], dict] = {}
 _MACHINE_SUMMARY_REFRESHING: set[tuple[str, str]] = set()
 _MACHINE_SUMMARY_LAST_FAILURE: dict[tuple[str, str], float] = {}
 _MACHINE_SUMMARY_LOCK = threading.Lock()
+_MACHINE_SUMMARY_DISK_LOCK = threading.Lock()
+_MACHINE_SUMMARY_DISK_CACHE: dict[str, dict] = {}
+_MACHINE_SUMMARY_DISK_CACHE_LOADED = False
+_MACHINE_SUMMARY_DISK_CACHE_PATH = (
+    Path.home() / "Library" / "Application Support" / "CrusherOps" / "machine-summary-cache.json"
+)
+_MACHINE_SUMMARY_DISK_CACHE_MAX_ENTRIES = 90
 _LOG = logging.getLogger(__name__)
 
 
@@ -372,13 +383,108 @@ def _machine_summary_key(from_date: Optional[date], to_date: Optional[date]) -> 
     )
 
 
-def _machine_summary_response(data: dict, *, refreshing: bool, cached: bool, age_seconds: float) -> dict:
+def _machine_summary_disk_key(key: tuple[str, str]) -> str:
+    return f"{key[0]}|{key[1]}"
+
+
+def _load_machine_summary_disk_cache() -> None:
+    """Load the private last-successful cache once per server process."""
+    global _MACHINE_SUMMARY_DISK_CACHE_LOADED
+    if _MACHINE_SUMMARY_DISK_CACHE_LOADED:
+        return
+    with _MACHINE_SUMMARY_DISK_LOCK:
+        if _MACHINE_SUMMARY_DISK_CACHE_LOADED:
+            return
+        try:
+            payload = json.loads(_MACHINE_SUMMARY_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+            entries = payload.get("entries", {}) if isinstance(payload, dict) else {}
+            if isinstance(entries, dict):
+                for cache_key, entry in entries.items():
+                    if not isinstance(entry, dict) or not isinstance(entry.get("data"), dict):
+                        continue
+                    saved_at = float(entry.get("saved_at") or 0)
+                    if saved_at > 0:
+                        _MACHINE_SUMMARY_DISK_CACHE[str(cache_key)] = {
+                            "saved_at": saved_at,
+                            "data": entry["data"],
+                        }
+        except (OSError, ValueError, TypeError) as exc:
+            # A missing or interrupted cache must never stop the API.
+            if _MACHINE_SUMMARY_DISK_CACHE_PATH.exists():
+                _LOG.warning("Could not read local machinery cache: %s", exc)
+        finally:
+            _MACHINE_SUMMARY_DISK_CACHE_LOADED = True
+
+
+def _persist_machine_summary(key: tuple[str, str], data: dict) -> None:
+    """Persist a successful Loctell response outside the repository.
+
+    The cache is local-only, mode 0600, and bounded by date-range count.  It
+    is a fallback, never a replacement for a fresh ERP response.
+    """
+    _load_machine_summary_disk_cache()
+    cache_key = _machine_summary_disk_key(key)
+    entry = {"saved_at": time.time(), "data": data}
+    with _MACHINE_SUMMARY_DISK_LOCK:
+        _MACHINE_SUMMARY_DISK_CACHE[cache_key] = entry
+        retained = sorted(
+            _MACHINE_SUMMARY_DISK_CACHE.items(),
+            key=lambda item: float(item[1].get("saved_at") or 0),
+            reverse=True,
+        )[:_MACHINE_SUMMARY_DISK_CACHE_MAX_ENTRIES]
+        _MACHINE_SUMMARY_DISK_CACHE.clear()
+        _MACHINE_SUMMARY_DISK_CACHE.update(retained)
+        payload = {"version": 1, "entries": _MACHINE_SUMMARY_DISK_CACHE}
+        path = _MACHINE_SUMMARY_DISK_CACHE_PATH
+        temporary_path = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+            os.chmod(temporary_path, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, separators=(",", ":"), ensure_ascii=False)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+            temporary_path = None
+        except OSError as exc:
+            _LOG.warning("Could not persist local machinery cache: %s", exc)
+        finally:
+            if temporary_path:
+                try:
+                    os.unlink(temporary_path)
+                except OSError:
+                    pass
+
+
+def _restore_machine_summary_from_disk(key: tuple[str, str]) -> Optional[dict]:
+    """Return a private persisted response and its age, if one exists."""
+    _load_machine_summary_disk_cache()
+    with _MACHINE_SUMMARY_DISK_LOCK:
+        entry = _MACHINE_SUMMARY_DISK_CACHE.get(_machine_summary_disk_key(key))
+        if not entry:
+            return None
+        age_seconds = max(0.0, time.time() - float(entry.get("saved_at") or 0))
+        return {"data": entry["data"], "age_seconds": age_seconds}
+
+
+def _machine_summary_response(
+    data: dict,
+    *,
+    refreshing: bool,
+    cached: bool,
+    age_seconds: float,
+    source: str,
+) -> dict:
     """Add transport status without altering the Loctell source rows."""
     return {
         **data,
         "refreshing": refreshing,
         "cached": cached,
         "cache_age_seconds": round(max(age_seconds, 0.0)),
+        "cache_source": source,
+        "stale": bool(cached and age_seconds >= _MACHINE_SUMMARY_CACHE_TTL_SECONDS),
     }
 
 
@@ -406,6 +512,7 @@ def _refresh_machine_summary(key: tuple[str, str], from_date: Optional[date], to
         with _MACHINE_SUMMARY_LOCK:
             _MACHINE_SUMMARY_CACHE[key] = {"ts": time.monotonic(), "data": data}
             _MACHINE_SUMMARY_LAST_FAILURE.pop(key, None)
+        _persist_machine_summary(key, data)
     except Exception as exc:  # The browser must never wait on a slow Loctell retry.
         _LOG.warning("Loctell Operations refresh failed for %s to %s: %s", key[0], key[1], exc)
         with _MACHINE_SUMMARY_LOCK:
@@ -441,7 +548,8 @@ def fetch_operations_machine_summary(
 
     Source rows remain read-only and are replaced only after a complete
     successful refresh. A cold server returns immediately with a loading state;
-    a reading older than two minutes is hidden rather than shown as current.
+    if Loctell is unavailable, the last complete local response remains visible
+    with an explicit stale/cache age instead of being replaced by blank rows.
     """
     key = _machine_summary_key(from_date, to_date)
     now = time.monotonic()
@@ -451,13 +559,30 @@ def fetch_operations_machine_summary(
         fresh = age_seconds is not None and age_seconds < _MACHINE_SUMMARY_CACHE_TTL_SECONDS
         is_refreshing = key in _MACHINE_SUMMARY_REFRESHING
 
+    source = "Loctell response"
+    if entry is None:
+        persisted = _restore_machine_summary_from_disk(key)
+        if persisted is not None:
+            age_seconds = persisted["age_seconds"]
+            entry = {"ts": now - age_seconds, "data": persisted["data"]}
+            with _MACHINE_SUMMARY_LOCK:
+                _MACHINE_SUMMARY_CACHE.setdefault(key, entry)
+            fresh = age_seconds < _MACHINE_SUMMARY_CACHE_TTL_SECONDS
+            source = "local private cache"
+
     if fresh:
-        return _machine_summary_response(entry["data"], refreshing=False, cached=True, age_seconds=age_seconds)
+        return _machine_summary_response(
+            entry["data"], refreshing=False, cached=True, age_seconds=age_seconds, source=source
+        )
 
     started = _start_machine_summary_refresh(key, from_date, to_date)
-    if entry is not None and age_seconds is not None and age_seconds < _MACHINE_SUMMARY_MAX_STALE_SECONDS:
+    if entry is not None and age_seconds is not None:
         return _machine_summary_response(
-            entry["data"], refreshing=started or is_refreshing, cached=True, age_seconds=age_seconds
+            entry["data"],
+            refreshing=started or is_refreshing,
+            cached=True,
+            age_seconds=age_seconds,
+            source=source if source != "Loctell response" else "local memory cache",
         )
 
     return {
@@ -471,6 +596,8 @@ def fetch_operations_machine_summary(
         "refreshing": started or is_refreshing,
         "cached": False,
         "cache_age_seconds": None,
+        "cache_source": "none",
+        "stale": False,
     }
 
 
