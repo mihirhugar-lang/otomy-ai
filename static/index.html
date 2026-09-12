@@ -3427,7 +3427,7 @@ async function renderControlRoom(data){
       <td>${esc(r.material||'—')}</td>
       <td><div class="ticket-list">${ticketLines}</div></td>
       <td>${fmtNum(r.qty_mt,2)}</td>
-      <td>${fmtNum(r.ticket_count?(_num(r.mdp_ton)/r.ticket_count):_num(r.mdp_ton),2)}</td>
+      <td>${fmtNum(_num(r.mdp_ton),2)}</td>
       <td>${fmtINR(r.qty_mt?r.amount/r.qty_mt:0)}</td>
       <td>${fmtINR(r.amount)}</td>
       <td>${fmtINR(r.bank_received||0)}</td>
@@ -3473,7 +3473,7 @@ async function renderControlRoom(data){
   // an expense, a vendor payment, or a GST-liability calculation.
   const internalTransferToBank=(data.internal_transfers||[]).reduce((sum,row)=>sum+_num(row.amount),0);
   const totalBankReceived=_num(salesTotals.bank_received)+repaymentBankTotal+internalTransferToBank;
-  const totalMdpTonne=_num(salesTotals.mdp_ton)||((data.customer_sales||[]).reduce((sum,row)=>sum+_num(row.mdp_ton),0));
+  const totalMdpTonne=Math.round((data.customer_sales||[]).reduce((sum,row)=>sum+_num(row.mdp_ton),0)*1000)/1000;
   const isGSTCustomer=row=>/GST/i.test(String(row?.customer_name||''));
   const gstCustomerReceived=(data.customer_sales||[]).filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.cash_received)+_num(row.bank_received),0)+_repayShown.filter(isGSTCustomer).reduce((sum,row)=>sum+_num(row.display_payment_received),0);
   const machineRows=(data.machine_summary||[]).map(r=>`<tr>
@@ -3540,7 +3540,7 @@ async function renderControlRoom(data){
           <div class="kpi red"><div class="kpi-label">Receivables</div><div class="kpi-value">${fmtINR(s.receivables)}</div></div>
           <div class="kpi navy"><div class="kpi-label">Payables</div><div class="kpi-value">${fmtINR(s.payables)}</div></div>
           <div class="kpi glass-green"><div class="kpi-label">GST Tax Money</div><div class="kpi-value">${fmtINR(totalBankReceived)}</div></div>
-          <div class="kpi green"><div class="kpi-label">Total MDP / Tonne</div><div class="kpi-value">${fmtNum(totalMdpTonne,2)} MT</div></div>
+          <div class="kpi green"><div class="kpi-label">Total MDP Tonnes</div><div class="kpi-value">${fmtNum(totalMdpTonne,2)} MT</div></div>
           <div class="kpi glass-green"><div class="kpi-label">GST Received From Customer</div><div class="kpi-value">${fmtINR(gstCustomerReceived)}</div></div>
           <div class="kpi green"><div class="kpi-label">Total Sale Tonne</div><div class="kpi-value">${fmtNum(s.sales_qty_mt,2)} MT</div></div>
         </div>
@@ -3560,9 +3560,9 @@ async function renderControlRoom(data){
       <h3>Customer Wise Sales <button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Customer Wise Sales','dash-customer-sales-card')">Print / PDF</button></h3>
       <div class="report-table-wrap">
         <table class="report-table customer-sales-table">
-          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>MDP/Tonne</th><th>Price (₹/MT)</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Total Paid</th><th>Credit Sale</th></tr></thead>
+          <thead><tr><th>Customer</th><th>Material</th><th>Ticket No</th><th>Qty MT</th><th>MDP Tonnes (combined)</th><th>Price (₹/MT)</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Total Paid</th><th>Credit Sale</th></tr></thead>
           <tbody>${customerSalesRows}</tbody>
-          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtNum(_num(salesTotals.mdp_ton),2)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
+          <tfoot><tr><td><strong>Total</strong></td><td>—</td><td><strong>Total Tickets: ${fmtNum(salesTotals.ticket_count||0,0)}</strong></td><td><strong>${fmtNum(salesTotals.qty_mt||0,2)}</strong></td><td><strong>${fmtNum(totalMdpTonne,2)}</strong></td><td><strong>${fmtINR(salesTotals.qty_mt?salesTotals.amount/salesTotals.qty_mt:0)}</strong></td><td><strong>${fmtINR(salesTotals.amount||0)}</strong></td><td><strong>${fmtINR(salesTotals.bank_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.cash_received||0)}</strong></td><td><strong>${fmtINR(salesTotals.paid_against_sale||0)}</strong></td><td><strong>${fmtINR(salesTotals.credit_sale_amount||0)}</strong></td></tr></tfoot>
         </table>
       </div>
       <div class="metric-note">Same customer with different materials is shown in separate rows. Paid columns show only amount paid against sale tickets, not old credit repayments.</div>
