@@ -1,6 +1,6 @@
 const ISSUER = 'https://otomy.cloudflareaccess.com';
 // Public Access audience identifiers, not credentials. Bound to each host.
-const AUDIENCES = {
+export const AUDIENCES = {
   'otomy.ai': '86f6440c52f26a2def8939fe79069246b7025050ce486ecb3441c9278e01a274',
   'www.otomy.ai': '86f6440c52f26a2def8939fe79069246b7025050ce486ecb3441c9278e01a274',
   'otomy-ai.pages.dev': '863d5216bf6b59e121db3381270a827febae6c6f2ed46db7bed31f0f7cf31efa',
