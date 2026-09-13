@@ -1,0 +1,131 @@
+#!/usr/bin/env node
+// Exercise real HTML helpers with delayed/out-of-order responses, without private data.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const paths = process.argv.slice(2);
+if (!paths.length) paths.push(path.join(__dirname, '..', 'index.html'));
+function part(source, from, to) {
+  const start = source.indexOf(from), end = source.indexOf(to, start + from.length);
+  assert(start >= 0 && end > start, `Missing helper ${from}`);
+  return source.slice(start, end);
+}
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return {promise, resolve, reject};
+}
+async function verify(file) {
+  const source = fs.readFileSync(file, 'utf8');
+  for (const script of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    if (script[1].trim()) new vm.Script(script[1], {filename:file});
+  }
+  const requests = [];
+  const ctx = vm.createContext({assert, Map, Set, Date, console,
+    fetch: () => { const d=deferred(); requests.push(d); return d.promise; },
+    fiveMinuteCacheBust:()=>1});
+  vm.runInContext(part(source, 'const _archiveCache=', 'function _rowsInRange('), ctx);
+  const first = vm.runInContext('Promise.all([_loadArchiveMonth("2026-08"),_loadArchiveMonth("2026-08"),_loadArchiveMonth("2026-08")])',ctx);
+  assert.equal(requests.length,1,'duplicate archive GETs');
+  requests[0].resolve(new Response(JSON.stringify({sales:[{id:1,amount:12}]})));
+  const values=await first;
+  assert.equal(values[0],values[1]);
+  assert.equal(values[0].sales[0].amount,12);
+  // A failed request is retried, never remembered as an empty financial range.
+  const failed=vm.runInContext('_loadArchiveMonth("2026-07")',ctx);
+  requests[1].resolve(new Response('',{status:503}));
+  await assert.rejects(failed,/temporarily unavailable/);
+  const retry=vm.runInContext('_loadArchiveMonth("2026-07")',ctx);
+  requests[2].resolve(new Response('{"generation":"retry"}'));
+  assert.equal((await retry).generation,'retry');
+  // Clear during a slow GET; only the post-clear generation can refill memory.
+  const old=vm.runInContext('_loadArchiveMonth("2026-06")',ctx);
+  vm.runInContext('delete _archivePending["2026-06"]',ctx);
+  const fresh=vm.runInContext('_loadArchiveMonth("2026-06")',ctx);
+  requests[4].resolve(new Response('{"generation":"new"}'));
+  await fresh;
+  requests[3].resolve(new Response('{"generation":"old"}'));
+  await old;
+  assert.equal(vm.runInContext('_archiveCache["2026-06"].generation',ctx),'new');
+
+  let rangeCalls=0;
+  const rangeCtx=vm.createContext({Map,_dateMonths:()=>['2026-08'],
+    _loadArchiveRange:async()=>{ if(++rangeCalls===1)throw Error('offline'); return [{sales:[{amount:12}]}]; }});
+  vm.runInContext(part(source,'const OtomyDataEngine=','  clear(){')+'clear(){this._ranges.clear();}};',rangeCtx);
+  await assert.rejects(vm.runInContext('OtomyDataEngine.range("a","b")',rangeCtx));
+  assert.equal((await vm.runInContext('OtomyDataEngine.range("a","b")',rangeCtx))[0].sales[0].amount,12);
+  assert.equal(rangeCalls,2);
+
+  const apiRequests=[];
+  const cacheCtx=vm.createContext({Map,Date,DASH_CACHE_MS:60000,isStaticSnapshotHost:()=>true,
+    api:()=>{const d=deferred();apiRequests.push(d);return d.promise;}});
+  vm.runInContext('const cache=new Map();'+part(source,'async function cachedJson(', 'function prefetchDashRange('),cacheCtx);
+  const a=vm.runInContext('cachedJson(cache,"range","/api/fixture")',cacheCtx);
+  vm.runInContext('cache.clear()',cacheCtx);
+  const b=vm.runInContext('cachedJson(cache,"range","/api/fixture")',cacheCtx);
+  apiRequests[1].resolve({generation:2});await b;
+  apiRequests[0].resolve({generation:1});await a;
+  assert.equal(vm.runInContext('cache.get("range").data.generation',cacheCtx),2);
+  vm.runInContext('cache.clear()',cacheCtx);
+  const c=vm.runInContext('cachedJson(cache,"range","/api/fixture")',cacheCtx);
+  vm.runInContext('cache.clear()',cacheCtx);
+  const d=vm.runInContext('cachedJson(cache,"range","/api/fixture")',cacheCtx);
+  apiRequests[3].resolve({generation:4});await d;
+  apiRequests[2].reject(Error('old error'));await assert.rejects(c);
+  assert.equal(vm.runInContext('cache.get("range").data.generation',cacheCtx),4);
+
+  // Badge + freshness polling share reads. A network failure must not masquerade
+  // as a data generation or code deployment and reload the user's page.
+  let time=1000000, fail=false, modified='v1';
+  const urls=[];
+  const badge={};
+  class Clock extends Date { static now(){return time;} }
+  const statusCtx=vm.createContext({Date:Clock,Map,API:'',OTOMY_APP_VERSION:'fallback',
+    document:{hidden:false,getElementById:()=>badge},navigator:{onLine:true},
+    isStaticSnapshotHost:()=>true,_rememberStaticSyncStamp:()=>{},flash:()=>{},
+    _reloadStaticPageForSync:()=>{throw Error('unexpected reload');},
+    _reloadActiveSectionAfterSync:()=>{throw Error('unexpected refresh');},
+    _fetchT:async(url)=>{urls.push(url);if(fail)throw Error('offline');return url.startsWith('/?')
+      ? new Response(null,{headers:{'last-modified':modified}})
+      : new Response(JSON.stringify({generated_at:'2026-09-13T00:00:00Z',last_sync:'2026-09-13T00:00:00Z',version:'test'}));}});
+  vm.runInContext('let _lastSeenSyncStamp=null,_syncRefreshBusy=false;'+
+    part(source,'const _syncMarkerCache=','function startSyncAutoRefresh(')+
+    part(source,'let _engineStatusTimer=','function startEngineStatusRefresh('),statusCtx);
+  await vm.runInContext('Promise.all([checkForFreshSync(),loadEngineStatus()])',statusCtx);
+  assert.equal(urls.length,3);
+  assert(urls.every(url=>!url.includes('control/')&&!url.includes('${')));
+  const goodStamp=vm.runInContext('_lastSeenSyncStamp',statusCtx);
+  time+=15000;await vm.runInContext('checkForFreshSync()',statusCtx);
+  assert.equal(urls.length,5,'HTML HEAD repeated inside one minute');
+  fail=true;time+=15000;await vm.runInContext('checkForFreshSync()',statusCtx);
+  assert.equal(vm.runInContext('_lastSeenSyncStamp',statusCtx),goodStamp);
+  const before=urls.length;
+  vm.runInContext('document.hidden=true',statusCtx);
+  await vm.runInContext('Promise.all([checkForFreshSync(),loadEngineStatus()])',statusCtx);
+  assert.equal(urls.length,before,'hidden tab polled');
+  vm.runInContext('document.hidden=false;navigator.onLine=false',statusCtx);
+  await vm.runInContext('Promise.all([checkForFreshSync(),loadEngineStatus()])',statusCtx);
+  assert.equal(urls.length,before,'offline tab polled');
+  fail=false;time+=60000;modified='v2';let reloaded=false;
+  statusCtx._reloadStaticPageForSync=()=>{reloaded=true;return true;};
+  vm.runInContext('navigator.onLine=true',statusCtx);
+  await vm.runInContext('checkForFreshSync()',statusCtx);
+  assert(reloaded,'Last-Modified-only deployment was not detected');
+
+  // The selected range may change while master rows are still loading.
+  const attaches=[], renders=[];
+  const dashCtx=vm.createContext({document:{getElementById:()=>({value:'2026-09-13'})},
+    _dashCache:{control:new Map()},mtdStart:()=>'',today:()=>'',
+    cachedJson:async()=>({summary:{}}),_dashUnavailable:()=>{throw Error('unavailable');},
+    _attachDashboardMasterRows:()=>{const d=deferred();attaches.push(d);return d.promise;},
+    renderDashSummary:()=>renders.push('render'),renderControlRoom:async()=>{}});
+  vm.runInContext('let _dashLoadSeq=0,_dashRetried=false;'+part(source,'async function loadDash(){','async function loadControlRoom(){'),dashCtx);
+  const older=vm.runInContext('loadDash()',dashCtx);await new Promise(setImmediate);
+  const newer=vm.runInContext('loadDash()',dashCtx);await new Promise(setImmediate);
+  attaches[1].resolve();await newer;attaches[0].resolve();await older;
+  assert.equal(renders.length,1,'old range rendered over new selection');
+  console.log(path.basename(path.dirname(file))+' frontend: syntax, archive deduplication, retry, invalidation races, polling, offline, deployment and range guards passed');
+}
+(async()=>{for(const file of paths)await verify(file);})().catch(e=>{console.error(e);process.exitCode=1;});

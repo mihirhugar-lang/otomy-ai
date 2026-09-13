@@ -3,10 +3,19 @@
 
 import gha_sync as engine
 from datetime import date
+import json
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 
 
 def main() -> int:
-    book_accounts = engine.load_book_balance_accounts()
+    # Public CI must use an invented fixture, never require private bank seeds.
+    with tempfile.TemporaryDirectory() as directory:
+        fixture = Path(directory) / 'book_balance_accounts.json'
+        fixture.write_text(json.dumps([{'id':1,'name':'Fixture Bank','current_balance':250000.0}]))
+        with patch.object(engine, 'BOOK_BALANCE_ACCOUNTS_PATH', fixture):
+            book_accounts = engine.load_book_balance_accounts()
     assert len(book_accounts) == 1 and book_accounts[0]["current_balance"] == 250000.0, book_accounts
 
     canonical = engine.canonical_customer_master_rows([

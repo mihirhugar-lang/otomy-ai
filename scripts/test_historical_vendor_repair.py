@@ -37,21 +37,31 @@ class HistoricalVendorRepairTests(unittest.TestCase):
             snapshot_dir = root / "snapshot" / "api"
             archive_dir.mkdir(parents=True)
             snapshot_dir.mkdir(parents=True)
-            (archive_dir / "2026-07.json").write_text((ROOT / "data" / "archive" / "2026-07.json").read_text())
+            # Self-contained invented transactions: public CI must never need
+            # the operator's real archive or private historical supplier master.
+            master = [
+                {"id":1,"name":"Fixture Supplier A","erp_supplier_id":"fixture_1"},
+                {"id":2,"name":"Fixture Supplier B","erp_supplier_id":"fixture_2"},
+            ]
+            archive = {"balances":[{"date":as_of,"payables":300,"payables_rows":[
+                {"id":1,"name":"Fixture Supplier A","balance":100},
+                {"id":2,"name":"Fixture Supplier B","balance":200},
+            ]}]}
+            (archive_dir / "2026-07.json").write_text(json.dumps(archive))
             control_url = "/api/dashboard/control?from_date=2026-07-01&to_date=2026-07-31"
             control_path = snapshot_dir / f"{engine.snapshot_key(control_url)}.json"
             control_path.write_text(json.dumps({"summary": {"payables": 0}, "top_payables": []}))
             written = set()
-            with patch.object(engine, "ARCHIVE_DIR", archive_dir), patch.object(engine, "SNAPSHOT_API_DIR", snapshot_dir), patch.object(engine, "_WRITTEN_SNAPSHOT_FILES", written):
+            with patch.object(engine, "ARCHIVE_DIR", archive_dir), patch.object(engine, "SNAPSHOT_API_DIR", snapshot_dir), patch.object(engine, "_WRITTEN_SNAPSHOT_FILES", written), patch.object(engine, "load_vendor_master", return_value=master):
                 rows, total, controls = repair.stage(__import__("datetime").date.fromisoformat(as_of))
 
-            self.assertEqual(total, 4050010)
+            self.assertEqual(total, 300)
             self.assertEqual(controls, 1)
-            self.assertEqual(sum(row["payable"] for row in rows), 4050010)
+            self.assertEqual(sum(row["payable"] for row in rows), 300)
             self.assertEqual(len(written), 3)
             control = json.loads(control_path.read_text())
-            self.assertEqual(control["summary"]["payables"], 4050010)
-            self.assertEqual(next(row for row in rows if row["name"] == "SHIVAJI")["payable"], 170762)
+            self.assertEqual(control["summary"]["payables"], 300)
+            self.assertEqual(next(row for row in rows if row["name"] == "Fixture Supplier A")["payable"], 100)
 
 
 if __name__ == "__main__":
