@@ -44,6 +44,7 @@ jobs:
       - name: Verify frontend loading and changed-object readback
         run: |
           node scripts/test_frontend_loading.js
+          node sync_trigger/test_queue_guard.js
           python3 scripts/test_readback_changed_r2.py
           python3 scripts/test_dashboard_balance_parity.py
           python3 scripts/test_historical_vendor_repair.py
