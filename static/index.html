@@ -13,6 +13,16 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-96.png">
 <title>CrusherOps ERP</title>
 <style>
+/* Keep the Tally workspace within the screen; wide ledgers scroll in their own blocks. */
+@media screen{
+  .main{min-width:0}
+  .main #section-ledger #ledger-tbl{max-width:100%;overflow:auto}
+  .kpi-value,.control-metric strong{font-variant-numeric:tabular-nums}
+  button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #1f4e79;outline-offset:3px}
+}
+@media screen and (prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
 *{box-sizing:border-box;margin:0;padding:0}
 /* Tally-style ledger look (cream paper, blue header, monospace). Revert this block to undo. */
 .tally-ledger,.cashbook-table{font-family:'Consolas','Menlo','Courier New',monospace;font-size:12.5px;background:#fdfbf0;color:#12233f;border:1px solid #bfa974}
@@ -195,6 +205,10 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
+@media screen{
+  .rolling-range-action-row{flex-wrap:wrap}
+  .page-actions{flex-wrap:wrap;max-width:100%;min-width:0}
+}
 @media(max-width:760px){.preset-primary-row{flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.preset-primary-row .preset-dates{flex:0 0 auto;flex-wrap:nowrap;margin:0}.rolling-range-action-row{flex:0 0 100%;flex-wrap:wrap;gap:6px;overflow:visible}.rolling-range-row{flex:0 0 100%;min-width:0;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}.day-range-control{flex:0 0 auto}.rolling-range-action-row>.print-btn{margin-left:0;flex:0 0 auto}.rolling-range-action-row>.page-actions{margin-left:0;flex:0 0 100%;width:100%;flex-wrap:wrap}}
 
 /* ── Sub-tabs ── */
@@ -1334,7 +1348,7 @@ async function snapshotFetch(url){
   if(u.pathname==='/api/sync/erp/bank')return _withoutVendorPaymentRows(data);
   return data;
 }
-const _archiveCache={};
+const _archiveCache={}, _archivePending={};
 function _dateMonths(from,to){
   const out=[];
   const cur=new Date(`${from}T00:00:00`);
@@ -1349,10 +1363,20 @@ function _dateMonths(from,to){
 }
 async function _loadArchiveMonth(month){
   if(_archiveCache[month])return _archiveCache[month];
-  const r=await fetch(`/data/archive/${month}.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'});
-  if(!r.ok){_archiveCache[month]=null;return null;}
-  _archiveCache[month]=await r.json();
-  return _archiveCache[month];
+  if(_archivePending[month])return _archivePending[month];
+  // Overlapping ranges share one request. A pre-sync request may finish later,
+  // but must never repopulate the cache after the new generation clears it.
+  const pending=(async()=>{
+    const r=await fetch(`/data/archive/${month}.json?_=${fiveMinuteCacheBust()}`, {cache:'no-store'});
+    if(r.status===404)return null;
+    if(!r.ok)throw new Error('Archive temporarily unavailable');
+    const data=await r.json();
+    if(_archivePending[month]===pending)_archiveCache[month]=data;
+    return data;
+  })();
+  _archivePending[month]=pending;
+  try{return await pending;}
+  finally{if(_archivePending[month]===pending)delete _archivePending[month];}
 }
 async function _loadArchiveRange(from,to){
   const months=await Promise.all(_dateMonths(from,to).map(m=>_loadArchiveMonth(m)));
@@ -1370,7 +1394,13 @@ const OtomyDataEngine={
     const key=`${from}|${to}`;
     let pending=this._ranges.get(key);
     if(!pending){
-      pending=_loadArchiveRange(from,to);
+      pending=_loadArchiveRange(from,to).then(months=>{
+        if(months.length!==_dateMonths(from,to).length && this._ranges.get(key)===pending)this._ranges.delete(key);
+        return months;
+      }).catch(error=>{
+        if(this._ranges.get(key)===pending)this._ranges.delete(key);
+        throw error;
+      });
       this._ranges.set(key,pending);
     }
     return (await pending)||[];
@@ -2032,10 +2062,10 @@ async function cachedJson(cache,key,url){
   if(hit && hit.promise)return hit.promise;
   if(hit && now-hit.ts<cacheMs)return hit.data;
   const promise=api(url).then(data=>{
-    cache.set(key,{ts:Date.now(),data});
+    if(cache.get(key)?.promise===promise)cache.set(key,{ts:Date.now(),data});
     return data;
   }).catch(err=>{
-    cache.delete(key);
+    if(cache.get(key)?.promise===promise)cache.delete(key);
     throw err;
   });
   cache.set(key,{ts:now,promise});
@@ -2100,8 +2130,10 @@ let _lastSeenSyncStamp=null, _syncRefreshTimer=null, _syncRefreshBusy=false;
 const OTOMY_SYNC_STAMP_KEY='otomy_seen_sync_stamp';
 const OTOMY_APP_VERSION='2026-08-02-stale-guard-v1';
 function _clearReadCaches(){
+  ++_dashLoadSeq;
   Object.values(_dashCache).forEach(cache=>cache?.clear?.());
   _archiveCache && Object.keys(_archiveCache).forEach(k=>delete _archiveCache[k]);
+  Object.keys(_archivePending).forEach(k=>delete _archivePending[k]);
   if(typeof _complianceCache!=='undefined')_complianceCache.clear();
   if(typeof _complianceFYCache!=='undefined')_complianceFYCache.clear();
   OtomyDataEngine?.clear?.();
@@ -2154,22 +2186,37 @@ function _fetchT(url,opts,ms){
   const id=setTimeout(()=>c.abort(),ms||8000);
   return fetch(url,Object.assign({},opts||{},{signal:c.signal})).finally(()=>clearTimeout(id));
 }
+const _syncMarkerCache=new Map();
+async function _readSyncMarker(path,head=false){
+  const hit=_syncMarkerCache.get(path), now=Date.now();
+  // The badge and freshness check share status reads; HTML version checks need
+  // only run once a minute. Financial data itself remains network-only.
+  if(hit?.promise)return hit.promise;
+  if(hit && now-hit.ts<(head?60000:2000))return hit.data;
+  const promise=_fetchT(path+`?_=${now}`,{method:head?'HEAD':'GET',cache:'no-store'}).then(async r=>{
+    if(!r.ok||r.redirected)throw new Error('Sync status unavailable');
+    const data=head?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:await r.json();
+    if(_syncMarkerCache.get(path)?.promise===promise)_syncMarkerCache.set(path,{ts:Date.now(),data});
+    return data;
+  }).catch(error=>{
+    if(_syncMarkerCache.get(path)?.promise===promise)_syncMarkerCache.delete(path);
+    throw error;
+  });
+  _syncMarkerCache.set(path,{promise});
+  return promise;
+}
 async function _currentSyncStamp(){
   if(isStaticSnapshotHost()){
-    const now=Date.now();
-    const manifestReq=_fetchT(`/data/snapshot/manifest.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
-    const engineReq=_fetchT(`/data/common_engine.json?_=${now}`, {cache:'no-store'}).then(async r=>r.ok?await r.json():null).catch(()=>null);
-    const appReq=_fetchT(`/?_app=${now}`, {method:'HEAD', cache:'no-store'})
-      .then(r=>r.ok?`${r.headers.get('last-modified')||''}|${r.headers.get('etag')||''}`:'')
-      .catch(()=>'');
+    const manifestReq=_readSyncMarker('/data/snapshot/manifest.json');
+    const engineReq=_readSyncMarker('/data/common_engine.json');
+    const appReq=_readSyncMarker('/',true);
     const [data, engine, appStamp]=await Promise.all([manifestReq, engineReq, appReq]);
+    if(!data?.generated_at||!engine?.generated_at)return null;
     const dataStamp=`${data?.generated_at||''}|${engine?.generated_at||''}|${engine?.version||''}`;
     const codeStamp=appStamp||OTOMY_APP_VERSION;
     return `${dataStamp}|${codeStamp}`;
   }
-  const r=await _fetchT(`${API}/api/sync/erp/status?_=${Date.now()}`, {cache:'no-store'}).catch(()=>null);
-  if(!r||!r.ok)return null;
-  const data=await r.json();
+  const data=await _readSyncMarker(`${API}/api/sync/erp/status`);
   if(data.backup?.enabled){
     let note=document.getElementById('otomy-backup-status');
     if(!note){
@@ -2190,7 +2237,7 @@ async function _currentSyncStamp(){
   return data.last_sync||data.generated_at||data.updated_at||null;
 }
 async function checkForFreshSync(force=false){
-  if(_syncRefreshBusy)return;
+  if(_syncRefreshBusy||document.hidden||navigator.onLine===false)return;
   _syncRefreshBusy=true;
   try{
     const stamp=await _currentSyncStamp();
@@ -2199,10 +2246,9 @@ async function checkForFreshSync(force=false){
       // Static-site stamp = "data|code". Only a CODE change needs a full page reload (to load the
       // new app build); a DATA-only change is refreshed silently in place, so the user stays on the
       // page they're browsing instead of being thrown back to the Dashboard.
-      // The stamp contains three data components followed by the code stamp.
-      // Compare its final component: comparing index 1 accidentally treated a
-      // data refresh as a code deploy and missed real frontend deployments.
-      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|').at(-1)!==String(stamp).split('|').at(-1);
+      // The two final components are Last-Modified and ETag. Either can mark
+      // a code deploy; a partial/failed status response never updates this stamp.
+      const codeChanged=isStaticSnapshotHost() && String(_lastSeenSyncStamp).split('|').slice(-2).join('|')!==String(stamp).split('|').slice(-2).join('|');
       _lastSeenSyncStamp=stamp;
       _rememberStaticSyncStamp(stamp);
       if(codeChanged && _reloadStaticPageForSync(stamp))return;
@@ -2226,26 +2272,19 @@ function startSyncAutoRefresh(){
   clearInterval(_syncRefreshTimer);
   _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
-let _engineStatusTimer=null;
+let _engineStatusTimer=null, _engineStatusBusy=false;
 async function loadEngineStatus(){
   const el=document.getElementById('engine-status');
-  if(!el)return;
+  if(!el||_engineStatusBusy||document.hidden||navigator.onLine===false)return;
+  _engineStatusBusy=true;
   try{
-    const stamp=Date.now();
     let state={state:'running'}, engine={};
     if(isStaticSnapshotHost()){
-      const [stateResponse,engineResponse]=await Promise.all([
-        fetch(`/data/control/engine_state.json?_=${stamp}`,{cache:'no-store'}),
-        fetch(`/data/common_engine.json?_=${stamp}`,{cache:'no-store'})
-      ]);
-      state=stateResponse.ok?await stateResponse.json():state;
-      engine=engineResponse.ok?await engineResponse.json():engine;
+      engine=await _readSyncMarker('/data/common_engine.json');
     }else{
       // Localhost has no /data/common_engine.json; its authoritative marker is
       // the authenticated ERP sync status endpoint.
-      const syncResponse=await fetch(`/api/sync/erp/status?_=${stamp}`,{cache:'no-store'});
-      if(!syncResponse.ok)throw new Error(`sync status ${syncResponse.status}`);
-      const sync=await syncResponse.json();
+      const sync=await _readSyncMarker('/api/sync/erp/status');
       engine={generated_at:sync.last_sync, local:true, errors:sync.last_sync_errors||[]};
     }
     const paused=state.state==='paused';
@@ -2262,7 +2301,7 @@ async function loadEngineStatus(){
     el.className='engine-status unknown';
     el.textContent='Engine · unavailable';
     el.title='Could not read the common-engine status marker';
-  }
+  }finally{_engineStatusBusy=false;}
 }
 function startEngineStatusRefresh(){
   loadEngineStatus();
@@ -2277,10 +2316,12 @@ document.addEventListener('visibilitychange',()=>{
   const away=_hiddenAt?Date.now()-_hiddenAt:0;
   _hiddenAt=null;
   try{sessionStorage.removeItem('cx_left_at');}catch(e){}
-  if(away>AWAY_RESET_MS && _activeSectionName()!=='dashboard'){nav('dashboard');return;}
+  loadEngineStatus();
   checkForFreshSync(false);
+  if(away>AWAY_RESET_MS && _activeSectionName()!=='dashboard'){nav('dashboard');return;}
 });
 window.addEventListener('pagehide',_markAway);
+window.addEventListener('online',()=>{_syncMarkerCache.clear();loadEngineStatus();checkForFreshSync(false);});
 function valByPath(row,key){return key.split('.').reduce((v,k)=>v==null?undefined:v[k],row);}
 function normSortVal(v){
   if(v==null)return'';
@@ -3382,6 +3423,7 @@ async function loadDash(){
     if(!controlData||!controlData.summary){_dashUnavailable();return;}
     _dashRetried=false;
     await _attachDashboardMasterRows(controlData,f,t);
+    if(seq!==_dashLoadSeq)return;
     renderDashSummary(controlData,d);
     await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
