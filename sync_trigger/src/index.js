@@ -3,6 +3,11 @@ const GITHUB_REPOSITORY = "otomy-ai";
 const GITHUB_WORKFLOW = "common-engine-sync.yml";
 const GITHUB_REF = "main";
 const ENGINE_STATE_KEY = "control/engine_state.json";
+// A normal Actions queue should begin a job within minutes. A jobless record
+// that remains queued beyond this window is a GitHub control-plane orphan, not
+// a publisher. Ignore only that narrow case; every real/unknown active run
+// continues to block a second data writer.
+const JOBLESS_QUEUE_GRACE_MS = 45 * 60 * 1000;
 
 function indiaClock(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -106,7 +111,37 @@ async function hasActiveCommonEngineRun(env) {
   }
   const payload = await response.json();
   const activeStates = new Set(["queued", "pending", "waiting", "requested", "in_progress"]);
-  return (payload.workflow_runs || []).some((run) => activeStates.has(run.status));
+  for (const run of payload.workflow_runs || []) {
+    if (!activeStates.has(run.status)) continue;
+    if (await isStaleJoblessQueueRun(run, env)) {
+      console.log(`Ignoring stale jobless GitHub queue record ${run.id}; it cannot publish data.`);
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+async function isStaleJoblessQueueRun(run, env) {
+  // Fail closed: unexpected state, timestamp, or GitHub API error still holds
+  // the single-writer lock. Only an old queued run with zero jobs is ignored.
+  if (run.status !== "queued") return false;
+  const queuedAt = Date.parse(run.created_at || "");
+  if (!Number.isFinite(queuedAt) || Date.now() - queuedAt < JOBLESS_QUEUE_GRACE_MS) return false;
+  const response = await fetch(
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/actions/runs/${run.id}/jobs?per_page=1`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${env.GITHUB_ACTIONS_DISPATCH_TOKEN}`,
+        "User-Agent": "otomy-sync-trigger",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+  if (!response.ok) return false;
+  const jobs = await response.json();
+  return jobs.total_count === 0;
 }
 
 export default {
