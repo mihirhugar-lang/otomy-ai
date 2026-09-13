@@ -465,13 +465,10 @@ jobs:
             aws s3 ls "s3://otomy-data" --recursive \
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
               | awk '$4 !~ /^(control|recovery)\// {print $4}' | sort > "$remote_keys"
-            include_args=(--include "publish_manifest.json")
-            while IFS= read -r key; do
-              [ -n "$key" ] && include_args+=(--include "$key")
-            done < "$RUNNER_TEMP/otomy-changed-files.txt"
-            aws s3 cp "s3://otomy-data" "$readback_dir" --recursive \
-              --exclude "*" "${include_args[@]}" \
-              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            python3 scripts/readback_changed_r2.py \
+              --expected data --destination "$readback_dir" \
+              --changed "$RUNNER_TEMP/otomy-changed-files.txt" \
+              --endpoint "${{ secrets.R2_ENDPOINT }}"
             python3 scripts/verify_r2_delta.py \
               data "$readback_dir" "$remote_manifest" "$remote_keys" \
               "$RUNNER_TEMP/otomy-changed-files.txt" "$RUNNER_TEMP/otomy-deleted-objects.json"
