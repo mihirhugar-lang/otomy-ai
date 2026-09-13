@@ -9,6 +9,9 @@ var total = 0, uploaded = 0, errors = 0, unknown = 0
 var unresolved: [String] = []
 if let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys), options: []) {
     for case let file as URL in files {
+        // Finder layout metadata is not recovery content and may be deliberately
+        // excluded by iCloud. Its upload error must not invalidate the backup.
+        if file.lastPathComponent == ".DS_Store" { continue }
         do {
             let v = try file.resourceValues(forKeys: keys)
             if v.isRegularFile != true { continue }
