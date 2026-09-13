@@ -2217,23 +2217,9 @@ async function _currentSyncStamp(){
     return `${dataStamp}|${codeStamp}`;
   }
   const data=await _readSyncMarker(`${API}/api/sync/erp/status`);
-  if(data.backup?.enabled){
-    let note=document.getElementById('otomy-backup-status');
-    if(!note){
-      note=document.createElement('div');
-      note.id='otomy-backup-status';
-      note.setAttribute('role','status');
-      note.style.cssText='padding:8px 14px;background:#fff3cd;color:#664d03;font-size:13px;border-bottom:1px solid #ffe69c';
-      document.body.prepend(note);
-    }
-    const b=data.backup;
-    const active=['inventory','downloading','verifying_live_generation','encrypting','copying_to_icloud','verifying_restore'].includes(b.phase);
-    note.hidden=!b.overdue && b.phase!=='failed' && b.phase!=='icloud_upload_pending';
-    note.textContent=b.phase==='failed' ? 'iCloud backup needs attention. ERP sync continues. Check the backup status or contact your administrator.'
-      : b.phase==='icloud_upload_pending' ? 'Encrypted backup passed its restore test; waiting for iCloud to confirm upload.'
-      : active ? `Encrypted iCloud backup in progress${b.total_objects ? ': '+(b.verified_objects||0)+' / '+b.total_objects+' objects verified' : ''}. ERP sync continues.`
-      : 'iCloud backup is overdue. It will retry while localhost is running.';
-  }
+  // Backup is a background service. Its state belongs in the existing status
+  // indicator; a separate body-level banner distorts the flex page layout.
+  document.getElementById('otomy-backup-status')?.remove?.();
   return data.last_sync||data.generated_at||data.updated_at||null;
 }
 async function checkForFreshSync(force=false){
@@ -2272,6 +2258,18 @@ function startSyncAutoRefresh(){
   clearInterval(_syncRefreshTimer);
   _syncRefreshTimer=setInterval(()=>checkForFreshSync(false),15000);
 }
+function _backgroundBackupStatus(backup){
+  if(!backup?.enabled)return {attention:false,note:''};
+  const active=['inventory','downloading','verifying_live_generation','encrypting','copying_to_icloud','verifying_restore'].includes(backup.phase);
+  const attention=Boolean(backup.phase==='failed'||(backup.overdue&&!active));
+  const last=backup.cloud_snapshot_at?new Date(backup.cloud_snapshot_at).toLocaleString('en-IN'):'not yet confirmed';
+  const message=backup.phase==='failed'?'retry needed; automatic retries remain enabled'
+    : active?'running in the background'
+    : backup.phase==='icloud_upload_pending'?'waiting for iCloud upload confirmation'
+    : backup.overdue?'overdue; waiting for the next background retry'
+    : 'up to date';
+  return {attention,note:`iCloud backup: ${message}. Last verified upload: ${last}.`};
+}
 let _engineStatusTimer=null, _engineStatusBusy=false;
 async function loadEngineStatus(){
   const el=document.getElementById('engine-status');
@@ -2285,18 +2283,21 @@ async function loadEngineStatus(){
       // Localhost has no /data/common_engine.json; its authoritative marker is
       // the authenticated ERP sync status endpoint.
       const sync=await _readSyncMarker('/api/sync/erp/status');
-      engine={generated_at:sync.last_sync, local:true, errors:sync.last_sync_errors||[]};
+      engine={generated_at:sync.last_sync, local:true, errors:sync.last_sync_errors||[],backup:sync.backup};
     }
     const paused=state.state==='paused';
     const generated=engine.generated_at?String(engine.generated_at).replace('T',' ').replace(/([+]).*$/,''):'last verified data unknown';
     const compactGenerated=engine.generated_at
       ? new Date(engine.generated_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','')
       : 'not yet';
-    el.className=`engine-status ${paused?'paused':'running'}`;
+    const backupStatus=_backgroundBackupStatus(engine.backup);
+    el.className=`engine-status ${paused||backupStatus.attention?'paused':'running'}`;
     el.textContent=`Engine · ${compactGenerated}`;
     el.title=paused
       ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
       : `${engine.local?'Last successful localhost sync':'Last verified sync'}: ${generated}${engine.errors?.length?` — ${engine.errors.length} warning${engine.errors.length===1?'':'s'}`:''}`;
+    if(backupStatus.note)el.title+=`\n${backupStatus.note}`;
+    el.setAttribute?.('aria-label',el.title);
   }catch(e){
     el.className='engine-status unknown';
     el.textContent='Engine · unavailable';
