@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from delta_manifest import build_manifest
-from recovery_catalog import merge_catalog, prune_catalog
+from recovery_catalog import merge_catalog, prune_catalog, reconcile_remote_recoveries
 from recovery_plan import MANIFEST_NAME, build_recovery_plan, validate_recovery_plan
 from verify_recovery_restore import verify
 
@@ -158,6 +158,16 @@ class RecoveryPlanTests(unittest.TestCase):
         kept, cleanup = prune_catalog(catalog, now=datetime.fromisoformat("2026-08-03T12:00:00+00:00"))
         self.assertEqual([entry["recovery_id"] for entry in kept["recoveries"]], ["3", "2"])
         self.assertEqual(cleanup, ["1"])
+
+    def test_catalog_reconciles_only_unreferenced_remote_prefixes(self) -> None:
+        catalog = {
+            "catalog_version": 1,
+            "recoveries": [
+                {"recovery_id": "30", "created_at": "2026-08-03T10:00:00+00:00"},
+                {"recovery_id": "20", "created_at": "2026-08-02T10:00:00+00:00"},
+            ],
+        }
+        self.assertEqual(reconcile_remote_recoveries(catalog, {"10", "20", "30", "40"}), ["10", "40"])
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from recovery_plan import validate_recovery_plan
 CATALOG_VERSION = 1
 MAX_RECOVERIES = 2
 MAX_AGE_DAYS = 14
+RECOVERY_ID_PATTERN = re.compile(r"^[0-9]+$")
 
 
 def _read_json(path: Path) -> Any:
@@ -90,6 +92,37 @@ def prune_catalog(catalog: dict[str, Any], *, now: datetime | None = None) -> tu
     return {"catalog_version": CATALOG_VERSION, "recoveries": kept}, removed
 
 
+def load_remote_recovery_ids(path: Path) -> set[str]:
+    """Read exact top-level R2 recovery prefixes listed by the workflow.
+
+    GitHub run IDs are numeric.  Refusing any other name keeps the subsequent
+    recursive deletion constrained even if the bucket ever contains an
+    unexpected object or the listing format changes.
+    """
+    if not path.exists():
+        raise ValueError(f"missing remote recovery-prefix list: {path}")
+    ids: set[str] = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        recovery_id = raw.strip()
+        if not recovery_id:
+            continue
+        if not RECOVERY_ID_PATTERN.fullmatch(recovery_id):
+            raise ValueError(f"unsafe remote recovery id: {recovery_id!r}")
+        ids.add(recovery_id)
+    return ids
+
+
+def reconcile_remote_recoveries(catalog: dict[str, Any], remote_ids: set[str]) -> list[str]:
+    """Return remote recovery prefixes absent from the retained catalogue."""
+    retained_ids: set[str] = set()
+    for entry in catalog.get("recoveries", []):
+        recovery_id = str(entry.get("recovery_id") or "") if isinstance(entry, dict) else ""
+        if not RECOVERY_ID_PATTERN.fullmatch(recovery_id):
+            raise ValueError("invalid recovery id in retained catalog")
+        retained_ids.add(recovery_id)
+    return sorted(remote_ids - retained_ids)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", type=Path, required=True)
@@ -97,11 +130,17 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cleanup", type=Path, required=True)
     parser.add_argument("--prune", action="store_true", help="retain only the two newest recoveries younger than 14 days")
+    parser.add_argument("--remote-ids", type=Path,
+                        help="newline-delimited top-level recovery prefixes currently in R2; reconcile only with --prune")
     args = parser.parse_args()
     catalog = merge_catalog(load_catalog(args.catalog), _read_json(args.recovery))
     cleanup: list[str] = []
     if args.prune:
         catalog, cleanup = prune_catalog(catalog)
+        if args.remote_ids:
+            cleanup = sorted(set(cleanup) | set(reconcile_remote_recoveries(catalog, load_remote_recovery_ids(args.remote_ids))))
+    elif args.remote_ids:
+        parser.error("--remote-ids requires --prune")
     _write_json(args.out, catalog)
     args.cleanup.parent.mkdir(parents=True, exist_ok=True)
     args.cleanup.write_text("".join(f"{item}\n" for item in cleanup), encoding="utf-8")
