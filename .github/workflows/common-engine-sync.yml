@@ -348,6 +348,18 @@ jobs:
             --backup-list "$recovery_backup_list" \
             --remove-list "$recovery_remove_list" \
             --retention-expired "data/control/retention_expired_snapshot_keys.txt"
+          # Use the exact remote key inventory to forecast both the live
+          # replacement and the rollback pack before either writes to R2.
+          # Regular delta syncs remain small; a large full repair is stopped
+          # early so it can be split into smaller periods.
+          remote_inventory="$RUNNER_TEMP/otomy-r2-before-publish.txt"
+          aws s3 ls "s3://otomy-data" --recursive \
+            --endpoint-url "$R2_ENDPOINT" > "$remote_inventory"
+          python3 scripts/r2_storage_guard.py preflight \
+            --remote-list "$remote_inventory" \
+            --previous "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --current data/publish_manifest.json \
+            --recovery "$recovery_meta"
           if [ "$(jq -r '.available' "$recovery_meta")" != "true" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "No prior verified bundle exists yet; bootstrap publish has no rollback target."
@@ -484,10 +496,14 @@ jobs:
         run: |
           retained_catalog="$RUNNER_TEMP/otomy-recovery-catalog-retained.json"
           cleanup_list="$RUNNER_TEMP/otomy-recovery-cleanup.txt"
+          remote_recovery_ids="$RUNNER_TEMP/otomy-r2-recovery-prefixes.txt"
+          aws s3 ls "s3://otomy-data/recovery/" --endpoint-url "$R2_ENDPOINT" \
+            | awk '$1 == "PRE" {sub(/\/$/, "", $2); print $2}' | sort -u > "$remote_recovery_ids"
           python3 scripts/recovery_catalog.py \
             --catalog "$RUNNER_TEMP/otomy-recovery-catalog-unpruned.json" \
             --recovery "$RUNNER_TEMP/otomy-recovery-manifest.json" \
-            --out "$retained_catalog" --cleanup "$cleanup_list" --prune
+            --out "$retained_catalog" --cleanup "$cleanup_list" --prune \
+            --remote-ids "$remote_recovery_ids"
           while IFS= read -r recovery_id; do
             case "$recovery_id" in
               ''|*[!0-9A-Za-z._-]*) echo "Unsafe recovery id in cleanup list" >&2; exit 1 ;;
@@ -503,6 +519,19 @@ jobs:
             echo "Previous verified bundle available as recovery \`${{ steps.recovery.outputs.id }}\`."
             echo 'The catalog keeps the two newest recovery packs, each for at most 14 days.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify R2 stays within the storage budget
+        if: steps.initial_control.outputs.enabled == 'true' && steps.prepublish_control.outputs.enabled == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          final_inventory="$RUNNER_TEMP/otomy-r2-after-publish.txt"
+          aws s3 ls "s3://otomy-data" --recursive \
+            --endpoint-url "$R2_ENDPOINT" > "$final_inventory"
+          python3 scripts/r2_storage_guard.py verify --remote-list "$final_inventory"
 
       - name: Report paused engine
         if: steps.initial_control.outputs.enabled != 'true'
