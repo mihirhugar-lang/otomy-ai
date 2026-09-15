@@ -41,6 +41,14 @@ from shared_calculations import (
     sale_channels as calculate_sale_channels,
     settlement_roundoff as calculate_settlement_roundoff,
     payable_due_aging as calculate_payable_due_aging,
+    advance_book_balance,
+    rebalance_book_rows,
+    cashbook_totals as calculate_cashbook_totals,
+    daily_ledger_row as calculate_daily_ledger_row,
+    daily_ledger_totals as calculate_daily_ledger_totals,
+    credit_due as calculate_credit_due,
+    exclusive_age_buckets,
+    accumulate_sale_group,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2282,14 +2290,7 @@ def build_control(sales, expenses, from_d, to_d,
         pm  = s["payment_mode"]
         # Split each sale into its real channels (handles SPLIT payments).
         s_cash, s_credit, s_upi = _sale_channels(s)
-        g["ticket_count"] += 1
-        g["qty_mt"]        += _num(s["qty_mt"])
-        g["mdp_ton"]       += _num(s.get("mdp_ton"))
-        g["amount"]        += amt
-        g["credit_sale_amount"] += s_credit
-        g["cash_received"]      += s_cash
-        g["bank_received"]      += s_upi
-        g["paid_against_sale"]  += s_cash + s_upi
+        accumulate_sale_group(g, amt, _num(s["qty_mt"]), _num(s.get("mdp_ton")), s_cash, s_credit, s_upi)
         g["tickets"].append({
             "date": s["date"], "ticket_no": s.get("ticket_no", "—"),
             "qty_mt": round(_num(s["qty_mt"]), 2),
@@ -3588,16 +3589,6 @@ def build_ledger_view(
             day_expenses = expenses_by_date.get(key, [])
             day_boulders = boulders_by_date.get(key, [])
             day_repayments = repayments_by_date.get(key, [])
-            sale_amount = sum(_sale_total(row) for row in day_sales)
-            # Match localhost ledger: split each sale by its real cash/credit/UPI channels
-            # (spot = cash + UPI, credit = credit channel) instead of a crude payment_mode test,
-            # so split-payment tickets land the right amount in each column.
-            sale_splits = [_sale_channels(row) for row in day_sales]
-            spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
-            spot_sale_cash = sum(s_cash for s_cash, _s_credit, _s_upi in sale_splits)
-            spot_sale_bank = sum(s_upi for _s_cash, _s_credit, s_upi in sale_splits)
-            credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
-            qty_mt = sum(_num(row.get("qty_mt")) for row in day_sales)
             credit_repayment_cash = sum(repayment_channels(row)[0] for row in day_repayments)
             credit_repayment_bank = sum(repayment_channels(row)[1] for row in day_repayments)
             expense_cash = 0.0
@@ -3611,7 +3602,6 @@ def build_ledger_view(
                     expense_bank += _num(expense.get("amount"))
             # Daily Book expenses come only from the ERP Expense source, where every row has a
             # Cash or Bank payment mode. Legacy Labour and Parts records are intentionally excluded.
-            expense_total = expense_cash + expense_bank
             boulder_input_mt = sum(_num(row.get("total_tonnes")) for row in day_boulders)
             # Balance overlay must see the FULL repayment history from the anchor (mirrors the
             # tile), not just month-to-date — else pre-month receipts (e.g. 29-30 Jun) are missed
@@ -3619,50 +3609,19 @@ def build_ledger_view(
             _ov = _overlay_balance(key, sales, expenses, overlay_repayments if overlay_repayments is not None else repayments, internal_transfers)
             row_bank = _ov[0] if _ov else round(bank_balance, 2)
             row_cash = _ov[1] if _ov else round(cash_balance, 2)
-            rows.append({
-                "date": key,
-                "sale_trips": len(day_sales),
-                "sale_amount": round(sale_amount, 2),
-                "spot_sale_amount": round(spot_sale_amount, 2),
-                "spot_sale_cash": round(spot_sale_cash, 2),
-                "spot_sale_bank": round(spot_sale_bank, 2),
-                "credit_sale_amount": round(credit_sale_amount, 2),
-                "qty_mt": round(qty_mt, 2),
-                "credit_repayment": round(credit_repayment_cash + credit_repayment_bank, 2),
-                "credit_repayment_cash": round(credit_repayment_cash, 2),
-                "credit_repayment_bank": round(credit_repayment_bank, 2),
-                "expenses": round(expense_total, 2),
-                "expense_cash": round(expense_cash, 2),
-                "expense_bank": round(expense_bank, 2),
-                "internal_transfer": round(sum(_num(row.get("amount")) for row in transfers_by_date.get(key, [])), 2),
-                "cash_balance_office": row_cash,
-                "bank_balance": row_bank,
-                "boulder_input_mt": round(boulder_input_mt, 2),
-                "boulder_trips": round(sum(_num(row.get("trips")) for row in day_boulders), 2),
-                "stock_in_plant_mt": round(boulder_input_mt - qty_mt, 2),
-            })
+            rows.append(calculate_daily_ledger_row(
+                key,
+                sales=[(_sale_total(row), *_sale_channels(row), _num(row.get("qty_mt"))) for row in day_sales],
+                repayment_cash=credit_repayment_cash, repayment_bank=credit_repayment_bank,
+                expense_cash=expense_cash, expense_bank=expense_bank,
+                internal_transfer=sum(_num(row.get("amount")) for row in transfers_by_date.get(key, [])),
+                cash_balance=row_cash, bank_balance=row_bank,
+                boulder_tonnes=boulder_input_mt,
+                boulder_trips=sum(_num(row.get("trips")) for row in day_boulders),
+            ))
         current += timedelta(days=1)
 
-    totals = {
-        "sale_trips": sum(row["sale_trips"] for row in rows),
-        "sale_amount": round(sum(row["sale_amount"] for row in rows), 2),
-        "spot_sale_amount": round(sum(row["spot_sale_amount"] for row in rows), 2),
-        "spot_sale_cash": round(sum(row.get("spot_sale_cash", 0) for row in rows), 2),
-        "spot_sale_bank": round(sum(row.get("spot_sale_bank", 0) for row in rows), 2),
-        "qty_mt": round(sum(row.get("qty_mt", 0) for row in rows), 2),
-        "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
-        "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
-        "credit_repayment_cash": round(sum(row.get("credit_repayment_cash", 0) for row in rows), 2),
-        "credit_repayment_bank": round(sum(row.get("credit_repayment_bank", 0) for row in rows), 2),
-        "expenses": round(sum(row["expenses"] for row in rows), 2),
-        "expense_cash": round(sum(row.get("expense_cash", 0) for row in rows), 2),
-        "expense_bank": round(sum(row.get("expense_bank", 0) for row in rows), 2),
-        "boulder_input_mt": round(sum(row["boulder_input_mt"] for row in rows), 2),
-        "boulder_trips": round(sum(row["boulder_trips"] for row in rows), 2),
-        "stock_in_plant_mt": round(sum(row.get("stock_in_plant_mt", 0) for row in rows), 2),
-        "cash_balance_office": rows[-1]["cash_balance_office"] if rows else 0.0,
-        "bank_balance": rows[-1]["bank_balance"] if rows else 0.0,
-    }
+    totals = calculate_daily_ledger_totals(rows)
     return {"year": year, "month": month, "rows": rows, "totals": totals}
 
 
@@ -3852,13 +3811,13 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
                     row = _row(day, target_particulars, "", "adjustment", max(gap, 0), max(-gap, 0))
                     row["adjustment"] = True
                     row["_cashbook_order"] = 0
-                    running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
+                    running = advance_book_balance(running, _num(row.get("in")), _num(row.get("out")))
                     row["balance"] = running
                     reconciled.append(row)
                 elif abs(gap) > 0.5:
                     deferred_gap = gap
             for row in day_rows:
-                running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
+                running = advance_book_balance(running, _num(row.get("in")), _num(row.get("out")))
                 row["balance"] = running
                 reconciled.append(row)
             if deferred_gap:
@@ -3893,10 +3852,8 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
             adjustment["_cashbook_order"] = 2
             shown.append(adjustment)
             shown.sort(key=_sort_key)
-            running = round(_num(opening_balance), 2)
-            for row in shown:
-                running = round(running + _num(row.get("in")) - _num(row.get("out")), 2)
-                row["balance"] = running
+            shown, running = rebalance_book_rows(
+                shown, round(_num(opening_balance), 2), number=_num)
             if abs(round(_num(closing_balance) - running, 2)) > 0.5:
                 raise ErpFetchError(
                     f"common engine {channel} book does not tie for {from_d}..{to_d}: "
@@ -3905,14 +3862,7 @@ def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, inte
                 )
         for row in shown:
             row.pop("_cashbook_order", None)
-        return {
-            "opening": round(_num(opening_balance), 2),
-            "rows": shown,
-            "total_in": round(sum(_num(row.get("in")) for row in shown), 2),
-            "total_out": round(sum(_num(row.get("out")) for row in shown), 2),
-            "settlement_roundoff": round(sum(_num(row.get("settlement_roundoff")) for row in shown), 2),
-            "closing": round(running, 2),
-        }
+        return calculate_cashbook_totals(shown, opening_balance, running, number=_num)
 
     return {
         "from": str(from_d),
@@ -4050,19 +4000,10 @@ def vendor_payable_age_buckets(entries, payable, as_of):
         amount = round(_num(entry.get("credit") or entry.get("amount")), 2)
         if amount > 0:
             bills.append((entry_date, index, amount))
-    remaining = target
-    for entry_date, _index, amount in sorted(bills, reverse=True):
-        if remaining <= 0:
-            break
-        unpaid = min(remaining, amount)
-        age = max((as_of_date - date.fromisoformat(entry_date)).days, 0)
-        bucket = "age_0_15" if age <= 15 else "age_16_30" if age <= 30 else "age_31_45" if age <= 45 else "age_45_plus"
-        result[bucket] = round(result[bucket] + unpaid, 2)
-        remaining = round(remaining - unpaid, 2)
-    # A balance older than the imported ledger is explicitly old debt.
-    if remaining > 0:
-        result["age_45_plus"] = round(result["age_45_plus"] + remaining, 2)
-    return {key: round(value, 2) for key, value in result.items()}
+    return exclusive_age_buckets(
+        ((max((as_of_date - date.fromisoformat(entry_date)).days, 0), amount)
+         for entry_date, _index, amount in sorted(bills, reverse=True)),
+        target, round_each=True)
 
 
 def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
@@ -4463,29 +4404,9 @@ def _credit_due_15_plus_by_name(customers, all_sales, all_repayments, as_of, day
         customer_key = _norm_name(name)
         invoices = sorted(sales_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
         receipts = sorted(receipts_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
-        for receipt in receipts:
-            remaining = receipt["amount"]
-            for invoice in invoices:
-                if remaining <= 0:
-                    break
-                applied = min(remaining, invoice["unpaid"])
-                invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-                remaining = round(remaining - applied, 2)
-        invoice_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
         target = round(max(_num(customer.get("outstanding", customer.get("balance", 0.0))), 0.0), 2)
-        if target < invoice_unpaid:
-            extra_unpaid = round(invoice_unpaid - target, 2)
-            for invoice in invoices:
-                if extra_unpaid <= 0:
-                    break
-                reduction = min(extra_unpaid, invoice["unpaid"])
-                invoice["unpaid"] = round(invoice["unpaid"] - reduction, 2)
-                extra_unpaid = round(extra_unpaid - reduction, 2)
-            older_unmatched = 0.0
-        else:
-            older_unmatched = round(target - invoice_unpaid, 2)
-        overdue = round(sum(row["unpaid"] for row in invoices if row["date"] <= cutoff) + older_unmatched, 2)
-        result[name] = round(min(max(overdue, 0.0), target), 2)
+        result[name] = round(calculate_credit_due(
+            invoices, [receipt["amount"] for receipt in receipts], target, cutoff), 2)
     return result
 
 

@@ -39,6 +39,8 @@ jobs:
         run: |
           python3 scripts/test_cashbook_parity.py
           python3 scripts/test_shared_calculations.py
+          python3 scripts/test_book_calculations.py
+          python3 scripts/test_party_calculations.py
           python3 scripts/test_sale_split_guard.py
           python3 scripts/test_vendor_aging.py
       - name: Run rollback recovery fixture guard
