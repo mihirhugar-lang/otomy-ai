@@ -14,6 +14,7 @@ import sys
 import unittest
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -22,9 +23,10 @@ from sqlalchemy.orm import sessionmaker
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from database import Base, Customer, CustomerReceipt, Expense, Sale
+from database import Base, Customer, CustomerReceipt, Expense, Sale, Vendor, VendorLedgerEntry
 from routers import dashboard
 from routers import erp_sync as local_engine
+from routers import vendors
 
 
 OTOMY_ROOT = ROOT.parents[0] / "otomy_ai_repo"
@@ -82,6 +84,73 @@ class CashbookParityTests(unittest.TestCase):
         self.engine = create_engine("sqlite://")
         Base.metadata.create_all(self.engine)
         self.session = sessionmaker(bind=self.engine)()
+
+    def test_shared_calculation_copies_match(self):
+        # Both deployments are self-contained; do not depend on a sibling
+        # checkout at runtime. Block local sync if the packaged rules drift.
+        self.assertEqual(
+            (ROOT / "shared_calculations.py").read_bytes(),
+            (OTOMY_ROOT / "shared_calculations.py").read_bytes(),
+            "Shared calculation copies differ; refusing local/cloud drift",
+        )
+
+    def test_sale_adapters_match_across_report_ranges(self):
+        cloud = load_cloud_engine()
+        rows = [
+            {"date": day, "amount": 103.0, "transport_charge": 2.0,
+             "payment_mode": "Cash", "cash_amount": 100.0,
+             "credit_amount": 0.0, "upi_amount": 0.0}
+            for day in ("2026-04-01", "2026-08-31", "2026-09-01", "2026-09-15")
+        ]
+        # Today, MTD, FYTD, current month, previous month and a historic range.
+        ranges = [("2026-09-15", "2026-09-15"), ("2026-09-01", "2026-09-15"),
+                  ("2026-04-01", "2026-09-15"), ("2026-09-01", "2026-09-30"),
+                  ("2026-08-01", "2026-08-31"), ("2026-04-01", "2026-04-30")]
+        for start, end in ranges:
+            with self.subTest(start=start, end=end):
+                selected = [row for row in rows if start <= row["date"] <= end]
+                for row in selected:
+                    stored = SimpleNamespace(**row)
+                    self.assertEqual(local_engine.sale_channels(stored), cloud._sale_channels(row))
+                    self.assertEqual(local_engine.sale_settlement_roundoff(stored), cloud._sale_settlement_roundoff(row))
+                self.assertEqual(sum(local_engine.sale_channels(SimpleNamespace(**r))[0] for r in selected), 100 * len(selected))
+
+    def test_local_precision_boundary_is_unchanged(self):
+        row = SimpleNamespace(amount=10.125, transport_charge=0,
+                              payment_mode="Cash", cash_amount=0.004,
+                              credit_amount=0, upi_amount=0)
+        self.assertEqual(local_engine.sale_channels(row), (0.004, 0, 0))
+        self.assertEqual(local_engine.sale_settlement_roundoff(row), (10.12, 0))
+
+    def test_supplier_fifo_matches_cloud_at_historical_cutoffs(self):
+        cloud = load_cloud_engine()
+        vendor = Vendor(id=1, name="Synthetic Supplier")
+        self.session.add(vendor)
+        entries = [
+            (date(2026, 4, 1), "purchase", 100.0),
+            (date(2026, 5, 1), "purchase", 200.0),
+            (date(2026, 6, 1), "payment", 50.0),
+            (date(2026, 8, 31), "purchase", 100.0),
+            (date(2026, 9, 15), "payment", 25.0),
+            (date(2026, 12, 1), "purchase", 9000.0),
+        ]
+        for index, (day, kind, amount) in enumerate(entries):
+            self.session.add(VendorLedgerEntry(vendor_id=1, entry_date=day,
+                             entry_type=kind, amount=amount, source_key=f"fixture-{index}"))
+        self.session.commit()
+        cloud_rows = [{"date": str(day), "type": kind,
+                       "credit": amount if kind == "purchase" else 0,
+                       "debit": amount if kind == "payment" else 0}
+                      for day, kind, amount in entries]
+        for as_of in (date(2026, 4, 30), date(2026, 5, 31), date(2026, 6, 1),
+                      date(2026, 8, 31), date(2026, 9, 1), date(2026, 9, 15)):
+            for payable in (-25, 0, 75.55, 250, 425):
+                with self.subTest(as_of=as_of, payable=payable):
+                    actual = vendors._payable_due_aging(vendor, payable, self.session, as_of)
+                    self.assertEqual(actual, cloud.vendor_payable_due_aging(cloud_rows, payable, str(as_of)))
+                    amounts = [actual[f"payable_due_{days}_plus"] for days in (15, 30, 45, 60)]
+                    self.assertEqual(amounts, sorted(amounts, reverse=True))
+                    self.assertTrue(all(0 <= v <= max(payable, 0) for v in actual.values()))
 
     def _seed(self, fixture: dict) -> None:
         self.session.add_all(Customer(id=row["id"], name=row["name"]) for row in fixture["customers"])

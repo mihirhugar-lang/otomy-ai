@@ -15,6 +15,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import base64, json, re, html as htmllib, time, os, subprocess, sys
+from shared_calculations import (
+    sale_channels as calculate_sale_channels,
+    settlement_roundoff as calculate_settlement_roundoff,
+)
 
 from database import (get_db, Sale, Expense, Customer, CustomerReceipt, Vendor, VendorPayment, VendorLedgerEntry,
                       CustomerBalanceSnapshot, VendorBalanceSnapshot,
@@ -461,14 +465,9 @@ def sale_channels(sale) -> tuple:
     credit = float(getattr(sale, "credit_amount", 0) or 0)
     upi = float(getattr(sale, "upi_amount", 0) or 0)
     if cash + credit + upi > 0:
-        return cash, credit, upi
+        return calculate_sale_channels(0.0, None, cash, credit, upi)
     total = float(sale.amount or 0) + float(getattr(sale, "transport_charge", 0.0) or 0.0)
-    mode = (sale.payment_mode or "Credit")
-    if mode.lower() == "credit":
-        return 0.0, total, 0.0
-    if "CASH" in (mode or "").upper():
-        return total, 0.0, 0.0
-    return 0.0, 0.0, total
+    return calculate_sale_channels(total, sale.payment_mode, cash, credit, upi)
 
 
 def sale_settlement_roundoff(sale) -> tuple:
@@ -481,14 +480,7 @@ def sale_settlement_roundoff(sale) -> tuple:
     """
     gross = round(float(sale.amount or 0) + float(getattr(sale, "transport_charge", 0.0) or 0.0), 2)
     cash, credit, upi = sale_channels(sale)
-    difference = round(gross - cash - credit - upi, 2)
-    if abs(difference) < 0.005:
-        return 0.0, 0.0
-    if cash > 0 and upi <= 0:
-        return difference, 0.0
-    if upi > 0 and cash <= 0:
-        return 0.0, difference
-    return 0.0, 0.0
+    return calculate_settlement_roundoff(gross, cash, credit, upi)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. INDIVIDUAL EXPENSES

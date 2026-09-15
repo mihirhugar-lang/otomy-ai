@@ -8,6 +8,7 @@ from database import get_db, Vendor, VendorBalanceSnapshot, VendorLedgerEntry, E
 from difflib import SequenceMatcher
 from routers.erp_sync import load_config, erp_auth, fetch_supplier_ledger, fetch_creditors
 import re
+from shared_calculations import payable_due_aging as calculate_payable_due_aging
 
 # Full itemized ledger history is pulled from loctell starting here.
 LEDGER_START = date(2025, 2, 15)
@@ -304,56 +305,25 @@ def _ledger_payable_age_buckets(payable: float, entries: list[VendorLedgerEntry]
 
 
 def _payable_due_aging(vendor: Vendor, payable: float, db: Session, as_of: Optional[date] = None) -> dict:
-    """FIFO supplier-bill aging, anchored to Loctell's canonical payable.
-
-    Each payment clears the oldest purchase first.  If the ERP balance includes
-    activity before the stored ledger, that explicit residual is treated as old
-    debt rather than silently changing the payable total.
-    """
+    """Select local ledger rows, then apply the shared FIFO arithmetic."""
     as_of = as_of or date.today()
     target = round(max(float(payable or 0), 0.0), 2)
-    result = {f"payable_due_{days}_plus": 0.0 for days in (15, 30, 45, 60)}
-    result["payable_prior_ledger"] = 0.0
     if target <= 0:
-        return result
+        return calculate_payable_due_aging([], [], target, as_of)
     entries = (db.query(VendorLedgerEntry)
                .filter(VendorLedgerEntry.vendor_id == vendor.id,
                        VendorLedgerEntry.entry_date <= as_of)
                .order_by(VendorLedgerEntry.entry_date, VendorLedgerEntry.id).all())
-    invoices = []
-    payments = []
+    invoices, payments = [], []
     for entry in entries:
         amount = round(max(float(entry.amount or 0), 0.0), 2)
         if not amount:
             continue
         if entry.entry_type == "purchase":
-            invoices.append({"date": entry.entry_date, "unpaid": amount})
+            invoices.append((str(entry.entry_date), amount))
         elif entry.entry_type == "payment":
             payments.append(amount)
-    for amount in payments:
-        remaining = amount
-        for invoice in invoices:
-            if remaining <= 0:
-                break
-            applied = min(remaining, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-            remaining = round(remaining - applied, 2)
-    ledger_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
-    if ledger_unpaid > target:
-        reduction = round(ledger_unpaid - target, 2)
-        for invoice in invoices:
-            if reduction <= 0:
-                break
-            applied = min(reduction, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-            reduction = round(reduction - applied, 2)
-    prior = round(max(target - sum(row["unpaid"] for row in invoices), 0.0), 2)
-    result["payable_prior_ledger"] = prior
-    for days in (15, 30, 45, 60):
-        cutoff = as_of.fromordinal(as_of.toordinal() - days)
-        due = prior + sum(row["unpaid"] for row in invoices if row["date"] <= cutoff)
-        result[f"payable_due_{days}_plus"] = round(min(max(due, 0.0), target), 2)
-    return result
+    return calculate_payable_due_aging(invoices, payments, target, as_of)
 
 
 def _apply_vendor_totals(out: VendorOut, vendor: Vendor, db: Session,
