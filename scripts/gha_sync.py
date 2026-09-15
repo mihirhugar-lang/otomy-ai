@@ -12,6 +12,9 @@ from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
+# Also support importlib loaders used by localhost's pre-sync parity guard.
+# Importing this module must not require a caller-provided PYTHONPATH.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from snapshot_retention import is_archive_reconstructible_range_snapshot
 try:
     from shared_compliance import (
@@ -32,6 +35,13 @@ except ModuleNotFoundError:
         build_gstr3b as build_compliance_gstr3b,
         build_tally_xml as build_compliance_tally_xml,
     )
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shared_calculations import (
+    sale_channels as calculate_sale_channels,
+    settlement_roundoff as calculate_settlement_roundoff,
+    payable_due_aging as calculate_payable_due_aging,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", ROOT / "data"))
@@ -420,14 +430,10 @@ def _sale_channels(s):
     archive rows keep working."""
     cash = _num(s.get("cash_amount")); credit = _num(s.get("credit_amount")); upi = _num(s.get("upi_amount"))
     if cash + credit + upi > 0:
-        return round(cash, 2), round(credit, 2), round(upi, 2)
-    total = _sale_total(s)
-    mode = (s.get("payment_mode") or "Credit")
-    if mode.lower() == "credit":
-        return 0.0, total, 0.0
-    if "CASH" in mode.upper():
-        return total, 0.0, 0.0
-    return 0.0, 0.0, total
+        # Preserve the old positive-split decision BEFORE rounding tiny values.
+        return tuple(round(value, 2) for value in calculate_sale_channels(
+            0.0, None, cash, credit, upi))
+    return calculate_sale_channels(_sale_total(s), s.get("payment_mode"), cash, credit, upi)
 
 
 def _sale_settlement_roundoff(s):
@@ -444,14 +450,7 @@ def _sale_settlement_roundoff(s):
     """
     gross = _sale_total(s)
     cash, credit, upi = _sale_channels(s)
-    difference = round(gross - cash - credit - upi, 2)
-    if abs(difference) < 0.005:
-        return 0.0, 0.0
-    if cash > 0 and upi <= 0:
-        return difference, 0.0
-    if upi > 0 and cash <= 0:
-        return 0.0, difference
-    return 0.0, 0.0
+    return calculate_settlement_roundoff(gross, cash, credit, upi)
 
 
 def _channels_for_payment_mode(total, payment_mode):
@@ -4005,12 +4004,10 @@ def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
 
 
 def vendor_payable_due_aging(entries, payable, as_of):
-    """Customer-style FIFO aging for supplier bills, anchored to Loctell payable."""
+    """Adapt ERP ledger rows to the shared FIFO payable calculation."""
     target = round(max(_num(payable), 0.0), 2)
-    result = {f"payable_due_{days}_plus": 0.0 for days in (15, 30, 45, 60)}
-    result["payable_prior_ledger"] = 0.0
     if target <= 0:
-        return result
+        return calculate_payable_due_aging([], [], target, None)
     invoices, payments = [], []
     for entry in entries or []:
         entry_date = str(entry.get("date") or "")[:10]
@@ -4020,35 +4017,13 @@ def vendor_payable_due_aging(entries, payable, as_of):
         if amount <= 0:
             continue
         if entry.get("type") == "purchase" or entry.get("vch_type") == "Purchase":
-            invoices.append({"date": entry_date, "unpaid": amount})
+            invoices.append((entry_date, amount))
         else:
+            # Preserve the existing ERP adapter's non-purchase classification.
             payments.append(amount)
-    invoices.sort(key=lambda row: row["date"])
-    for amount in payments:
-        remaining = amount
-        for invoice in invoices:
-            if remaining <= 0:
-                break
-            applied = min(remaining, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-            remaining = round(remaining - applied, 2)
-    ledger_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
-    if ledger_unpaid > target:
-        reduction = round(ledger_unpaid - target, 2)
-        for invoice in invoices:
-            if reduction <= 0:
-                break
-            applied = min(reduction, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-            reduction = round(reduction - applied, 2)
-    prior = round(max(target - sum(row["unpaid"] for row in invoices), 0.0), 2)
-    result["payable_prior_ledger"] = prior
-    as_of_date = date.fromisoformat(str(as_of))
-    for days in (15, 30, 45, 60):
-        cutoff = str(as_of_date - timedelta(days=days))
-        due = prior + sum(row["unpaid"] for row in invoices if row["date"] <= cutoff)
-        result[f"payable_due_{days}_plus"] = round(min(max(due, 0.0), target), 2)
-    return result
+    invoices.sort(key=lambda row: row[0])
+    return calculate_payable_due_aging(
+        invoices, payments, target, date.fromisoformat(str(as_of)))
 
 
 def vendor_payable_age_buckets(entries, payable, as_of):
