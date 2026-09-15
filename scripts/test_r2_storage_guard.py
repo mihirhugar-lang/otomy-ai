@@ -36,7 +36,7 @@ class StorageGuardTests(unittest.TestCase):
         projected, live_delta, recovery_bytes = forecast(previous, current, recovery, remote)
         self.assertEqual(live_delta, 15)
         self.assertEqual(recovery_bytes, 55)
-        self.assertEqual(projected, 235)
+        self.assertEqual(projected, 265)  # deleted bytes are not free until after uploads
 
     def test_missing_recovery_object_fails_closed(self) -> None:
         recovery = {

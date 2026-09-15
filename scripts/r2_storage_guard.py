@@ -74,6 +74,8 @@ def _recovery_bytes(recovery: dict[str, Any], remote: dict[str, int]) -> int:
     missing = [key for key in recovery["backup_keys"] if key not in remote]
     if missing:
         raise ValueError(f"cannot forecast rollback pack; {len(missing)} prior object(s) are missing from R2 inventory")
+    if recovery.get('storage'):
+        return recovery['storage']['size']
     return sum(remote[key] for key in recovery["backup_keys"])
 
 
@@ -87,7 +89,10 @@ def forecast(
     # are reclaimed in this projection.
     live_delta = sum(current.get(key, 0) - remote.get(key, 0) for key in managed_keys)
     recovery_bytes = _recovery_bytes(recovery, remote)
-    return sum(remote.values()) + live_delta + recovery_bytes, live_delta, recovery_bytes
+    # Uploads precede deletions: do not spend bytes that will only be reclaimed
+    # later in the run. This bounds transient storage as well as final storage.
+    upload_growth = sum(max(0, size - remote.get(key, 0)) for key, size in current.items())
+    return sum(remote.values()) + upload_growth + recovery_bytes, live_delta, recovery_bytes
 
 
 def _limits(args: argparse.Namespace) -> tuple[int, int, int]:

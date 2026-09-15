@@ -371,8 +371,21 @@ jobs:
           # Fetch just its verified old bytes before making any recovery write.
           python3 scripts/r2_working_set.py \
             --root "$RUNNER_TEMP/otomy-r2-baseline" --backup-list "$recovery_backup_list"
+          recovery_bundle="$RUNNER_TEMP/otomy-recovery.zip"
+          python3 scripts/recovery_bundle.py build --root "$RUNNER_TEMP/otomy-r2-baseline" \
+            --metadata "$recovery_meta" --bundle "$recovery_bundle"
+          # Re-check with the exact ZIP size, including container overhead.
+          python3 scripts/r2_storage_guard.py preflight \
+            --remote-list "$remote_inventory" \
+            --previous "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+            --current data/publish_manifest.json --recovery "$recovery_meta"
           publish_mode="$(jq -r '.mode' "$recovery_meta")"
-          if [ "$publish_mode" = "full" ]; then
+          if [ "$(jq -r '.storage.format // "objects"' "$recovery_meta")" = "zip-v1" ]; then
+            # Upload once and read back/hash-check the bundle before making
+            # its metadata/catalogue visible or changing any live object.
+            python3 scripts/recovery_bundle.py upload \
+              --metadata "$recovery_meta" --bundle "$recovery_bundle"
+          elif [ "$publish_mode" = "full" ]; then
             # A full rebuild can delete any live data key, so retain the full
             # previous bundle.  This is intentionally rare; regular syncs use
             # the small changed/deleted-object path below.
@@ -426,6 +439,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           publish_mode="$(jq -r '.publish_mode' "$RUNNER_TEMP/otomy-publish-plan.json")"
           if [ "$publish_mode" = "full" ]; then
@@ -435,8 +449,8 @@ jobs:
               --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
               --delete --exclude "publish_manifest.json" --exclude "control/*" --exclude "recovery/*" --only-show-errors
           else
-            aws s3 sync "$RUNNER_TEMP/otomy-publish-delta" "s3://otomy-data" \
-              --endpoint-url "${{ secrets.R2_ENDPOINT }}" --only-show-errors
+            python3 scripts/upload_changed_r2.py --root "$RUNNER_TEMP/otomy-publish-delta" \
+              --manifest data/publish_manifest.json --keys "$RUNNER_TEMP/otomy-changed-files.txt"
             if [ -s "$RUNNER_TEMP/otomy-deleted-objects.json" ] && [ "$(jq '.Objects | length' "$RUNNER_TEMP/otomy-deleted-objects.json")" -gt 0 ]; then
               delete_batches_dir="$(mktemp -d)"
               python3 scripts/delete_object_batches.py \

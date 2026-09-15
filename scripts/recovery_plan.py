@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,8 +36,9 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def _valid_key(value: str) -> bool:
-    pure = Path(value)
-    return bool(value) and not pure.is_absolute() and ".." not in pure.parts and "\\" not in value
+    return (bool(value) and not value.startswith('/') and '\\' not in value
+            and not any(part in ('', '.', '..') for part in value.split('/'))
+            and not any(ord(c) < 32 for c in value))
 
 
 def load_manifest(path: Path, *, required: bool = False) -> dict[str, Any] | None:
@@ -86,7 +88,7 @@ def build_recovery_plan(
     retention_expired_deletions: set[str] | None = None,
 ) -> dict[str, Any]:
     """Return the immutable description of the pre-publish recovery pack."""
-    if not recovery_id or "/" in recovery_id or ".." in recovery_id:
+    if not re.fullmatch(r'[0-9A-Za-z_-]+', recovery_id):
         raise ValueError("recovery id must be a simple non-empty identifier")
     mode, changed_count, deleted_count = _plan_counts(publish_plan)
     current_files = current.get("files") or {}
@@ -160,8 +162,17 @@ def validate_recovery_plan(plan: dict[str, Any]) -> None:
     if plan.get("mode") not in {"full", "delta"}:
         raise ValueError("recovery plan has an invalid mode")
     recovery_id = str(plan.get("recovery_id") or "")
-    if not recovery_id or "/" in recovery_id or ".." in recovery_id:
+    if not re.fullmatch(r'[0-9A-Za-z_-]+', recovery_id):
         raise ValueError("recovery plan has an invalid id")
+    storage = plan.get('storage')
+    if storage is not None and (
+        not isinstance(storage, dict) or storage.get('format') != 'zip-v1'
+        or storage.get('object') != 'bundle.zip' or plan.get('mode') != 'delta'
+        or type(storage.get('size')) is not int or not 0 < storage['size'] <= 512 * 1024 * 1024
+        or not isinstance(storage.get('sha256'), str)
+        or not re.fullmatch(r'[0-9a-f]{64}', storage['sha256'])
+    ):
+        raise ValueError('Unsupported or invalid recovery storage format')
     backup_keys = plan.get("backup_keys")
     remove_on_restore = plan.get("remove_on_restore")
     retention_expired = plan.get("retention_expired_deletions", [])

@@ -28,3 +28,28 @@ caches on an audited allow-list of website routes that reconstruct from the
 monthly archive. Canonical Cash/Bank books, unsupported dated routes and every
 financial archive are retained. Each allowed deletion is recorded in the
 recovery plan so a rollback does not restore cache bloat.
+
+## Class A request savings
+
+Normal delta publication uploads the exact changed-key list directly, after
+checking every local file against the publish manifest. The uploader does not
+list R2. The separate input, storage, and complete published-key/readback checks
+still run, and the publish manifest remains the last live write.
+
+Delta recovery packs up to 512 MiB use `recovery/<run-id>/bundle.zip`. ZIP entries
+contain the identical original file bytes (ZIP_STORED). The recovery metadata
+records the format, archive size and SHA-256. Every member is checked against
+the previous publish manifest locally; the archive is uploaded and downloaded
+again for verification before the recovery catalogue or live dataset changes.
+
+Large recoveries keep the existing individual-object format to bound temporary
+disk use. Both formats remain supported by rollback. Bundled rollback downloads
+and validates all members before pausing the engine, restores changed/deleted
+objects, removes newly introduced objects, and writes the previous readiness
+manifest last. The existing exact remote restore verification still follows.
+
+Uploads use 64 MiB multipart thresholds and parts. Small recovery bundles use
+one PUT; larger bundles require multiple operations. The storage guard counts
+the exact ZIP size and peak upload growth without spending deletion savings
+before those deletions actually occur. No sync-frequency or financial-engine
+changes are part of these savings.

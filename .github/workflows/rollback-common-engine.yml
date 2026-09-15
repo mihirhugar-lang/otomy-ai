@@ -78,11 +78,22 @@ jobs:
             echo "Recovery metadata is not a valid match for $recovery_id." >&2
             exit 1
           fi
-          aws s3 cp "s3://otomy-data/recovery/$recovery_id/objects/publish_manifest.json" \
-            "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
-            --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          recovery_format="$(jq -r '.storage.format // "objects"' "$recovery_meta")"
+          if [ "$recovery_format" = "zip-v1" ]; then
+            # All bytes, member names and original hashes are checked BEFORE
+            # pausing the engine or writing any restored financial data.
+            python3 scripts/recovery_bundle.py fetch --metadata "$recovery_meta" \
+              --bundle "$RUNNER_TEMP/otomy-restore.zip" --destination "$RUNNER_TEMP/otomy-restore-objects"
+            cp "$RUNNER_TEMP/otomy-restore-objects/publish_manifest.json" \
+              "$RUNNER_TEMP/otomy-previous-publish-manifest.json"
+          else
+            aws s3 cp "s3://otomy-data/recovery/$recovery_id/objects/publish_manifest.json" \
+              "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          fi
           echo "id=$recovery_id" >> "$GITHUB_OUTPUT"
           echo "mode=$(jq -r '.mode' "$recovery_meta")" >> "$GITHUB_OUTPUT"
+          echo "format=$recovery_format" >> "$GITHUB_OUTPUT"
 
       - name: Pause the engine before restore
         env:
@@ -111,6 +122,7 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           RECOVERY_ID: ${{ steps.recovery.outputs.id }}
           RECOVERY_MODE: ${{ steps.recovery.outputs.mode }}
+          RECOVERY_FORMAT: ${{ steps.recovery.outputs.format }}
         run: |
           recovery_meta="$RUNNER_TEMP/otomy-recovery-manifest.json"
           source_prefix="s3://otomy-data/recovery/$RECOVERY_ID/objects"
@@ -119,14 +131,28 @@ jobs:
               --exclude "control/*" --exclude "recovery/*" \
               --endpoint-url "$R2_ENDPOINT" --only-show-errors
           elif [ "$RECOVERY_MODE" = "delta" ]; then
-            aws s3 sync "$source_prefix" "s3://otomy-data" \
-              --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            if [ "$RECOVERY_FORMAT" = "zip-v1" ]; then
+              jq -r '.backup_keys[] | select(. != "publish_manifest.json")' "$recovery_meta" \
+                > "$RUNNER_TEMP/otomy-restore-keys.txt"
+              python3 scripts/upload_changed_r2.py --root "$RUNNER_TEMP/otomy-restore-objects" \
+                --manifest "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+                --keys "$RUNNER_TEMP/otomy-restore-keys.txt"
+            else
+              aws s3 sync "$source_prefix" "s3://otomy-data" \
+                --exclude "publish_manifest.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            fi
             remove_json="$RUNNER_TEMP/otomy-rollback-remove-new-objects.json"
             jq '{Objects: [.remove_on_restore[] | {Key: .}], Quiet: true}' "$recovery_meta" > "$remove_json"
             if [ "$(jq '.Objects | length' "$remove_json")" -gt 0 ]; then
-              aws s3api delete-objects --bucket otomy-data --delete "file://$remove_json" \
-                --endpoint-url "$R2_ENDPOINT" --only-show-errors
+              batches="$RUNNER_TEMP/otomy-rollback-delete-batches"
+              python3 scripts/delete_object_batches.py --source "$remove_json" --output-dir "$batches"
+              for batch in "$batches"/*.json; do
+                aws s3api delete-objects --bucket otomy-data --delete "file://$batch" \
+                  --endpoint-url "$R2_ENDPOINT" --only-show-errors
+              done
             fi
+            aws s3 cp "$RUNNER_TEMP/otomy-previous-publish-manifest.json" \
+              "s3://otomy-data/publish_manifest.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors
           else
             echo "Unsupported recovery mode: $RECOVERY_MODE" >&2
             exit 1
