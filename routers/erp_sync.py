@@ -18,6 +18,9 @@ import base64, json, re, html as htmllib, time, os, subprocess, sys
 from shared_calculations import (
     sale_channels as calculate_sale_channels,
     settlement_roundoff as calculate_settlement_roundoff,
+    advance_book_balance,
+    rebalance_book_rows,
+    cashbook_totals as calculate_cashbook_totals,
 )
 
 from database import (get_db, Sale, Expense, Customer, CustomerReceipt, Vendor, VendorPayment, VendorLedgerEntry,
@@ -2140,13 +2143,13 @@ def build_cashbook(db: Session, from_d: date, to_d: date) -> dict:
                     r = {"date": day, "particulars": target_particulars,
                          "party": "", "kind": "adjustment", "in": max(gap, 0), "out": max(-gap, 0),
                          "balance": 0.0, "adjustment": True, "_cashbook_order": 0}
-                    running = round(running + r["in"] - r["out"], 2)
+                    running = advance_book_balance(running, r["in"], r["out"])
                     r["balance"] = running
                     reconciled.append(r)
                 elif abs(gap) > 0.5:
                     deferred_gap = gap
             for r in day_rows:
-                running = round(running + r["in"] - r["out"], 2)
+                running = advance_book_balance(running, r["in"], r["out"])
                 r["balance"] = running
                 reconciled.append(r)
             if deferred_gap:
@@ -2172,19 +2175,11 @@ def build_cashbook(db: Session, from_d: date, to_d: date) -> dict:
                    "_cashbook_order": 2}
             rows.append(adj)
             rows.sort(key=lambda r: (r["date"], r.get("_cashbook_order", 1), -r["in"]))
-            running = opening
-            for r in rows:
-                running = round(running + r["in"] - r["out"], 2)
-                r["balance"] = running
+            updated, running = rebalance_book_rows(rows, opening)
+            rows[:] = updated
         for r in rows:
             r.pop("_cashbook_order", None)
-        return {
-            "opening": round(opening, 2), "rows": rows,
-            "total_in": round(sum(r["in"] for r in rows), 2),
-            "total_out": round(sum(r["out"] for r in rows), 2),
-            "settlement_roundoff": round(sum(r.get("settlement_roundoff", 0) for r in rows), 2),
-            "closing": round(running, 2),
-        }
+        return calculate_cashbook_totals(rows, opening, running)
 
     return {
         "from": str(from_d), "to": str(to_d),

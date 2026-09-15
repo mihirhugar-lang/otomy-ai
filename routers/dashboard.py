@@ -32,6 +32,11 @@ from database import (
     IOTMovement,
 )
 from routers.erp_sync import load_config, erp_auth, sale_channels
+from shared_calculations import (
+    daily_ledger_row as calculate_daily_ledger_row,
+    daily_ledger_totals as calculate_daily_ledger_totals,
+    accumulate_sale_group,
+)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 _ERP_INPUT_CACHE = {}
@@ -940,13 +945,6 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
             if erp_input
             else sum(_amount(row.trips) for row in day_boulders)
         )
-        sale_amount = sum(_sale_total(sale) for sale in day_sales)
-        sale_splits = [sale_channels(sale) for sale in day_sales]
-        spot_sale_amount = sum(s_cash + s_upi for s_cash, _s_credit, s_upi in sale_splits)
-        spot_sale_cash = sum(s_cash for s_cash, _s_credit, _s_upi in sale_splits)
-        spot_sale_bank = sum(s_upi for _s_cash, _s_credit, s_upi in sale_splits)
-        credit_sale_amount = sum(s_credit for _s_cash, s_credit, _s_upi in sale_splits)
-        qty_mt = sum(_amount(sale.qty_mt) for sale in day_sales)
         credit_repayment_cash = sum(
             _receipt_payment_amount(receipt)
             for receipt in day_receipts
@@ -957,7 +955,6 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
             for receipt in day_receipts
             if _payment_channel(receipt.mode or "Cash") != "cash"
         )
-        credit_repayment = credit_repayment_cash + credit_repayment_bank
         expense_cash = 0.0
         expense_bank = 0.0
         for expense in day_expenses:
@@ -972,31 +969,15 @@ def _daily_ledger_rows(db: Session, year: int, month: int) -> list[dict]:
                 expense_bank += _amount(expense.amount)
         # Daily Book expenses come only from the ERP Expense source, where every row has a
         # Cash or Bank payment mode. Legacy Labour and Parts records are intentionally excluded.
-        expense_total = expense_cash + expense_bank
-        rows.append(
-            {
-                "date": str(current),
-                "sale_trips": len(day_sales),
-                "sale_amount": round(sale_amount, 2),
-                "spot_sale_amount": round(spot_sale_amount, 2),
-                "spot_sale_cash": round(spot_sale_cash, 2),
-                "spot_sale_bank": round(spot_sale_bank, 2),
-                "credit_sale_amount": round(credit_sale_amount, 2),
-                "qty_mt": round(qty_mt, 2),
-                "credit_repayment": round(credit_repayment, 2),
-                "credit_repayment_cash": round(credit_repayment_cash, 2),
-                "credit_repayment_bank": round(credit_repayment_bank, 2),
-                "expenses": round(expense_total, 2),
-                "expense_cash": round(expense_cash, 2),
-                "expense_bank": round(expense_bank, 2),
-                "internal_transfer": round(sum(_amount(row.amount) for row in day_transfers), 2),
-                "cash_balance_office": round(cash_balance, 2),
-                "bank_balance": round(bank_balance, 2),
-                "boulder_input_mt": round(boulder_tonnes, 2),
-                "boulder_trips": round(boulder_trips, 2),
-                "stock_in_plant_mt": round(boulder_tonnes - qty_mt, 2),
-            }
-        )
+        rows.append(calculate_daily_ledger_row(
+            current,
+            sales=[(_sale_total(sale), *sale_channels(sale), _amount(sale.qty_mt)) for sale in day_sales],
+            repayment_cash=credit_repayment_cash, repayment_bank=credit_repayment_bank,
+            expense_cash=expense_cash, expense_bank=expense_bank,
+            internal_transfer=sum(_amount(row.amount) for row in day_transfers),
+            cash_balance=round(cash_balance, 2), bank_balance=round(bank_balance, 2),
+            boulder_tonnes=boulder_tonnes, boulder_trips=boulder_trips,
+        ))
     return rows
 
 
@@ -1331,16 +1312,9 @@ def control_room(
         )
         sale_amount = _sale_total(sale)
         payment_mode = sale.payment_mode or "Credit"
-        group["ticket_count"] += 1
-        group["qty_mt"] += _amount(sale.qty_mt)
-        group["amount"] += sale_amount
-        group["mdp_ton"] += _amount(getattr(sale, "mdp_ton", 0.0))
-        # Split each sale into its real channels (handles SPLIT payments).
         s_cash, s_credit, s_upi = sale_channels(sale)
-        group["credit_sale_amount"] += s_credit
-        group["cash_received"] += s_cash
-        group["bank_received"] += s_upi
-        group["paid_against_sale"] += s_cash + s_upi
+        accumulate_sale_group(group, sale_amount, _amount(sale.qty_mt),
+                              _amount(getattr(sale, "mdp_ton", 0.0)), s_cash, s_credit, s_upi)
         group["tickets"].append(
             {
                 "date": str(sale.date),
@@ -1637,30 +1611,7 @@ def ledger_view(
     selected_year = year or today.year
     selected_month = month or today.month
     rows = _daily_ledger_rows(db, selected_year, selected_month)
-    totals = {
-        "sale_trips": sum(row["sale_trips"] for row in rows),
-        "sale_amount": round(sum(row["sale_amount"] for row in rows), 2),
-        "spot_sale_amount": round(sum(row["spot_sale_amount"] for row in rows), 2),
-        "spot_sale_cash": round(sum(row.get("spot_sale_cash", 0) for row in rows), 2),
-        "spot_sale_bank": round(sum(row.get("spot_sale_bank", 0) for row in rows), 2),
-        "qty_mt": round(sum(row.get("qty_mt", 0) for row in rows), 2),
-        "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
-        "credit_repayment": round(sum(row["credit_repayment"] for row in rows), 2),
-        "credit_repayment_cash": round(sum(row.get("credit_repayment_cash", 0) for row in rows), 2),
-        "credit_repayment_bank": round(sum(row.get("credit_repayment_bank", 0) for row in rows), 2),
-        "expenses": round(sum(row["expenses"] for row in rows), 2),
-        "expense_cash": round(sum(row.get("expense_cash", 0) for row in rows), 2),
-        "expense_bank": round(sum(row.get("expense_bank", 0) for row in rows), 2),
-        "boulder_input_mt": round(sum(row["boulder_input_mt"] for row in rows), 2),
-        "boulder_trips": round(sum(row["boulder_trips"] for row in rows), 2),
-        "stock_in_plant_mt": round(sum(row.get("stock_in_plant_mt", 0) for row in rows), 2),
-    }
-    if rows:
-        totals["cash_balance_office"] = rows[-1]["cash_balance_office"]
-        totals["bank_balance"] = rows[-1]["bank_balance"]
-    else:
-        totals["cash_balance_office"] = 0.0
-        totals["bank_balance"] = 0.0
+    totals = calculate_daily_ledger_totals(rows)
     return {"year": selected_year, "month": selected_month, "rows": rows, "totals": totals}
 
 

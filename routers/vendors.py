@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from routers.erp_sync import load_config, erp_auth, fetch_supplier_ledger, fetch_creditors
 import re
 from shared_calculations import payable_due_aging as calculate_payable_due_aging
+from shared_calculations import exclusive_age_buckets
 
 # Full itemized ledger history is pulled from loctell starting here.
 LEDGER_START = date(2025, 2, 15)
@@ -285,23 +286,9 @@ def _ledger_payable_age_buckets(payable: float, entries: list[VendorLedgerEntry]
         if entry.entry_type == "purchase" and entry.entry_date and entry.entry_date <= as_of
         and float(entry.amount or 0) > 0
     ]
-    for bill in sorted(bills, key=lambda entry: (entry.entry_date, entry.id), reverse=True):
-        if remaining <= 0:
-            break
-        amount = min(remaining, float(bill.amount or 0))
-        days = max((as_of - bill.entry_date).days, 0)
-        if days <= 15:
-            aging["age_0_15"] += amount
-        elif days <= 30:
-            aging["age_16_30"] += amount
-        elif days <= 45:
-            aging["age_31_45"] += amount
-        else:
-            aging["age_45_plus"] += amount
-        remaining = round(remaining - amount, 2)
-    if remaining > 0:
-        aging["age_45_plus"] += remaining
-    return {key: round(value, 2) for key, value in aging.items()}
+    ordered = sorted(bills, key=lambda entry: (entry.entry_date, entry.id), reverse=True)
+    return exclusive_age_buckets(
+        ((max((as_of - bill.entry_date).days, 0), float(bill.amount or 0)) for bill in ordered), remaining)
 
 
 def _payable_due_aging(vendor: Vendor, payable: float, db: Session, as_of: Optional[date] = None) -> dict:

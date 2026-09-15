@@ -12,7 +12,8 @@ import importlib.util
 import json
 import sys
 import unittest
-from datetime import date
+from copy import deepcopy
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,6 +28,7 @@ from database import Base, Customer, CustomerReceipt, Expense, Sale, Vendor, Ven
 from routers import dashboard
 from routers import erp_sync as local_engine
 from routers import vendors
+from routers import customers
 
 
 OTOMY_ROOT = ROOT.parents[0] / "otomy_ai_repo"
@@ -121,6 +123,35 @@ class CashbookParityTests(unittest.TestCase):
                               credit_amount=0, upi_amount=0)
         self.assertEqual(local_engine.sale_channels(row), (0.004, 0, 0))
         self.assertEqual(local_engine.sale_settlement_roundoff(row), (10.12, 0))
+
+    def test_supplier_exclusive_age_bands_match_cloud(self):
+        cloud = load_cloud_engine()
+        as_of = date(2026, 9, 15)
+        entries = [SimpleNamespace(id=i, entry_type="purchase", entry_date=as_of-timedelta(days=days), amount=10.25)
+                   for i, days in enumerate((0, 15, 16, 30, 31, 45, 46, 90))]
+        rows = [{"date": str(row.entry_date), "type": "purchase", "credit": row.amount} for row in entries]
+        for target in (-10, 0, 25.15, 82, 100):
+            self.assertEqual(vendors._ledger_payable_age_buckets(target, entries, as_of),
+                             cloud.vendor_payable_age_buckets(rows, target, str(as_of)))
+
+    def test_customer_credit_aging_preserves_snapshot_exclusion(self):
+        cloud = load_cloud_engine()
+        as_of = date(2026, 9, 15)
+        sales = [SimpleNamespace(id=i, date=as_of-timedelta(days=days), amount=100,
+                                 transport_charge=0, payment_mode="Credit", cash_amount=0,
+                                 credit_amount=100, upi_amount=0)
+                 for i, days in enumerate((90, 45, 16, 0))]
+        receipts = [SimpleNamespace(date=as_of, mode="Cash", notes="", amount=50),
+                    SimpleNamespace(date=as_of, mode="ERP Snapshot", notes="", amount=9999)]
+        cloud_sales = [{**vars(sale), "date": str(sale.date), "customer_name": "Synthetic"} for sale in sales]
+        for days in (15, 16, 30, 31, 45):
+            for target in (-10, 0, 75, 350, 450):
+                local = customers._credit_due_plus(1, target, as_of, self.session, days,
+                                                   _sales=sales, _receipts=receipts)
+                remote = cloud._credit_due_15_plus_by_name(
+                    [{"name": "Synthetic", "outstanding": target}], cloud_sales,
+                    [{"date": str(as_of), "customer_name": "Synthetic", "payment_received": 50}], str(as_of), days)
+                self.assertEqual(local, remote["Synthetic"])
 
     def test_supplier_fifo_matches_cloud_at_historical_cutoffs(self):
         cloud = load_cloud_engine()
@@ -272,6 +303,31 @@ class CashbookParityTests(unittest.TestCase):
         self.assertEqual(cash_rows[0]["ticket_no"], "10067")
         self.assertEqual(cash_rows[0]["in"], 3170)
         self.assertEqual(cash_rows[0]["settlement_roundoff"], -3)
+
+    def test_deferred_physical_count_keeps_positive_running_balance(self):
+        fixture = deepcopy(self.fixture)
+        fixture["range"] = {"from": "2026-04-29", "to": "2026-04-29"}
+        fixture["opening"] = {"as_of": "2026-04-28", "cash_balance_office": 10, "bank_balance": 0}
+        fixture["customers"] = [{"id": 1, "name": "Synthetic Customer"}]
+        fixture["sales"] = [{"date": "2026-04-29", "customer_id": 1, "customer_name": "Synthetic Customer",
+                             "amount": 100, "transport_charge": 0, "payment_mode": "Cash",
+                             "cash_amount": 100, "credit_amount": 0, "upi_amount": 0}]
+        fixture["repayments"], fixture["expenses"] = [], []
+        fixture["anchors"] = [{"date": "2026-04-29", "cash": 20}]
+        fixture["bank_statement"] = None
+        fixture["expected"] = {"cash": {"closing": 20}, "bank": {"closing": 0}}
+        local, cloud = self._books(fixture)
+        self.assertEqual(local, cloud)
+        self.assertEqual([r["balance"] for r in local["cash"]["rows"]], [110, 20])
+        self.assertEqual(local["cash"]["rows"][-1]["particulars"], "Verified balance adjustment (physical cash count)")
+
+
+def load_tests(loader, tests, pattern):
+    # Keep the pre-sync guard as the one entry point; include complete range
+    # and Daily Ledger comparisons without requiring another scheduled job.
+    import test_book_range_parity
+    tests.addTests(loader.loadTestsFromModule(test_book_range_parity))
+    return tests
 
 
 if __name__ == "__main__":

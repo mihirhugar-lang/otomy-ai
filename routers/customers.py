@@ -8,6 +8,7 @@ from pydantic import BaseModel, model_validator
 
 from database import get_db, Customer, CustomerBalanceSnapshot, Sale, CustomerReceipt
 from routers.erp_sync import load_config, erp_auth, fetch_customer_ledger_full
+from shared_calculations import credit_due as calculate_credit_due, exclusive_age_buckets, customer_balance
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
@@ -276,7 +277,7 @@ def _compute_balance(customer: Customer, db: Session) -> float:
         return snapshot_balance
 
     manual_receipts = _manual_receipts_total(customer.id, db)
-    return float(customer.opening_balance or 0.0) + float(total_sales or 0.0) - manual_receipts
+    return customer_balance(float(customer.opening_balance or 0.0), float(total_sales or 0.0), manual_receipts)
 
 
 def _money_totals(customer: Customer, db: Session, _sales_map=None, _receipts_map=None, _aging_sales=None) -> dict:
@@ -298,7 +299,7 @@ def _money_totals(customer: Customer, db: Session, _sales_map=None, _receipts_ma
         erp_debit_balance = float(customer.erp_debit_balance or 0.0)
         erp_credit_balance = float(customer.erp_credit_balance or 0.0)
     else:
-        balance = float(customer.opening_balance or 0.0) + total_sales - manual_receipts
+        balance = customer_balance(float(customer.opening_balance or 0.0), total_sales, manual_receipts)
         erp_received = 0.0
         erp_debit_balance = 0.0
         erp_credit_balance = 0.0
@@ -353,18 +354,8 @@ def _receivable_aging(customer_id: int, outstanding: float, db: Session, _sales=
     ).order_by(Sale.date.desc(), Sale.id.desc()).all()
     if _sales is not None:
         sales = sorted((sale for sale in sales if _sale_total(sale) > 0), key=lambda sale: (sale.date, sale.id), reverse=True)
-    for sale in sales:
-        if remaining <= 0:
-            break
-        amount = min(remaining, _sale_total(sale))
-        if amount <= 0:
-            continue
-        _add_aging_bucket(aging, sale.date, amount, as_of)
-        remaining = round(remaining - amount, 2)
-
-    if remaining > 0:
-        aging["age_45_plus"] += remaining
-    return {k: round(v, 2) for k, v in aging.items()}
+    bills = ((max((as_of - sale.date).days, 0) if sale.date else 46, _sale_total(sale)) for sale in sales)
+    return exclusive_age_buckets(bills, remaining)
 
 
 def _credit_due_plus(customer_id: int, outstanding: float, as_of: date, db: Session, days: int, _sales=None, _receipts=None) -> float:
@@ -393,39 +384,10 @@ def _credit_due_plus(customer_id: int, outstanding: float, as_of: date, db: Sess
         CustomerReceipt.date <= as_of,
         CustomerReceipt.mode != "ERP Snapshot",
     ).order_by(CustomerReceipt.date.asc(), CustomerReceipt.id.asc()).all()
-    for receipt in receipts:
-        if receipt.date > as_of or receipt.mode == "ERP Snapshot":
-            continue
-        remaining = max(_receipt_payment_amount(receipt), 0.0)
-        for invoice in invoices:
-            if remaining <= 0:
-                break
-            applied = min(remaining, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - applied, 2)
-            remaining = round(remaining - applied, 2)
-
-    invoice_unpaid = round(sum(row["unpaid"] for row in invoices), 2)
+    payments = [max(_receipt_payment_amount(receipt), 0.0) for receipt in receipts
+                if receipt.date <= as_of and receipt.mode != "ERP Snapshot"]
     target = round(max(float(outstanding or 0.0), 0.0), 2)
-    if target < invoice_unpaid:
-        extra_unpaid = round(invoice_unpaid - target, 2)
-        for invoice in invoices:
-            if extra_unpaid <= 0:
-                break
-            reduction = min(extra_unpaid, invoice["unpaid"])
-            invoice["unpaid"] = round(invoice["unpaid"] - reduction, 2)
-            extra_unpaid = round(extra_unpaid - reduction, 2)
-    elif target > invoice_unpaid:
-        # This is normally opening balance or an ERP adjustment with no
-        # matching invoice row; it is older than 15 days by definition.
-        older_unmatched = round(target - invoice_unpaid, 2)
-    else:
-        older_unmatched = 0.0
-
-    overdue = round(sum(
-        row["unpaid"] for row in invoices
-        if row["date"] <= cutoff
-    ) + (older_unmatched if target > invoice_unpaid else 0.0), 2)
-    return min(max(overdue, 0.0), target)
+    return calculate_credit_due(invoices, payments, target, cutoff)
 
 
 def _apply_money_totals(out: CustomerOut, customer: Customer, db: Session, _sales_map=None, _receipts_map=None, _aging_sales=None) -> CustomerOut:
