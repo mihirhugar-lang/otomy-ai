@@ -41,6 +41,8 @@ jobs:
         run: python3 scripts/test_recovery_plan.py
       - name: Run R2 storage-budget fixture guard
         run: python3 scripts/test_r2_storage_guard.py
+      - name: Run R2 snapshot-retention safety guard
+        run: python3 scripts/test_snapshot_retention.py
       - name: Verify internal R2 prefixes stay private
         run: node scripts/test_data_route_guard.mjs
       - name: Verify frontend loading and changed-object readback

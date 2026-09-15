@@ -130,7 +130,31 @@ class WorkingSetTests(unittest.TestCase):
     def test_generic_retention_cannot_delete_cold_cashbook(self):
         root, _ = self.pull()
         (root / "control/retention_expired_snapshot_keys.txt").write_text(self.old_key + "\n")
-        with self.assertRaisesRegex(ValueError, "Canonical cashbooks"):
+        with self.assertRaisesRegex(ValueError, "Retention may only expire"):
+            self.plan(root)
+
+    def test_retention_keeps_a_dated_snapshot_without_an_archive_fallback(self):
+        unsupported = key("/api/labour/?from_date=2011-09-01&to_date=2011-09-30")
+        self.client.put(unsupported, b"[]")
+        self.refresh_manifest()
+        root, _ = self.pull()
+        old_written = engine._WRITTEN_SNAPSHOT_FILES
+        try:
+            engine._WRITTEN_SNAPSHOT_FILES = set()
+            with patch.object(engine, "DATA_DIR", root), patch.object(engine, "SNAPSHOT_API_DIR", root / "snapshot/api"):
+                self.assertEqual(engine.prune_obsolete_derived_range_snapshots()[0], 0)
+        finally:
+            engine._WRITTEN_SNAPSHOT_FILES = old_written
+        _, manifest = self.plan(root)
+        self.assertIn(unsupported, manifest["files"])
+
+    def test_manifest_rejects_unsupported_snapshot_in_manual_retention_list(self):
+        unsupported = key("/api/labour/?from_date=2011-09-01&to_date=2011-09-30")
+        self.client.put(unsupported, b"[]")
+        self.refresh_manifest()
+        root, _ = self.pull()
+        (root / "control/retention_expired_snapshot_keys.txt").write_text(unsupported + "\n")
+        with self.assertRaisesRegex(ValueError, "Retention may only expire"):
             self.plan(root)
 
     def test_deleted_loaded_input_is_a_deletion_not_a_carried_file(self):
