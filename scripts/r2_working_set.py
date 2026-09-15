@@ -15,6 +15,8 @@ from pathlib import Path
 import tempfile
 from urllib.parse import parse_qs, urlsplit
 
+from snapshot_retention import is_archive_reconstructible_range_snapshot
+
 STATE_ENV = "OTOMY_WORKING_SET_STATE"
 MAX_WORKING_BYTES = 2_000_000_000
 _CONTEXT = None
@@ -163,10 +165,8 @@ def merge_manifest_files(local_files, previous, state, expired):
     carried = {key: metadata for key, metadata in previous.items() if key not in loaded}
     for key in expired:
         url = snapshot_url(key)
-        if not url or not {"from_date", "to_date"} <= set(parse_qs(urlsplit(url).query)):
+        if not url or not is_archive_reconstructible_range_snapshot(url):
             raise ValueError("Retention may only expire derived range snapshots")
-        if urlsplit(url).path == "/api/sync/erp/cashbook":
-            raise ValueError("Canonical cashbooks cannot enter generic retention")
         carried.pop(key, None)
     carried.update(local_files)
     return carried

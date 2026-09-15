@@ -12,6 +12,7 @@ from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 import requests
+from snapshot_retention import is_archive_reconstructible_range_snapshot
 try:
     from shared_compliance import (
         build_audit_ca as build_compliance_audit_ca,
@@ -3117,11 +3118,7 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
         url = _snapshot_url_from_path(path)
         if not url:
             continue
-        parts = urlsplit(url)
-        query = dict(parse_qsl(parts.query, keep_blank_values=True))
-        if "from_date" not in query or "to_date" not in query:
-            continue
-        if parts.path == "/api/sync/erp/cashbook":
+        if not is_archive_reconstructible_range_snapshot(url):
             continue
         try:
             key = path.relative_to(SNAPSHOT_API_DIR.parent.parent).as_posix()

@@ -23,6 +23,8 @@ retained catalogue. The reconciliation fails closed on malformed names or a
 malformed retained catalogue.
 
 Archive inputs and canonical financial snapshots are never compacted by this
-guard. The engine may remove only explicitly retention-expired,
-archive-reconstructible derived range caches; that existing rule is recorded
-in the recovery plan so a rollback does not restore cache bloat.
+guard. The engine may remove only explicitly retention-expired derived range
+caches on an audited allow-list of website routes that reconstruct from the
+monthly archive. Canonical Cash/Bank books, unsupported dated routes and every
+financial archive are retained. Each allowed deletion is recorded in the
+recovery plan so a rollback does not restore cache bloat.
