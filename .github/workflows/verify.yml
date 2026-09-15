@@ -36,7 +36,11 @@ jobs:
           python3 scripts/test_pull_r2_incremental.py
           python3 scripts/test_r2_working_set.py
       - name: Run canonical cashbook fixture guard
-        run: python3 scripts/test_cashbook_parity.py
+        run: |
+          python3 scripts/test_cashbook_parity.py
+          python3 scripts/test_shared_calculations.py
+          python3 scripts/test_sale_split_guard.py
+          python3 scripts/test_vendor_aging.py
       - name: Run rollback recovery fixture guard
         run: |
           python3 scripts/test_recovery_plan.py
