@@ -108,6 +108,37 @@ cloud customer/vendor/control responses and 18 actual-data localhost responses
 All matched; no financial payloads were exported. Same-name supplier identity
 and authoritative historical ERP balance selection remain untouched.
 
+## Fourth slice: Control report totals and credit-liquidity arithmetic
+
+Customer-sales totals and credit-liquidity metrics now use pure shared helpers
+in both applications. Grouped, already-rounded customer rows remain the input
+to report totals: MDP retains three decimal places and monetary totals two.
+Credit metrics retain signed net credit, null ratios for unavailable periods,
+and the original unrounded profit/quantity until division. Date eligibility,
+gross repayment selection/fallback, parsing, grouping, ticket order and source
+queries remain in each adapter. No anchors, money movements or formulas change.
+
+`scripts/test_control_calculations.py` runs in cloud CI. It freezes hashes of
+10 complete synthetic pre-refactor Control responses from cloud `2cf3451` and
+compares 2,000 deterministic arithmetic cases against independent old formulas.
+It covers the June 1 cutoff, unavailable/zero/negative quantities, sub-cent
+rounding, over-recovery, gross versus adjusted repayments and input preservation.
+Only synthetic report hashes are committed, never live financial payloads.
+
+Localhost's existing pre-sync guard additionally runs
+`scripts/test_control_range_parity.py`: six full synthetic Control responses
+frozen from source `e608aec`, covering Today, MTD, FYTD, current month, previous
+month and a historical range. These use an in-memory database; remote sources
+and private balance configuration are replaced by fixtures. The checks preserve
+each application's existing response contract, not assumed cross-app equality
+for fields that intentionally differ. Local detail-page rows are excluded from
+this fixture; their calculation paths are unchanged by this extraction.
+
+Migration verification also compared 500 randomized full cloud responses and
+nine full localhost responses directly against the committed pre-refactor
+functions. Every comparison matched. These are unchanged-result checks, not a
+new live ERP reconciliation or a performance improvement claim.
+
 ## Future work outside these verified slices
 
 Cashbook movement construction, physical/bank anchor resolution, daily-ledger

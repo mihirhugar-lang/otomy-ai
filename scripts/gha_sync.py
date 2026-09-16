@@ -49,6 +49,8 @@ from shared_calculations import (
     credit_due as calculate_credit_due,
     exclusive_age_buckets,
     accumulate_sale_group,
+    customer_sales_totals,
+    credit_liquidity_metrics,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2419,22 +2421,12 @@ def build_control(sales, expenses, from_d, to_d,
     # They use the ticket tender split and gross customer cash received, never
     # cashbook overlays or reconciliation adjustments.  A positive net-credit
     # figure is profit/cash that remains with customers at period end.
-    credit_liquidity_available = from_d >= date(2026, 6, 1) and total_qty > 0
     credit_sale_total = round(sum(row["credit_sale_amount"] for row in csr), 2)
     credit_recovery_total = rp_pay_total
-    net_credit_change = round(credit_sale_total - credit_recovery_total, 2)
-    if credit_liquidity_available:
-        credit_sale_per_tonne = round(credit_sale_total / total_qty, 2)
-        credit_recovery_per_tonne = round(credit_recovery_total / total_qty, 2)
-        credit_locked_per_tonne = round(net_credit_change / total_qty, 2)
-        cash_converted_profit_per_tonne = round(
-            (profit - net_credit_change) / total_qty, 2
-        )
-    else:
-        credit_sale_per_tonne = None
-        credit_recovery_per_tonne = None
-        credit_locked_per_tonne = None
-        cash_converted_profit_per_tonne = None
+    credit_liquidity = credit_liquidity_metrics(
+        profit, total_qty, credit_sale_total, credit_recovery_total,
+        eligible=from_d >= date(2026, 6, 1),
+    )
 
     # alerts
     alerts = []
@@ -2476,14 +2468,7 @@ def build_control(sales, expenses, from_d, to_d,
             "operating_balance_from":  str(from_d),
             "kumar_balance":           round(kumar_balance, 2),
             "credit_payment_received": rp_pay_total,
-            "credit_liquidity_available": credit_liquidity_available,
-            "credit_sale_for_liquidity": credit_sale_total,
-            "credit_recovery_for_liquidity": credit_recovery_total,
-            "net_credit_change_for_liquidity": net_credit_change,
-            "credit_sale_per_tonne": credit_sale_per_tonne,
-            "credit_recovery_per_tonne": credit_recovery_per_tonne,
-            "credit_locked_per_tonne": credit_locked_per_tonne,
-            "cash_converted_profit_per_tonne": cash_converted_profit_per_tonne,
+            **credit_liquidity,
             "selected_period_profit_per_tonne":
                 round(profit / total_qty, 2) if total_qty else 0.0,
             "selected_period_profit_director_adjusted": round(profit, 2),
@@ -2503,16 +2488,7 @@ def build_control(sales, expenses, from_d, to_d,
             "suppliers": (boulders or {}).get("suppliers", []),
         },
         "customer_sales":        csr,
-        "customer_sales_totals": {
-            "ticket_count":       sum(r["ticket_count"]      for r in csr),
-            "qty_mt":             round(sum(r["qty_mt"]       for r in csr), 2),
-            "amount":             round(sum(r["amount"]       for r in csr), 2),
-            "mdp_ton":            round(sum(r["mdp_ton"]      for r in csr), 3),
-            "bank_received":      round(sum(r["bank_received"]  for r in csr), 2),
-            "cash_received":      round(sum(r["cash_received"]  for r in csr), 2),
-            "paid_against_sale":  round(sum(r["paid_against_sale"] for r in csr), 2),
-            "credit_sale_amount": round(sum(r["credit_sale_amount"] for r in csr), 2),
-        },
+        "customer_sales_totals": customer_sales_totals(csr),
         "customer_repayments":              rp,
         "customer_repayments_total":        rp_total,
         "customer_repayments_payment_total": rp_pay_total,

@@ -86,6 +86,44 @@ def accumulate_sale_group(group, amount, quantity, mdp, cash, credit, bank):
     group["paid_against_sale"] += cash + bank
 
 
+def customer_sales_totals(rows):
+    """Sum displayed group values, preserving MDP precision and row order.
+
+    Do not re-sum raw tickets here: group rounding is part of the report API.
+    """
+    return {
+        "ticket_count": sum(row["ticket_count"] for row in rows),
+        "qty_mt": round(sum(row["qty_mt"] for row in rows), 2),
+        "amount": round(sum(row["amount"] for row in rows), 2),
+        "mdp_ton": round(sum(row["mdp_ton"] for row in rows), 3),
+        "bank_received": round(sum(row["bank_received"] for row in rows), 2),
+        "cash_received": round(sum(row["cash_received"] for row in rows), 2),
+        "paid_against_sale": round(sum(row["paid_against_sale"] for row in rows), 2),
+        "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in rows), 2),
+    }
+
+
+def credit_liquidity_metrics(profit, quantity, credit_sales, recovery, *, eligible):
+    """Credit KPIs from adapter-selected, already rounded sale/receipt totals.
+
+    Date eligibility and gross repayment selection stay with the adapters.
+    Negative net credit is released old debt, not a value to clamp to zero.
+    Profit and quantity retain their original precision until division.
+    """
+    available = eligible and quantity > 0
+    net_credit = round(credit_sales - recovery, 2)
+    return {
+        "credit_liquidity_available": available,
+        "credit_sale_for_liquidity": credit_sales,
+        "credit_recovery_for_liquidity": recovery,
+        "net_credit_change_for_liquidity": net_credit,
+        "credit_sale_per_tonne": round(credit_sales / quantity, 2) if available else None,
+        "credit_recovery_per_tonne": round(recovery / quantity, 2) if available else None,
+        "credit_locked_per_tonne": round(net_credit / quantity, 2) if available else None,
+        "cash_converted_profit_per_tonne": round((profit - net_credit) / quantity, 2) if available else None,
+    }
+
+
 def advance_book_balance(balance, incoming, outgoing):
     """Preserve per-movement rounding; round-off metadata is not money."""
     return round(balance + incoming - outgoing, 2)
