@@ -4,12 +4,13 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "check": "wrangler deploy --dry-run"
+    "check": "wrangler deploy --dry-run",
+    "security-check": "node ../scripts/test_pdf_dependencies.mjs"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "1.4.0"
   },
   "devDependencies": {
-    "wrangler": "4.118.0"
+    "wrangler": "4.132.0"
   }
 }

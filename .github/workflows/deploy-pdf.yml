@@ -26,7 +26,10 @@ jobs:
       - name: Install pinned renderer dependencies
         run: npm ci --prefix pdf_worker --ignore-scripts --no-audit --no-fund
       - name: Verify PDF security boundary
-        run: node scripts/test_pdf_route.mjs
+        run: |
+          node scripts/test_pdf_route.mjs
+          node scripts/test_pdf_render_contract.mjs
+          npm run security-check --prefix pdf_worker
       - name: Check optional Worker deployment token
         id: token
         env:
