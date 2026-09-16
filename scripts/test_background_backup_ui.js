@@ -19,3 +19,39 @@ assert.equal(info({enabled:true,phase:'complete',overdue:true}).attention,true);
 assert.equal(info({enabled:false,phase:'failed'}).note,'');
 assert(!source.includes('document.body.prepend(note)'),'backup must not add a body-level layout banner');
 console.log('Background backup UI: progress stays quiet, real failures remain discoverable, and private error text stays hidden.');
+
+async function badgeTests(){
+  const elements={};
+  for(const id of ['engine-status','backup-status'])elements[id]={hidden:id==='backup-status',setAttribute(){}};
+  const badgeContext=vm.createContext({Date,document:{hidden:false,getElementById:id=>elements[id]},navigator:{onLine:true},
+    isStaticSnapshotHost:()=>false,_readSyncMarker:async()=>badgeContext.sync});
+  vm.runInContext(source.slice(start,source.indexOf('function startEngineStatusRefresh()',start)),badgeContext);
+  badgeContext.sync={last_sync:'2026-09-16T08:37:32',last_sync_errors:[],backup:{enabled:true,phase:'failed',overdue:true,error:'private backend detail'}};
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.equal(elements['engine-status'].className,'engine-status running');
+  assert.match(elements['backup-status'].textContent,/attention/);
+  assert(!elements['engine-status'].title.includes('backup'));
+  assert(!elements['backup-status'].title.includes('private backend detail'));
+  badgeContext.sync.last_sync_errors=['private ERP failure'];
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.equal(elements['engine-status'].className,'engine-status paused');
+  assert.match(elements['engine-status'].title,/sync attempt.*1 warning/);
+  badgeContext.sync.last_sync_errors=[];
+  badgeContext.sync.backup={enabled:true,phase:'complete',overdue:false};
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.match(elements['backup-status'].className,/running/);
+  badgeContext.sync.backup={enabled:true,phase:'downloading',overdue:true};
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.match(elements['backup-status'].textContent,/running/);
+  assert.equal(elements['engine-status'].className,'engine-status running');
+  badgeContext._readSyncMarker=async()=>{throw new Error('network unavailable');};
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.equal(elements['engine-status'].className,'engine-status unknown');
+  assert.match(elements['backup-status'].textContent,/unavailable/);
+  badgeContext._readSyncMarker=async()=>({last_sync:null,backup:{enabled:false}});
+  await vm.runInContext('loadEngineStatus()',badgeContext);
+  assert.equal(elements['engine-status'].className,'engine-status unknown');
+  assert.equal(elements['backup-status'].hidden,true);
+  console.log('Independent engine/backup badges: healthy, failed, active, disabled and unreachable states passed.');
+}
+badgeTests().catch(error=>{console.error(error);process.exitCode=1;});

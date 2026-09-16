@@ -237,7 +237,10 @@ class R2Reader:
             if (meta and response_etag != expected_etag
                     and re.fullmatch(r'[0-9a-f]{32}', response_etag)
                     and re.fullmatch(r'[0-9a-f]{32}', expected_etag)):
-                raise ValueError('R2 content generation changed')
+                # A live publish can replace this object between inventory and
+                # GET. Use the existing generation-retry path, not a permanent
+                # corruption failure; no mismatching bytes are promoted.
+                raise RuntimeError('R2 changed during download; retry required')
             fd, name = tempfile.mkstemp(dir=path.parent)
             try:
                 with os.fdopen(fd, 'wb') as f:

@@ -35,6 +35,20 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(b.normalize_etag('"abcdef"'),'abcdef')
         self.assertEqual(b.normalize_etag('abcdef'),'abcdef')
 
+    def test_changed_live_generation_requests_retry_without_overwrite(self):
+        target = self.root/'objects/live.json'
+        target.parent.mkdir()
+        target.write_bytes(b'previous verified bytes')
+        class Response:
+            headers = {'ETag': 'b' * 32}
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        reader = object.__new__(b.R2Reader)
+        with patch.object(reader, 'get', return_value=Response()):
+            with self.assertRaisesRegex(RuntimeError, '^R2 changed'):
+                reader.download('live.json', target, {'etag': 'a' * 32, 'size': 10})
+        self.assertEqual(target.read_bytes(), b'previous verified bytes')
+
     def test_failed_corrupt_cache_is_downloaded_and_duplicates_reused(self):
         payload = b'{"synthetic":123}'
         md5 = hashlib.md5(payload).hexdigest()

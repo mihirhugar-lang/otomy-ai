@@ -70,6 +70,7 @@ body{font-family:Georgia,'Times New Roman',serif;background:
 .engine-status.running{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.engine-status.running::before{background:#16a34a}
 .engine-status.paused{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.engine-status.paused::before{background:#ea580c}
 .engine-status.unknown{border-color:#fecaca;background:#fef2f2;color:#991b1b}.engine-status.unknown::before{background:#dc2626}
+.backup-status[hidden]{display:none}
 .install-btn{display:none;border:0;border-radius:999px;background:linear-gradient(135deg,#38aeea,#8ee7ff);color:#073f63;font-size:12px;font-weight:900;padding:8px 13px;box-shadow:0 8px 20px rgba(56,174,234,.28);cursor:pointer;white-space:nowrap}
 .install-btn.show{display:inline-flex;align-items:center;gap:6px}
 .content{padding:24px 28px;flex:1}
@@ -308,7 +309,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .nav-item .icon{font-size:17px;width:22px}
   .main{margin-left:0;width:100%;min-width:0}
   .topbar{padding:10px 12px;gap:10px;justify-content:flex-start}
-  .topbar-title-stack{flex:1;min-width:0;gap:6px}
+  .topbar-title-stack{flex:1;min-width:0;gap:6px;flex-wrap:wrap}
   .topbar-title{font-size:16px;line-height:1.2}
   .topbar-actions{gap:7px;margin-left:0}
   .topbar-date{font-size:11px;text-align:right;max-width:112px}
@@ -809,6 +810,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="topbar-title-stack">
     <div class="topbar-title" id="page-title">Dashboard</div>
     <div id="engine-status" class="engine-status" role="status" title="Common engine status">Engine</div>
+    <div id="backup-status" class="engine-status backup-status no-print" role="status" hidden>Backup</div>
   </div>
   <div class="topbar-actions no-print">
     <button class="install-btn" id="install-app-btn" type="button" onclick="installAndroidApp()">Install App</button>
@@ -2268,7 +2270,18 @@ function _backgroundBackupStatus(backup){
     : backup.phase==='icloud_upload_pending'?'waiting for iCloud upload confirmation'
     : backup.overdue?'overdue; waiting for the next background retry'
     : 'up to date';
-  return {attention,note:`iCloud backup: ${message}. Last verified upload: ${last}.`};
+  return {attention,active,pending:backup.phase==='icloud_upload_pending',note:`iCloud backup: ${message}. Last verified upload: ${last}.`};
+}
+function _renderBackupStatus(backup){
+  const el=document.getElementById('backup-status');
+  if(!el)return;
+  el.hidden=!backup?.enabled;
+  if(el.hidden)return;
+  const status=_backgroundBackupStatus(backup);
+  el.className=`engine-status backup-status no-print ${status.attention?'paused':status.active||status.pending?'':'running'}`;
+  el.textContent=`Backup${status.attention?' · attention':status.active?' · running':status.pending?' · pending':''}`;
+  el.title=status.note;
+  el.setAttribute?.('aria-label',status.note);
 }
 let _engineStatusTimer=null, _engineStatusBusy=false;
 async function loadEngineStatus(){
@@ -2290,18 +2303,25 @@ async function loadEngineStatus(){
     const compactGenerated=engine.generated_at
       ? new Date(engine.generated_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',','')
       : 'not yet';
-    const backupStatus=_backgroundBackupStatus(engine.backup);
-    el.className=`engine-status ${paused||backupStatus.attention?'paused':'running'}`;
+    _renderBackupStatus(engine.backup);
+    const warnings=Boolean(engine.errors?.length);
+    el.className=`engine-status ${paused||warnings?'paused':engine.generated_at?'running':'unknown'}`;
     el.textContent=`Engine · ${compactGenerated}`;
     el.title=paused
       ? `Paused at ${state.updated_at||'unknown'}${state.reason?` — ${state.reason}`:''}`
-      : `${engine.local?'Last successful localhost sync':'Last verified sync'}: ${generated}${engine.errors?.length?` — ${engine.errors.length} warning${engine.errors.length===1?'':'s'}`:''}`;
-    if(backupStatus.note)el.title+=`\n${backupStatus.note}`;
+      : `${engine.local?(warnings?'Last localhost sync attempt':'Last successful localhost sync'):'Last verified sync'}: ${generated}${warnings?` — ${engine.errors.length} warning${engine.errors.length===1?'':'s'}`:''}`;
     el.setAttribute?.('aria-label',el.title);
   }catch(e){
     el.className='engine-status unknown';
     el.textContent='Engine · unavailable';
     el.title='Could not read the common-engine status marker';
+    const backupEl=document.getElementById('backup-status');
+    if(backupEl&&!backupEl.hidden){
+      backupEl.className='engine-status backup-status no-print unknown';
+      backupEl.textContent='Backup · unavailable';
+      backupEl.title='Could not read backup status; previous status is unconfirmed.';
+      backupEl.setAttribute?.('aria-label',backupEl.title);
+    }
   }finally{_engineStatusBusy=false;}
 }
 function startEngineStatusRefresh(){

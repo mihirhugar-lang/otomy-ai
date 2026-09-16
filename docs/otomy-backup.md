@@ -62,8 +62,12 @@ not success. Check status using:
 
 The existing localhost `/api/sync/erp/status` response includes safe backup metadata
 under its existing access policy. This feature does not change that policy.
-The localhost dashboard shows a warning for failures, overdue backups and
-pending uploads. A backup older than 48 hours is overdue. Failures never enter
+The localhost dashboard has independent Engine and Backup indicators. Backup
+failures and overdue copies show an amber Backup warning without changing a
+healthy ERP Engine indicator. Active copying and pending iCloud confirmation
+have their own neutral states; verified current backups are green. ERP warnings
+still make the Engine indicator amber, and unavailable status is not shown as
+healthy. A backup older than 48 hours is overdue. Failures never enter
 the financial publication path. Running status does not print credentials.
 
 ## Operations
