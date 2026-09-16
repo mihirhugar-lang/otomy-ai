@@ -36,6 +36,8 @@ from shared_calculations import (
     daily_ledger_row as calculate_daily_ledger_row,
     daily_ledger_totals as calculate_daily_ledger_totals,
     accumulate_sale_group,
+    customer_sales_totals,
+    credit_liquidity_metrics,
 )
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -1354,26 +1356,16 @@ def control_room(
     # balance-overlay/workbook adjustments.  A positive net-credit figure
     # means cash is still locked with customers; a negative figure means old
     # credit was released during the selected period.
-    credit_liquidity_available = start >= _CREDIT_LIQUIDITY_START and total_qty > 0
     credit_sale_total = round(sum(row["credit_sale_amount"] for row in customer_sales_rows), 2)
     credit_recovery_total = round(
         sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments),
         2,
     )
-    net_credit_change = round(credit_sale_total - credit_recovery_total, 2)
-    if credit_liquidity_available:
-        credit_sale_per_tonne = round(credit_sale_total / total_qty, 2)
-        credit_recovery_per_tonne = round(credit_recovery_total / total_qty, 2)
-        credit_locked_per_tonne = round(net_credit_change / total_qty, 2)
-        cash_converted_profit_per_tonne = round(
-            (selected_period_profit_director_adjusted - net_credit_change) / total_qty,
-            2,
-        )
-    else:
-        credit_sale_per_tonne = None
-        credit_recovery_per_tonne = None
-        credit_locked_per_tonne = None
-        cash_converted_profit_per_tonne = None
+    credit_liquidity = credit_liquidity_metrics(
+        selected_period_profit_director_adjusted, total_qty,
+        credit_sale_total, credit_recovery_total,
+        eligible=start >= _CREDIT_LIQUIDITY_START,
+    )
 
     machine_order = ["Jaw", "Cone", "VSI", "Hitachi", "JCB", "Loader"]
     machine_summary_map = {
@@ -1539,14 +1531,7 @@ def control_room(
                 sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments),
                 2,
             ),
-            "credit_liquidity_available": credit_liquidity_available,
-            "credit_sale_per_tonne": credit_sale_per_tonne,
-            "credit_recovery_per_tonne": credit_recovery_per_tonne,
-            "credit_locked_per_tonne": credit_locked_per_tonne,
-            "cash_converted_profit_per_tonne": cash_converted_profit_per_tonne,
-            "credit_sale_for_liquidity": credit_sale_total,
-            "credit_recovery_for_liquidity": credit_recovery_total,
-            "net_credit_change_for_liquidity": net_credit_change,
+            **credit_liquidity,
             "selected_period_profit_per_tonne": round(selected_period_profit_per_tonne, 2),
             "selected_period_profit_director_adjusted": round(selected_period_profit_director_adjusted, 2),
             "selected_period_director_adjusted_profit_per_tonne": round(selected_period_director_adjusted_profit_per_tonne, 2),
@@ -1566,16 +1551,7 @@ def control_room(
             "suppliers": (erp_input or {}).get("suppliers", []),
         },
         "customer_sales": customer_sales_rows,
-        "customer_sales_totals": {
-            "ticket_count": sum(row["ticket_count"] for row in customer_sales_rows),
-            "qty_mt": round(sum(row["qty_mt"] for row in customer_sales_rows), 2),
-            "amount": round(sum(row["amount"] for row in customer_sales_rows), 2),
-            "mdp_ton": round(sum(row["mdp_ton"] for row in customer_sales_rows), 3),
-            "bank_received": round(sum(row["bank_received"] for row in customer_sales_rows), 2),
-            "cash_received": round(sum(row["cash_received"] for row in customer_sales_rows), 2),
-            "paid_against_sale": round(sum(row["paid_against_sale"] for row in customer_sales_rows), 2),
-            "credit_sale_amount": round(sum(row["credit_sale_amount"] for row in customer_sales_rows), 2),
-        },
+        "customer_sales_totals": customer_sales_totals(customer_sales_rows),
         "customer_repayments": customer_repayments,
         "customer_repayments_total": round(sum(row["amount"] for row in customer_repayments), 2),
         "customer_repayments_payment_total": round(sum(row.get("payment_received", row.get("amount", 0.0)) for row in customer_repayments), 2),

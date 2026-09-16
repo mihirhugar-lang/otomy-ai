@@ -327,6 +327,8 @@ def load_tests(loader, tests, pattern):
     # and Daily Ledger comparisons without requiring another scheduled job.
     import test_book_range_parity
     tests.addTests(loader.loadTestsFromModule(test_book_range_parity))
+    import test_control_range_parity
+    tests.addTests(loader.loadTestsFromModule(test_control_range_parity))
     return tests
 
 
