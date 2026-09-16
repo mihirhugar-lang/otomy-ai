@@ -17,9 +17,9 @@ from typing import Any
 from recovery_plan import load_manifest, validate_recovery_plan
 
 
-SOFT_WARNING_BYTES = 6_500_000_000
-FULL_REPAIR_LIMIT_BYTES = 7_000_000_000
-HARD_LIMIT_BYTES = 8_000_000_000
+SOFT_WARNING_BYTES = 7_000_000_000
+FULL_REPAIR_LIMIT_BYTES = 8_000_000_000
+HARD_LIMIT_BYTES = 9_000_000_000
 # The publish marker, recovery metadata, and private control catalogue are
 # written after the preflight calculation.  Reserve ample headroom for those
 # small metadata objects so the hard threshold remains a true pre-write limit.

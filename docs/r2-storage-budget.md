@@ -12,15 +12,29 @@ manifest and private control catalogue that are written after the forecast:
 
 | Threshold | Behaviour |
 | --- | --- |
-| 6.5 GB | Emits a GitHub Actions warning. |
-| 7 GB | Rejects a full-history repair; process smaller periods instead. |
-| 8 GB | Rejects every publish before it changes R2. |
+| 7 GB | Emits a storage preflight warning. |
+| 8 GB | Rejects a full-history repair; process smaller periods instead. |
+| 9 GB | Rejects every publish whose forecast plus reserve reaches this limit, before it changes R2. |
+
+The thresholds are 7 decimal GB for warnings, 8 GB for full-repair restrictions
+and 9 GB for the hard ceiling. The 64 MB pre-publish reserve remains unchanged.
+This bucket guard does not cap account-wide storage or Class A/B operation charges.
 
 After readback, the job retains only the two newest catalogued recovery packs
 younger than 14 days. It also reconciles the numeric top-level `recovery/`
 prefixes actually present in R2 and removes only those absent from that
 retained catalogue. The reconciliation fails closed on malformed names or a
 malformed retained catalogue.
+
+This is a rolling two-recovery policy, not permanent retention of every sync
+version. Updating an existing snapshot key replaces its current contents;
+new dates/ranges and expanding financial history can still grow the live
+dataset and the size of each of the two recovery packs. Allow-listed disposable
+range caches can expire under the rules below, while canonical snapshots and
+financial archives remain protected. Daily encrypted iCloud backups are a
+separate store with their own retention and capacity budget. Neither the
+two-recovery policy nor the 9 GB ceiling guarantees ten or fifteen years of
+capacity; that requires measurements of net growth, including publish peaks.
 
 Archive inputs and canonical financial snapshots are never compacted by this
 guard. The engine may remove only explicitly retention-expired derived range
