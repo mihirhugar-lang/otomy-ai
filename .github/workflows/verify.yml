@@ -61,6 +61,15 @@ jobs:
           python3 scripts/test_dashboard_balance_parity.py
           python3 scripts/test_historical_vendor_repair.py
       - name: Verify private PDF authentication and sharing boundary
-        run: node scripts/test_pdf_route.mjs
+        run: |
+          node scripts/test_pdf_route.mjs
+          node scripts/test_pdf_render_contract.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify patched PDF tooling and runtime dependency exclusion
+        run: |
+          npm ci --prefix pdf_worker --ignore-scripts --no-audit --no-fund
+          npm run security-check --prefix pdf_worker
       - name: Verify dashboard parity guard
         run: python3 scripts/verify_dashboard_parity.py --code-only
