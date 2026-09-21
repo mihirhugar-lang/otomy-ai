@@ -181,6 +181,7 @@ jobs:
           OTOMY_WORKING_SET_STATE: ""
         run: |
           python3 scripts/test_cashbook_parity.py
+          python3 scripts/test_sync_refactor.py
           python3 scripts/test_machinery_range_readings.py
           node scripts/test_machinery_range_ui.js
           python3 scripts/test_vendor_aging.py

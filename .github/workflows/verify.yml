@@ -38,6 +38,7 @@ jobs:
       - name: Run canonical cashbook fixture guard
         run: |
           python3 scripts/test_cashbook_parity.py
+          python3 scripts/test_sync_refactor.py
           python3 scripts/test_shared_calculations.py
           python3 scripts/test_book_calculations.py
           python3 scripts/test_party_calculations.py
