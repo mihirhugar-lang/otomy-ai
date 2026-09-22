@@ -32,6 +32,11 @@ controls and customer balances. It also checks fetch retries and exhausted-read
 failures, source identities, ERP edit/deletion merging, vendor ledgers and the
 byte hashes of all 5,209 generated archive/snapshot/compliance JSON files.
 Both repeated baseline captures produced identical hashes; the refactor matches.
+The saved baselines cover both the local Python 3.9 runtime and GitHub's Python
+3.12 runtime. Python 3.12's float-summation change alters eight synthetic output
+files even with the original engine. Its separate baseline was therefore
+captured from the unchanged original revision, never from the refactor. Every
+file remains subject to exact comparison against its runtime's original output.
 
 Run the checks with the repository's existing test dependencies installed:
 
@@ -51,10 +56,11 @@ Validation passed: 156 Python tests, code guards, and localhost's 14-test parity
 suite (including six-range cash/bank rows and totals).
 
 Before release, a separate private audit used checksum-verified production
-inputs published on September 21, 2026. The original and refactored engines
-matched exactly for June 1 through September 21: all 113 days, 315 daily,
+inputs published on September 22, 2026. Both engines used Python 3.12, matching
+the production runner. The original and refactored engines
+matched exactly for June 1 through September 22: all 114 days, 318 daily,
 month-to-date, cumulative and preset ranges, six monthly ledgers, complete
-customer/vendor ledgers, and all 4,064 captured output files. The 1,260 range
+customer/vendor ledgers, and all 4,309 captured output files. The 1,272 range
 comparisons covered complete cash/bank, control, customer and vendor responses.
 There were zero differences; no financial tolerance or ignored financial fields
 were used. Both runs used isolated directories, the same captured inputs and a

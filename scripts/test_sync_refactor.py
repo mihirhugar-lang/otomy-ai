@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 import io
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
@@ -18,7 +19,12 @@ from sync_refactor_fixture import RANGES, capture
 class SyncRefactorContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        path=Path(__file__).parent/'fixtures/sync_refactor_expected.json'
+        # Python 3.12 changed float summation. Both goldens come from the
+        # unchanged original engine on their respective runtimes; retaining
+        # exact hashes avoids masking even a one-paise financial difference.
+        name=('sync_refactor_expected_py312.json' if sys.version_info >= (3,12)
+              else 'sync_refactor_expected.json')
+        path=Path(__file__).parent/'fixtures'/name
         cls.expected=json.loads(path.read_text())['outputs']
         with tempfile.TemporaryDirectory(prefix='otomy-refactor-test-') as root, redirect_stdout(io.StringIO()):
             cls.actual=capture(engine,root)
