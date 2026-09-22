@@ -53,6 +53,11 @@ from shared_calculations import (
     credit_liquidity_metrics,
 )
 
+import sync_loctell
+import sync_finance
+import sync_archive
+import sync_snapshots
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("COMMON_ENGINE_DATA_DIR", ROOT / "data"))
 # Reviewed financial control inputs are kept outside the public repository.
@@ -644,63 +649,17 @@ def latest_bank_statement_balance(rows, as_of):
     return round(_num(latest.get("balance")), 2)
 
 def load_archive_manifest():
-    try:
-        with open(ARCHIVE_DIR / "manifest.json") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    return sync_archive.load_archive_manifest(ARCHIVE_DIR=ARCHIVE_DIR)
 
-def _date_months(from_d, to_d):
-    months = []
-    cur = from_d.replace(day=1)
-    end = to_d.replace(day=1)
-    while cur <= end:
-        months.append(cur.strftime("%Y-%m"))
-        if cur.month == 12:
-            cur = cur.replace(year=cur.year + 1, month=1)
-        else:
-            cur = cur.replace(month=cur.month + 1)
-    return months
+_date_months = sync_archive._date_months
 
 def load_archive_window(from_d, to_d):
-    out = {
-        "sales": [],
-        "expenses": [],
-        "internal_transfers": [],
-        "receipts": [],
-        "vendor_payments": [],
-        "cash": [],
-        "bank": [],
-        "boulders": [],
-        "iot": [],
-        "labour": [],
-        "parts": [],
-        "machines": [],
-        "balances": [],
-    }
-    fs, ts = str(from_d), str(to_d)
-    for month in _date_months(from_d, to_d):
-        path = ARCHIVE_DIR / f"{month}.json"
-        if not path.exists():
-            continue
-        try:
-            with open(path, "r") as f:
-                payload = json.load(f)
-        except Exception as e:
-            print(f"  archive read error ({month}): {e}")
-            continue
-        for section in out:
-            out[section].extend([
-                row for row in payload.get(section, [])
-                if fs <= str(row.get("date", ""))[:10] <= ts
-            ])
-    return out
+    return sync_archive.load_archive_window(from_d, to_d, ARCHIVE_DIR=ARCHIVE_DIR, _date_months=_date_months)
 
 def merge_rows_by_archive_key(archive_rows, fresh_rows, section, *, drop_current_window=True):
-    return _merge_archive_rows(
-        archive_rows or [], fresh_rows or [], section,
-        drop_current_window=drop_current_window,
+    return sync_archive.merge_rows_by_archive_key(
+        archive_rows, fresh_rows, section, drop_current_window=drop_current_window,
+        _merge_archive_rows=_merge_archive_rows,
     )
 
 
@@ -815,402 +774,83 @@ def archive_receipts_to_repayments(receipts):
 # ─── auth ────────────────────────────────────────────────────────────────────
 
 def erp_auth():
-    cred = base64.b64encode(f"{ERP_ORG};{ERP_USER}:{ERP_PASS}".encode()).decode()
-    last_error = None
-    # A Loctell login has two network requests.  Retrying only later data
-    # fetches is ineffective when its authentication endpoint is temporarily
-    # slow, and a new session avoids carrying a half-created login state.
-    for attempt in range(1, ERP_FETCH_RETRIES + 1):
-        sess = requests.Session()
-        sess.headers.update({"User-Agent": "Mozilla/5.0"})
-        try:
-            response = sess.get(
-                f"{ERP_BASE}/restserver/rest/users/login?web=true",
-                headers={"Authorization": f"Basic {cred}", "content-type": "application/json"},
-                timeout=25, verify=True,
-            )
-            response.raise_for_status()
-            response = sess.post(
-                f"{ERP_BASE}/home/MainLogin",
-                data={"loginUsername": ERP_USER, "loginPassword": ERP_PASS,
-                      "loginOrgName": ERP_ORG, "pType": "attendance"},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=25, verify=True,
-            )
-            response.raise_for_status()
-            return sess
-        except Exception as e:
-            last_error = e
-            if attempt < ERP_FETCH_RETRIES:
-                print(f"  Loctell login retry {attempt}/{ERP_FETCH_RETRIES} after {type(e).__name__}: {e}")
-                time.sleep(ERP_RETRY_DELAY_SECONDS * attempt)
-    raise ErpFetchError(f"Loctell login failed after {ERP_FETCH_RETRIES} attempt(s): {last_error}") from last_error
+    return sync_loctell.erp_auth(
+        ERP_BASE=ERP_BASE, ERP_FETCH_RETRIES=ERP_FETCH_RETRIES, ERP_ORG=ERP_ORG, ERP_PASS=ERP_PASS,
+        ERP_RETRY_DELAY_SECONDS=ERP_RETRY_DELAY_SECONDS, ERP_USER=ERP_USER, ErpFetchError=ErpFetchError,
+    )
 
-def _clone_sess(sess):
-    """Return a new session with the same cookies — safe to use in a thread."""
-    s = requests.Session()
-    s.headers.update(dict(sess.headers))
-    for cookie in sess.cookies:
-        s.cookies.set(cookie.name, cookie.value, domain=cookie.domain, path=cookie.path)
-    return s
+_clone_sess = sync_loctell._clone_sess
 
 # ─── fetchers ────────────────────────────────────────────────────────────────
 
 def _fetch_sales_window(sess, from_d, to_d):
-    """Fetch one bounded CustomerWiseReport window from Loctell."""
-    tickets = []
-    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    try:
-        raw = _request_text_with_retry(
-            sess,
-            f"{ERP_BASE}/crusher/ListCustomerWiseReport"
-            f"?start={fs}&end={ts}&customerId=-1&type=3",
-            timeout=60,
-            label=f"sales {fs} to {ts}",
-        )
-        try:    cw_html = htmllib.unescape(json.loads(raw))
-        except: cw_html = raw
-        for block in cw_html.split("Party Name :"):
-            block = block.strip()
-            if not block: continue
-            party = re.sub(r"<[^>]+>.*", "", block, flags=re.DOTALL).strip().split("\n")[0].strip()[:200]
-            for tr in _TR.finditer(block):
-                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
-                if len(cols) < 10: continue
-                if not re.match(r"\d{2}-\d{2}-\d{4}", cols[2]): continue
-                if not re.match(r"\d+:\d+\s*[AP]M", cols[3]):   continue
-                if cols[9].upper().strip() not in _PAY:           continue
-                qty = _num(cols[7])
-                if qty == 0: continue
-                material_amount = _num(cols[8])
-                # Gross Sales must follow Loctell's Gross Total column. Net
-                # Amount is a separate round-off field and may be below
-                # Material Amount; clamping it caused ticket-level drift.
-                gross_total = _num(cols[10] if len(cols) > 10 else (cols[13] if len(cols) > 13 else cols[8]))
-                transport_charge = round(gross_total - material_amount, 2)
-                dd, mm, yyyy = cols[2].split("-")
-                payment_mode = _norm_pay(cols[9])
-                cash_amount, credit_amount, upi_amount = _channels_for_payment_mode(
-                    gross_total, payment_mode
-                )
-                tickets.append({
-                    "id": 0, "date": str(date(int(yyyy), int(mm), int(dd))),
-                    "sale_time": cols[3].strip(),
-                    "customer_name": party, "ticket_no": cols[1].strip(),
-                    "vehicle_no": cols[4].strip(),
-                    "material": _norm_material(cols[5]),
-                    "rate_per_mt": _num(cols[6]),
-                    "qty_mt": qty, "mdp_ton": 0.0,  # real MDP Ton is applied from ListSale splits; never default to qty
-                    "amount": material_amount,
-                    "transport_charge": transport_charge,
-                    "payment_mode": payment_mode,
-                    "cash_amount": cash_amount,
-                    "credit_amount": credit_amount,
-                    "upi_amount": upi_amount,
-                    "hsn_code": "2517", "gst_rate": 5.0, "notes": "", "erp_synced": True,
-                })
-    except Exception as e:
-        print(f"  sales fetch error: {e}")
-        raise ErpFetchError(f"sales fetch failed; skipped Otomy write: {e}") from e
-    return tickets
+    return sync_loctell._fetch_sales_window(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _PAY=_PAY, _TD=_TD, _TR=_TR,
+        _channels_for_payment_mode=_channels_for_payment_mode, _clean=_clean, _norm_material=_norm_material,
+        _norm_pay=_norm_pay, _num=_num, _request_text_with_retry=_request_text_with_retry,
+    )
 
 
-def _sales_fetch_windows(from_d, to_d, days=1):
-    """Yield daily windows so Loctell cannot truncate a FY sales report."""
-    cursor = from_d
-    while cursor <= to_d:
-        end = min(cursor + timedelta(days=days - 1), to_d)
-        yield cursor, end
-        cursor = end + timedelta(days=1)
+_sales_fetch_windows = sync_loctell._sales_fetch_windows
 
 
-def _ledger_archive_start(sync_mode, sync_start, month_start):
-    """Choose which monthly ledger archives a run is allowed to regenerate.
-
-    A recent sync refreshes source rows but must not recalculate a closed month
-    against a shorter operational window.  Historical month ledgers and their
-    canonical cashbooks are rebuilt together only by a full run.
-    """
-    return sync_start.replace(day=1) if sync_mode == "full" else month_start
+_ledger_archive_start = sync_loctell._ledger_archive_start
 
 
 def fetch_sales(sess, from_d, to_d):
-    """Fetch complete sales safely, including full-FY rebuilds.
-
-    The ERP can return an incomplete CustomerWiseReport for a very large date
-    range without an HTTP error. Daily ERP windows are independently complete;
-    any failed window raises and prevents publication.
-    """
-    tickets = []
-    for window_start, window_end in _sales_fetch_windows(from_d, to_d):
-        window_tickets = _fetch_sales_window(_clone_sess(sess), window_start, window_end)
-        tickets.extend(window_tickets)
-        print(f"  sales {window_start}..{window_end}: {len(window_tickets)} tickets")
-    return tickets
+    return sync_loctell.fetch_sales(
+        sess, from_d, to_d, _clone_sess=_clone_sess, _fetch_sales_window=_fetch_sales_window,
+        _sales_fetch_windows=_sales_fetch_windows,
+    )
 
 
 def fetch_sale_splits(sess, from_d, to_d):
-    """{(date, ticket_no): {cash, credit, upi, total, pay_type}} from ERP ListSale.
-
-    Captures real SPLIT payments (part cash + part UPI) that ListCustomerWiseReport
-    collapses into one payment mode.  Ticket numbers are not globally unique
-    (for example, 10086 occurs on 26-May and 30-Jun), so date is part of the
-    identity. The ListSale layout is a financial source, so a failed fetch or
-    header validation aborts the build rather than silently publishing a bad
-    MDP/payment split.
-    """
-    splits = {}
-    errors = []
-    cur = from_d
-    while cur <= to_d:
-        ds = cur.strftime("%d-%m-%Y")
-        try:
-            url = (
-                f"{ERP_BASE}/crusher/ListSale?startDt={ds}&end={ds}"
-                "&materialId=-1&customerId=-1&operatorId=-1&startTicket=&endTicket=&crusherId=-1"
-                "&paymentType=-1&vehicleId=-1&marketingPersonId=-1&transporterId=-1&dateTicketOrder=4"
-                "&startTime=12:00:00 AM&endTime=11:59:59 PM&destination=&ledgerGroupId=-1"
-                "&invoiceGenerated=-1&dcGenerated=-1&royaltyIssued=-1&isStock=-1"
-                "&shippingAddressId=-1&vehicleType=-1&type=3"
-            )
-            raw = _clone_sess(sess).post(
-                url, data={"draw": 1, "start": 0, "length": 2000},
-                headers={"X-Requested-With": "XMLHttpRequest"}, timeout=35, verify=True,
-            ).text
-            html = json.loads(raw) if raw.lstrip().startswith('"') else raw
-            splits.update(_parse_listsale_splits(html, cur))
-        except Exception as e:
-            errors.append(f"{ds}: {e}")
-        cur += timedelta(days=1)
-        time.sleep(0.1)
-    if errors:
-        raise RuntimeError("ListSale split fetch/validation failed; build stopped: " + "; ".join(errors[:3]))
-    return splits
+    return sync_loctell.fetch_sale_splits(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, _clone_sess=_clone_sess,
+        _parse_listsale_splits=_parse_listsale_splits,
+    )
 
 
 def _cash_row_is_bank_expense(row, bank_expenses):
-    """A cash-ledger row that is really a bank/UPI expense (e.g. 'PAID FROM VMI ACCOUNT'),
-    so it must be dropped from the Cash section. Mirrors localhost _cash_row_matches_bank_expense."""
-    paid = round(_num(row.get("paid")), 2)
-    if paid <= 0:
-        return False
-    text = " ".join(str(row.get(k) or "") for k in ("ledger", "ledger_name", "description")).upper()
-    if "EXPENSE" not in text:
-        return False
-    row_date = str(row.get("date") or "")[:10]
-    for e in bank_expenses:
-        if _payment_channel(e.get("payment_mode") or "Cash") == "cash":
-            continue
-        if str(e.get("date") or "")[:10] != row_date or abs(paid - round(_num(e.get("amount")), 2)) > 0.01:
-            continue
-        if any(str(e.get(k) or "") and str(e.get(k)).upper() in text for k in ("category", "description", "notes")):
-            return True
-    return False
+    return sync_loctell._cash_row_is_bank_expense(
+        row, bank_expenses, _num=_num, _payment_channel=_payment_channel,
+    )
 
 
 def fetch_expenses(sess, from_d, to_d):
-    days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
-
-    def _fetch_day(d):
-        ds = d.strftime("%d-%m-%Y")
-        rows = []
-        try:
-            url = (f"{ERP_BASE}/crusher/ListCrusherExpense"
-                   f"?startDt={ds}&endDt={ds}&categoryId=-1&vehicleId=-1"
-                   f"&cashLedgerId=-1&bankId=-1&tag=-1&campId=-1&type=1&draw=1&start=0&length=1000")
-            data = json.loads(_request_text_with_retry(
-                _clone_sess(sess),
-                url,
-                timeout=25,
-                label=f"expenses {ds}",
-            ))
-            expense_sequence = 0
-            for row in data.get("data", []):
-                cells = [_clean(c) for c in row]
-                if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
-                amt = _num(cells[1]) if len(cells) > 1 else 0
-                if amt <= 0: continue
-                category = cells[3].strip() if len(cells) > 3 else "Other"
-                desc     = cells[2].strip() if len(cells) > 2 else category
-                remarks  = cells[7].strip() if len(cells) > 7 else ""
-                if re.search(r"Ticket\s*(?:No\s*)?[:#]?\s*\d+", remarks, re.IGNORECASE): continue
-                pay_mode = "Bank Transfer" if "vmi acc" in remarks.lower() else "Cash"
-                expense_sequence += 1
-                record = {
-                    "id": 0, "date": str(d), "category": category[:50],
-                    "description": desc[:300], "amount": amt,
-                    "payment_mode": pay_mode, "notes": remarks[:200],
-                    "vendor_id": None, "erp_synced": True,
-                }
-                record["erp_key"] = _expense_key(record, expense_sequence)
-                rows.append(record)
-        except Exception as e:
-            print(f"  expenses fetch error {ds}: {e}")
-            raise ErpFetchError(f"expenses fetch failed for {ds}; skipped Otomy write: {e}") from e
-        return rows
-
-    entries = []
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        for day_rows in pool.map(_fetch_day, days):
-            entries.extend(day_rows)
-    entries.sort(key=lambda e: e["date"])
-    for i, e in enumerate(entries, 1):
-        e["id"] = i
-    return entries
+    return sync_loctell.fetch_expenses(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean,
+        _clone_sess=_clone_sess, _expense_key=_expense_key, _num=_num,
+        _request_text_with_retry=_request_text_with_retry,
+    )
 
 
 def fetch_cash_ledger(sess, from_d, to_d):
-    entries = []
-    try:
-        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(_request_text_with_retry(
-            sess,
-            f"{ERP_BASE}/crusher/CashLedger?start={fs}&end={ts}&type=1&cashLedgerId=-1",
-            timeout=35,
-            label=f"cash ledger {fs} to {ts}",
-        ))
-        for row in data.get("data", []):
-            cells = [_clean(c) for c in row]
-            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
-            entry_date = _parse_date(cells[0], to_d)
-            received = _num(cells[1]) if len(cells) > 1 else 0
-            paid     = _num(cells[2]) if len(cells) > 2 else 0
-            balance  = _num(cells[3]) if len(cells) > 3 else None
-            desc     = cells[4]       if len(cells) > 4 else ""
-            ledger   = cells[5]       if len(cells) > 5 else ""
-            if received == 0 and paid == 0 and not desc: continue
-            entries.append({
-                "date": str(entry_date), "ledger": ledger[:100] or "Entry",
-                "description": desc[:300], "received": received,
-                "paid": paid, "balance": balance,
-            })
-    except Exception as e:
-        print(f"  cash_ledger: {e}")
-        raise ErpFetchError(f"cash ledger fetch failed; skipped Otomy write: {e}") from e
-    return entries
+    return sync_loctell.fetch_cash_ledger(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean, _num=_num,
+        _parse_date=_parse_date, _request_text_with_retry=_request_text_with_retry,
+    )
 
 
 def fetch_bank_entries(sess, from_d, to_d):
-    entries = []
-    try:
-        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(_request_text_with_retry(
-            sess,
-            f"{ERP_BASE}/crusher/ListBankTransaction?start={fs}&end={ts}&bankId=-1&type=1",
-            timeout=35,
-            label=f"bank entries {fs} to {ts}",
-        ))
-        for row in data.get("data", []):
-            cells = [_clean(c) for c in row]
-            if not cells or "TOTAL" in (cells[0].upper() if cells else ""): continue
-            entry_date = _parse_date(cells[0], to_d)
-            credit = _num(cells[1]) if len(cells) > 1 else 0
-            debit  = _num(cells[2]) if len(cells) > 2 else 0
-            desc   = cells[3]       if len(cells) > 3 else ""
-            bank   = cells[4]       if len(cells) > 4 else "Bank"
-            if credit == 0 and debit == 0: continue
-            entries.append({
-                "date": str(entry_date), "bank_name": bank[:100],
-                "description": desc[:300], "credit": credit, "debit": debit,
-            })
-    except Exception as e:
-        print(f"  bank_entries: {e}")
-        raise ErpFetchError(f"bank entries fetch failed; skipped Otomy write: {e}") from e
-    return entries
+    return sync_loctell.fetch_bank_entries(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean, _num=_num,
+        _parse_date=_parse_date, _request_text_with_retry=_request_text_with_retry,
+    )
 
 
 def fetch_internal_transfers(sess, from_d, to_d):
-    """Return only complete Loctell cash-to-bank contra pairs."""
-    try:
-        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(_request_text_with_retry(
-            sess, f"{ERP_BASE}/crusher/ListInternalTransfer?start={fs}&end={ts}&type=1",
-            timeout=35, label=f"internal transfers {fs} to {ts}",
-        ))
-        cash_legs, bank_legs = [], []
-        for raw_row in data.get("data", []):
-            cells = [_clean(cell) for cell in raw_row]
-            if not cells or "TOTAL" in cells[0].upper():
-                continue
-            bank_name = cells[3] if len(cells) > 3 else ""
-            cash_ledger = cells[4] if len(cells) > 4 else ""
-            amount = max(_num(cells[5]) if len(cells) > 5 else 0, _num(cells[6]) if len(cells) > 6 else 0)
-            if amount <= 0 or (not bank_name and not cash_ledger):
-                continue
-            ids = [value for cell in raw_row for value in re.findall(r"\b\d{5,}\b", str(cell))]
-            leg = {"date": str(_parse_date(cells[0], to_d)), "bank_name": bank_name,
-                   "cash_ledger": cash_ledger, "amount": round(amount, 2),
-                   "remarks": cells[7] if len(cells) > 7 else "", "ids": ids}
-            (cash_legs if cash_ledger else bank_legs).append(leg)
-        result, used_cash = [], set()
-        for bank_leg in bank_legs:
-            index = next((idx for idx, cash_leg in enumerate(cash_legs)
-                if idx not in used_cash and cash_leg["date"] == bank_leg["date"]
-                and abs(cash_leg["amount"] - bank_leg["amount"]) < 0.01
-                # Loctell can vary punctuation/spacing between the paired legs
-                # (for example "::PLANT" vs ":: PLANT").  Match the same
-                # meaningful remark text, never formatting alone.
-                and re.sub(r"[^A-Z0-9]+", "", cash_leg["remarks"].upper())
-                    == re.sub(r"[^A-Z0-9]+", "", bank_leg["remarks"].upper())), None)
-            if index is None:
-                continue
-            used_cash.add(index)
-            cash_leg = cash_legs[index]
-            ids = sorted(set(cash_leg["ids"] + bank_leg["ids"]))
-            record_id = "-".join(ids) or f"{bank_leg['date']}|{cash_leg['cash_ledger']}|{bank_leg['bank_name']}|{bank_leg['amount']:.2f}|{bank_leg['remarks']}"
-            result.append({"id": f"internal-transfer:{record_id}", "date": bank_leg["date"],
-                           "cash_ledger": cash_leg["cash_ledger"][:100], "bank_name": bank_leg["bank_name"][:100],
-                           "amount": bank_leg["amount"], "remarks": bank_leg["remarks"][:500]})
-        return result
-    except Exception as e:
-        print(f"  internal_transfers: {e}")
-        raise ErpFetchError(f"internal transfer fetch failed; skipped Otomy write: {e}") from e
+    return sync_loctell.fetch_internal_transfers(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean, _num=_num,
+        _parse_date=_parse_date, _request_text_with_retry=_request_text_with_retry,
+    )
 
 
 def fetch_boulders(sess, from_d, to_d):
-    result = {"total_tonnes": 0.0, "total_trips": 0.0, "materials": [], "suppliers": []}
-    try:
-        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        html = _request_text_with_retry(
-            sess,
-            f"{ERP_BASE}/crusher/listInput",
-            params={"startDt": fs, "end": ts},
-            timeout=35,
-            label=f"boulders {fs} to {ts}",
-        )
-
-        def parse_table(src, table_id, label_key):
-            pat = r"<table[^>]*id=['\"]" + re.escape(table_id) + r"['\"][^>]*>(.*?)</table>"
-            m = re.search(pat, src, re.DOTALL | re.IGNORECASE)
-            rows, trips, tonnes = [], 0.0, 0.0
-            if not m:
-                return {"rows": rows, "total_trips": trips, "total_tonnes": tonnes}
-            for tr in _TR.finditer(m.group(1)):
-                cols = [_clean(c) for c in _TD.findall(tr.group(1))]
-                if len(cols) < 3: continue
-                label = cols[0].strip()
-                if not label: continue
-                if label.lower() == "total":
-                    trips, tonnes = _num(cols[1]), _num(cols[2])
-                    continue
-                rows.append({label_key: label, "trips": _num(cols[1]), "tonnes": _num(cols[2])})
-            if not trips:   trips   = sum(r["trips"]  for r in rows)
-            if not tonnes:  tonnes  = sum(r["tonnes"] for r in rows)
-            rows.sort(key=lambda r: r["tonnes"], reverse=True)
-            return {"rows": rows, "total_trips": trips, "total_tonnes": tonnes}
-
-        mats = parse_table(html, "itemTable",  "material")
-        sups = parse_table(html, "itemTable1", "supplier")
-        result = {
-            "total_tonnes": mats["total_tonnes"] or sups["total_tonnes"],
-            "total_trips":  mats["total_trips"]  or sups["total_trips"],
-            "materials":    mats["rows"],
-            "suppliers":    sups["rows"],
-        }
-    except Exception as e:
-        print(f"  boulders fetch error: {e}")
-        raise ErpFetchError(f"boulders fetch failed; skipped Otomy write: {e}") from e
-    return result
+    return sync_loctell.fetch_boulders(
+        sess, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _TD=_TD, _TR=_TR, _clean=_clean,
+        _num=_num, _request_text_with_retry=_request_text_with_retry,
+    )
 
 
 _ODOMETER_TARGETS = [
@@ -1232,650 +872,136 @@ _FUEL_ISSUE_REGISTRATION_ALIASES = {
 }
 
 
-def _odometer_key(value):
-    return " ".join(str(value or "").upper().split())
+_odometer_key = sync_loctell._odometer_key
 
 
 def fetch_odometer_readings(sess, from_day, to_day):
-    """Loctell's official start/end odometers for one inclusive date range."""
-    if from_day > to_day:
-        raise ErpFetchError("machinery odometer range start is after its end")
-    now = datetime.now(IST)
-    start_at = datetime.combine(from_day, datetime.min.time(), tzinfo=IST)
-    end_at = now if to_day == now.date() else datetime.combine(to_day, datetime.max.time(), tzinfo=IST)
-    start = int(start_at.timestamp() * 1000)
-    end = int(end_at.timestamp() * 1000)
-    try:
-        rows = _request_json_with_retry(
-            sess,
-            f"{ERP_BASE}/restserver/rest/machinery/getOdometerReadingForAllVehicles/{start}/{end}",
-            timeout=35,
-            label=f"machinery odometers {from_day} to {to_day}",
-        )
-    except Exception as exc:
-        raise ErpFetchError(f"machinery odometer fetch failed: {exc}") from exc
-
-    by_registration = {}
-    for row in rows if isinstance(rows, list) else []:
-        vehicle = row.get("vehicle") or {}
-        key = _odometer_key(vehicle.get("regNumber"))
-        if key:
-            by_registration[key] = row
-
-    result = []
-    for vehicle_type, registration in _ODOMETER_TARGETS:
-        row = by_registration.get(registration)
-        if row is None:
-            result.append({"vehicle_type": vehicle_type, "end_reading": None, "start_reading": None, "difference": None})
-            continue
-        end_reading = _num(row.get("vehicleEndReadings"))
-        start_reading = _num(row.get("vehicleStartReadings"))
-        result.append({
-            "vehicle_type": vehicle_type,
-            "end_reading": round(end_reading, 2),
-            "start_reading": round(start_reading, 2),
-            "difference": round(end_reading - start_reading, 2),
-            # Loctell uses an all-zero row as a no-reading placeholder.  Keep
-            # that distinction so a selected range starts at the first actual
-            # reading, exactly as the Loctell report does.
-            "has_reading": bool(start_reading or end_reading),
-        })
-    return result
+    return sync_loctell.fetch_odometer_readings(
+        sess, from_day, to_day, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, IST=IST,
+        _ODOMETER_TARGETS=_ODOMETER_TARGETS, _num=_num, _odometer_key=_odometer_key,
+        _request_json_with_retry=_request_json_with_retry,
+    )
 
 
 def fetch_live_odometer_readings(sess, today):
-    """Backward-compatible current-day Loctell odometer read."""
-    return fetch_odometer_readings(sess, today, today)
+    return sync_loctell.fetch_live_odometer_readings(
+        sess, today, fetch_odometer_readings=fetch_odometer_readings,
+    )
 
 
 def normalize_odometer_readings(readings):
-    """Keep cached history aligned when configured machinery is added later.
-
-    A newly configured vehicle has no historical reading until Loctell returns
-    one.  Represent that fact with an explicit blank row rather than rejecting
-    the otherwise-valid historic five-machine records or inventing readings.
-    """
-    by_type = {
-        str((row or {}).get("vehicle_type") or ""): dict(row)
-        for row in readings or []
-        if str((row or {}).get("vehicle_type") or "")
-    }
-    result = []
-    for vehicle_type, _registration in _ODOMETER_TARGETS:
-        result.append(by_type.get(vehicle_type, {
-            "vehicle_type": vehicle_type,
-            "end_reading": None,
-            "start_reading": None,
-            "difference": None,
-        }))
-    return result
+    return sync_loctell.normalize_odometer_readings(readings, _ODOMETER_TARGETS=_ODOMETER_TARGETS)
 
 
 def merge_odometer_history(existing, fresh):
-    """Replace refreshed days and normalize retained history to target machines."""
-    by_day = {}
-    for row in existing or []:
-        day = str((row or {}).get("date") or "")[:10]
-        if day:
-            by_day[day] = {**dict(row), "readings": normalize_odometer_readings((row or {}).get("readings"))}
-    for row in fresh or []:
-        day = str((row or {}).get("date") or "")[:10]
-        if day:
-            by_day[day] = {**dict(row), "readings": normalize_odometer_readings((row or {}).get("readings"))}
-    return [by_day[day] for day in sorted(by_day)]
+    return sync_loctell.merge_odometer_history(
+        existing, fresh, normalize_odometer_readings=normalize_odometer_readings,
+    )
 
 
 def validate_odometer_history(rows):
-    """Reject malformed cached readings before they can reach an Otomy range view."""
-    expected = {vehicle_type for vehicle_type, _registration in _ODOMETER_TARGETS}
-    seen_days = set()
-    for day_row in rows or []:
-        day = str((day_row or {}).get("date") or "")[:10]
-        try:
-            date.fromisoformat(day)
-        except ValueError as exc:
-            raise ValueError(f"invalid odometer history date: {day!r}") from exc
-        if day in seen_days:
-            raise ValueError(f"duplicate odometer history date: {day}")
-        seen_days.add(day)
-        readings = (day_row or {}).get("readings") or []
-        names = [str((row or {}).get("vehicle_type") or "") for row in readings]
-        if set(names) != expected or len(names) != len(expected):
-            raise ValueError(f"odometer history {day} does not contain exactly the configured target machines")
-        for row in readings:
-            start, end, difference = row.get("start_reading"), row.get("end_reading"), row.get("difference")
-            if start is None or end is None or difference is None:
-                continue
-            if abs((_num(end) - _num(start)) - _num(difference)) > 0.01:
-                raise ValueError(f"odometer history {day} arithmetic mismatch for {row.get('vehicle_type')}")
-            expected_has_reading = bool(_num(start) or _num(end))
-            has_reading = row.get("has_reading")
-            if has_reading is not None and has_reading is not expected_has_reading:
-                raise ValueError(f"odometer history {day} reading-marker mismatch for {row.get('vehicle_type')}")
+    return sync_loctell.validate_odometer_history(rows, _ODOMETER_TARGETS=_ODOMETER_TARGETS, _num=_num)
 
 
 def fetch_odometer_history(sess, from_day, to_day, workers=8):
-    """Daily Loctell odometer summaries, used client-side for any selected range.
-
-    Loctell returns exact range start/end values but Otomy is static between
-    syncs.  A compact daily series lets the browser make the same calculation
-    as Loctell without one snapshot object per user-selected range.
-    """
-    days = []
-    cursor = from_day
-    while cursor <= to_day:
-        days.append(cursor)
-        cursor += timedelta(days=1)
-    if not days:
-        return []
-
-    def fetch_day(day):
-        return {"date": str(day), "readings": fetch_odometer_readings(_clone_sess(sess), day, day)}
-
-    result, errors = [], []
-    with ThreadPoolExecutor(max_workers=min(max(1, workers), len(days))) as pool:
-        futures = {pool.submit(fetch_day, day): day for day in days}
-        for future in as_completed(futures):
-            day = futures[future]
-            try:
-                result.append(future.result())
-            except Exception as exc:
-                errors.append(f"{day}: {exc}")
-    if not result and errors:
-        raise ErpFetchError("machinery odometer history fetch failed: " + "; ".join(errors[:3]))
-    if errors:
-        print(f"  machinery odometer history partial: {len(errors)} day(s) unavailable")
-    return sorted(result, key=lambda row: row["date"])
+    return sync_loctell.fetch_odometer_history(
+        sess, from_day, to_day, workers, ErpFetchError=ErpFetchError, _clone_sess=_clone_sess,
+        fetch_odometer_readings=fetch_odometer_readings,
+    )
 
 
 def _loctell_ist_date(value):
-    """Return the India operating date for a Loctell ISO/UTC timestamp."""
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    try:
-        raw = raw.replace("Z[Etc/UTC]", "+00:00").replace("[Etc/UTC]", "+00:00")
-        if raw.endswith("Z"):
-            raw = f"{raw[:-1]}+00:00"
-        parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=IST)
-        return parsed.astimezone(IST).date()
-    except ValueError:
-        return None
+    return sync_loctell._loctell_ist_date(value, IST=IST)
 
 
 def fetch_machine_fuel_issues(sess, financial_year_start, today):
-    """Actual configured-machine fuel issues from Loctell's Fuel Issued report.
-
-    The frontend totals these source rows for the currently selected period.
-    It never derives fuel from an expense row or a manual adjustment.
-    """
-    start = int(datetime.combine(financial_year_start, datetime.min.time(), tzinfo=IST).timestamp() * 1000)
-    now = datetime.now(IST)
-    end = int(now.timestamp() * 1000)
-    url = (
-        f"{ERP_BASE}/restserver/rest/fuel/getFuelIssuedReportWithPagination/"
-        f"{start}/{end}/-1/-1/0/-1/-1/-1/-1/-1"
+    return sync_loctell.fetch_machine_fuel_issues(
+        sess, financial_year_start, today, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, IST=IST,
+        _FUEL_ISSUE_REGISTRATION_ALIASES=_FUEL_ISSUE_REGISTRATION_ALIASES,
+        _ODOMETER_TARGETS=_ODOMETER_TARGETS, _loctell_ist_date=_loctell_ist_date, _num=_num,
+        _odometer_key=_odometer_key, _request_json_with_retry=_request_json_with_retry,
     )
-    try:
-        payload = _request_json_with_retry(
-            sess, url, params={"page": 0, "size": 2000}, timeout=35,
-            label=f"machine fuel issues {financial_year_start} to {today}",
-        )
-    except Exception as exc:
-        raise ErpFetchError(f"machine fuel-issued fetch failed: {exc}") from exc
-
-    vehicle_type_by_registration = {
-        _odometer_key(registration): vehicle_type
-        for vehicle_type, registration in _ODOMETER_TARGETS
-    }
-    vehicle_type_by_registration.update({
-        _odometer_key(registration): vehicle_type
-        for registration, vehicle_type in _FUEL_ISSUE_REGISTRATION_ALIASES.items()
-    })
-    result = []
-    for row in (payload.get("data", []) if isinstance(payload, dict) else []):
-        vehicle = row.get("vehicle") or {}
-        vehicle_type = vehicle_type_by_registration.get(_odometer_key(vehicle.get("regNumber")))
-        if vehicle_type is None:
-            continue
-        issued_on = _loctell_ist_date(row.get("createdDate"))
-        if issued_on is None:
-            continue
-        result.append({
-            "date": str(issued_on),
-            "issued_at": str(row.get("createdDate") or ""),
-            "vehicle_type": vehicle_type,
-            "fuel_issued": round(abs(_num(row.get("qty"))), 2),
-            "fuel_issue_reading": round(_num(row.get("odometerReading")), 2) if row.get("odometerReading") is not None else None,
-            "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "DIESEL"),
-            "remarks": str(row.get("remarks") or "").strip(),
-        })
-    return sorted(result, key=lambda row: (row["date"], row["issued_at"]))
 
 
 def fetch_fuel_received(sess, financial_year_start, today):
-    """Supplier-wise fuel receipts from Loctell, limited to report columns through Received By."""
-    start = int(datetime.combine(financial_year_start, datetime.min.time(), tzinfo=IST).timestamp() * 1000)
-    end = int(datetime.now(IST).timestamp() * 1000)
-    url = (
-        f"{ERP_BASE}/restserver/rest/fuel/getFuelReceivedReportsWithPagination/"
-        f"{start}/{end}/-1/0/-1/-1/-1/-1"
+    return sync_loctell.fetch_fuel_received(
+        sess, financial_year_start, today, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, IST=IST,
+        _loctell_ist_date=_loctell_ist_date, _num=_num, _request_json_with_retry=_request_json_with_retry,
     )
-    try:
-        payload = _request_json_with_retry(
-            sess, url, params={"page": 0, "size": 2000}, timeout=35,
-            label=f"fuel received {financial_year_start} to {today}",
-        )
-    except Exception as exc:
-        raise ErpFetchError(f"fuel received fetch failed: {exc}") from exc
-
-    result = []
-    for row in (payload.get("data", []) if isinstance(payload, dict) else []):
-        received_on = _loctell_ist_date(row.get("createdDate"))
-        if received_on is None:
-            continue
-        try:
-            received_at = str(row.get("createdDate") or "").replace("Z[Etc/UTC]", "+00:00").replace("[Etc/UTC]", "+00:00")
-            if received_at.endswith("Z"):
-                received_at = f"{received_at[:-1]}+00:00"
-            received_label = datetime.fromisoformat(received_at).astimezone(IST).strftime("%Y-%m-%d %H:%M")
-        except ValueError:
-            received_label = str(received_on)
-        qty = _num(row.get("qty"))
-        rate = _num(row.get("rate"))
-        result.append({
-            "date": str(received_on),
-            "received_at": str(row.get("createdDate") or ""),
-            "received_date": received_label,
-            "supplier_name": row.get("supplierName") or "—",
-            "camp": row.get("campName") or "—",
-            "fuel_type": {1: "DIESEL", 2: "PETROL"}.get(row.get("fuelType"), "—"),
-            "quantity": round(qty, 2),
-            "unit_price": round(rate, 2),
-            "amount": round(qty * rate, 2),
-            "received_by": (row.get("createdBy") or {}).get("userFullName") or "—",
-            "remarks": str(row.get("remarks") or "").strip(),
-        })
-    return sorted(result, key=lambda row: row["received_date"], reverse=True)
 
 
 def fetch_fuel_dashboard_balance(sess):
-    """Loctell Fuel Dashboard's authoritative current diesel stock."""
-    now = datetime.now(IST)
-    start = now - timedelta(days=6)  # Same default range as /fuels/dashboard.
-    url = (
-        f"{ERP_BASE}/restserver/rest/fuel/getFuelDashboardData/"
-        f"{int(start.timestamp() * 1000)}/{int(now.timestamp() * 1000)}"
+    return sync_loctell.fetch_fuel_dashboard_balance(
+        sess, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, IST=IST,
+        _FUEL_SPEND_TRACKING_FROM=_FUEL_SPEND_TRACKING_FROM, _num=_num,
+        _request_json_with_retry=_request_json_with_retry,
     )
-    try:
-        payload = _request_json_with_retry(
-            sess, url, timeout=35, label="fuel dashboard balance"
-        )
-    except Exception as exc:
-        raise ErpFetchError(f"fuel dashboard balance fetch failed: {exc}") from exc
-    stock_rows = payload.get("stockData", []) if isinstance(payload, dict) else []
-    return {
-        "diesel_litres": round(sum(_num((row or {}).get("diesel")) for row in stock_rows), 2),
-        "as_of": now.isoformat(),
-        "source": "Loctell Fuel Dashboard",
-        "spend_tracking_from": str(_FUEL_SPEND_TRACKING_FROM),
-    }
 
 
 def fuel_balance_with_value(balance, fuel_received):
-    """Value ERP stock at the latest official diesel receipt rate."""
-    result = dict(balance or {})
-    latest = next((row for row in fuel_received or [] if row.get("fuel_type") == "DIESEL" and _num(row.get("unit_price")) > 0), None)
-    if latest is None:
-        result.update({"diesel_unit_price": None, "diesel_value": None, "price_as_of": None})
-        return result
-    rate = round(_num(latest.get("unit_price")), 2)
-    result.update({
-        "diesel_unit_price": rate,
-        "diesel_value": round(_num(result.get("diesel_litres")) * rate, 2),
-        "price_as_of": latest.get("date"),
-    })
-    return result
+    return sync_loctell.fuel_balance_with_value(balance, fuel_received, _num=_num)
 
 
 def fetch_boulder_rows(sess, from_d, to_d):
-    days = [from_d + timedelta(days=i) for i in range((to_d - from_d).days + 1)]
-
-    def _fetch_day(d):
-        summary = fetch_boulders(_clone_sess(sess), d, d)
-        trips = _num(summary.get("total_trips"))
-        tonnes = _num(summary.get("total_tonnes"))
-        if trips or tonnes:
-            return {
-                "id": 0, "date": str(d),
-                "trips": int(round(trips)),
-                "tonnes_per_trip": round(tonnes / trips, 2) if trips else 0.0,
-                "total_tonnes": round(tonnes, 2),
-                "source": "ERP Input - BOULDERS",
-                "notes": "Loctell input summary",
-            }
-        return None
-
-    rows = []
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        for result in pool.map(_fetch_day, days):
-            if result:
-                rows.append(result)
-    rows.sort(key=lambda r: r["date"])
-    for i, r in enumerate(rows, 1):
-        r["id"] = i
-    return rows
+    return sync_loctell.fetch_boulder_rows(
+        sess, from_d, to_d, _clone_sess=_clone_sess, _num=_num, fetch_boulders=fetch_boulders,
+    )
 
 
 def fetch_iot(sess, from_d, to_d):
-    movements = []
-    try:
-        fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-        data = json.loads(sess.get(
-            f"{ERP_BASE}/iot/ListIOTSaleLinkReport"
-            f"?startDt={fs}&endDt={ts}&startTime=12:00:00 AM&endTime=11:59:59 PM"
-            f"&crusherId=-1&type=1",
-            timeout=8, verify=True).text)
-        for idx, row in enumerate(data.get("data", []), start=1):
-            raw0 = htmllib.unescape(str(row[0])) if len(row) > 0 else ""
-            dt_raw = re.split(r"<", raw0)[0].strip()
-            lbl_m = re.search(r">\s*([^<]+?)\s*</a>", raw0)
-            linked = lbl_m.group(1).strip() if lbl_m else "PLANT ENTRY"
-            mv_dt = None
-            for fmt in ("%d-%m-%Y %I:%M:%S %p", "%d-%m-%Y %I:%M %p",
-                        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"):
-                try:
-                    mv_dt = datetime.strptime(re.sub(r"\s+", " ", dt_raw).strip(), fmt)
-                    break
-                except Exception:
-                    pass
-            if not mv_dt:
-                continue
-            img_html = htmllib.unescape(str(row[8])) if len(row) > 8 else ""
-            img_urls = re.findall(r"https?://[^\s\"'<>]+\.(?:png|jpg|jpeg)", img_html)
-            movements.append({
-                "id": idx,
-                "date": mv_dt.date().isoformat(),
-                "dt": mv_dt.strftime("%d-%m-%Y %I:%M %p"),
-                "linked": linked[:50],
-                "ticket": (_clean(row[1]) if len(row) > 1 else "")[:30],
-                "vehicle": (_clean(row[2]) if len(row) > 2 else "")[:30],
-                "material": (_clean(row[3]) if len(row) > 3 else "")[:50],
-                "party": (_clean(row[4]) if len(row) > 4 else "")[:200],
-                "qty": (_clean(row[5]) if len(row) > 5 else "")[:20],
-                "crusher": (_clean(row[6]) if len(row) > 6 else "")[:100],
-                "img_url": (img_urls[0] if img_urls else "")[:500],
-            })
-    except Exception as e:
-        print(f"  iot fetch error: {e}")
-    return movements
+    return sync_loctell.fetch_iot(sess, from_d, to_d, ERP_BASE=ERP_BASE, _clean=_clean)
 
 
 def fetch_debtors(sess, as_of=None):
-    """Fetch customer outstanding balances from ERP for a given date."""
-    debtors = []
-    try:
-        ds = (as_of or date.today()).strftime("%d-%m-%Y")
-        start_at, length = 0, 500
-        total = None
-        while total is None or start_at < total:
-            payload = _request_json_with_retry(
-                sess,
-                f"{ERP_BASE}/crusher/ListCustomerBalance",
-                params={"date": ds, "type": 1, "sortByName": -1, "sortByPayment": -1,
-                        "customerId": -1, "draw": 1, "start": start_at, "length": length},
-                timeout=35,
-                label=f"debtors {ds} page {start_at}",
-            )
-            rows = payload.get("data", []) or []
-            total = int(payload.get("recordsTotal", len(rows)))
-            if not rows: break
-            for row in rows:
-                if len(row) < 4: continue
-                raw_name = re.sub(r"<span[^>]*>.*?</span>", " ", str(row[0]),
-                                  flags=re.IGNORECASE | re.DOTALL)
-                name = re.sub(r"\s+", " ", _clean(raw_name)).strip()
-                if not name or name.upper() in ("CUSTOMER", "TOTAL", "NAME", "SR NO", ""):
-                    continue
-                billed   = _num(row[2]) if len(row) > 2 else 0
-                received = _num(row[3]) if len(row) > 3 else 0
-                action   = str(row[4] or "") if len(row) > 4 else ""
-                m = re.search(r"viewLedgerTransactions\?customerId=(\d+)", action, re.IGNORECASE)
-                debtors.append({
-                    "name": name[:200],
-                    "outstanding": round(billed - received, 2),
-                    "billed":      round(billed, 2),
-                    "received":    round(received, 2),
-                    "erp_customer_id": int(m.group(1)) if m else None,
-                })
-            start_at += len(rows)
-            if len(rows) < length: break
-    except Exception as e:
-        print(f"  debtors fetch error ({as_of}): {e}")
-        raise ErpFetchError(f"debtors fetch failed for {as_of}; skipped Otomy write: {e}") from e
-    return debtors
+    return sync_loctell.fetch_debtors(
+        sess, as_of, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean, _num=_num,
+        _request_json_with_retry=_request_json_with_retry,
+    )
 
 
 def fetch_creditors(sess, as_of=None):
-    """Fetch vendor outstanding payables from ERP for a given date."""
-    creditors = []
-    try:
-        ds = (as_of or date.today()).strftime("%d-%m-%Y")
-        data = _request_json_with_retry(
-            sess,
-            f"{ERP_BASE}/crusher/ListSupplierBalance?date={ds}&type=1",
-            timeout=35,
-            label=f"creditors {ds}",
-        )
-        for row in data.get("data", []):
-            cells = [_clean(c) for c in row]
-            if not cells or not cells[0]: continue
-            name = cells[0].strip()
-            if name.upper() in ("SUPPLIER", "TOTAL", "NAME", ""): continue
-            credit = _num(cells[1]) if len(cells) > 1 else 0
-            debit  = _num(cells[2]) if len(cells) > 2 else 0
-            action = str(row[3] or "") if len(row) > 3 else ""
-            match = re.search(r"viewSupplierLedgerTransactions\?supplierId=([^'\"&\s]+)", action, re.IGNORECASE)
-            creditors.append({
-                "name": name[:200],
-                "payable": round(debit - credit, 2),
-                "erp_supplier_id": match.group(1) if match else None,
-            })
-    except Exception as e:
-        print(f"  creditors fetch error: {e}")
-        raise ErpFetchError(f"creditors fetch failed; skipped Otomy write: {e}") from e
-    return creditors
+    return sync_loctell.fetch_creditors(
+        sess, as_of, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean, _num=_num,
+        _request_json_with_retry=_request_json_with_retry,
+    )
 
 
 def fetch_vendor_payments(sess, creditors, from_d, to_d):
-    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    if not creditors:
-        return []
-
-    def _fetch_one(creditor):
-        supplier_id = creditor.get("erp_supplier_id")
-        if not supplier_id:
-            return []
-        rows = []
-        try:
-            data = json.loads(_clone_sess(sess).get(
-                f"{ERP_BASE}/crusher/ViewSupplierLedgerTransactions"
-                f"?start={fs}&end={ts}&supplierId={supplier_id}&materialId=-1&crusherId=-1&orderType=2&type=1",
-                timeout=45, verify=True).text)
-            sequence = 0
-            for row in data.get("data", []):
-                cells = [_clean(c) for c in row]
-                if not cells or "TOTAL" in cells[0].upper():
-                    continue
-                amount = _num(cells[6]) if len(cells) > 6 else 0
-                payment_type = cells[8].strip() if len(cells) > 8 else ""
-                details = cells[9].strip() if len(cells) > 9 else ""
-                remarks = cells[12].strip() if len(cells) > 12 else ""
-                if amount <= 0 or not payment_type:
-                    continue
-                paid_on = _parse_date(cells[0], to_d)
-                sequence += 1
-                rows.append({
-                    "date": str(paid_on),
-                    "vendor_name": creditor["name"],
-                    "erp_supplier_id": str(supplier_id),
-                    "amount": amount,
-                    "mode": _mode_bucket(payment_type),
-                    "reference": f"ERP-SUP-{supplier_id}-{paid_on.isoformat()}-{sequence}-{int(round(amount))}"[:100],
-                    "notes": f"ERP supplier_id={supplier_id}; {payment_type}; {details}; {remarks}"[:1000],
-                })
-        except Exception as e:
-            print(f"  vendor payment fetch error ({creditor.get('name')}): {e}")
-            raise ErpFetchError(f"vendor payment fetch failed for {creditor.get('name')}; skipped Otomy write: {e}") from e
-        return rows
-
-    payments = []
-    with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
-        for result in pool.map(_fetch_one, creditors):
-            payments.extend(result)
-    return payments
+    return sync_loctell.fetch_vendor_payments(
+        sess, creditors, from_d, to_d, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError, _clean=_clean,
+        _clone_sess=_clone_sess, _mode_bucket=_mode_bucket, _num=_num, _parse_date=_parse_date,
+    )
 
 
-def _norm_name(s):
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+_norm_name = sync_loctell._norm_name
 
 
 def _vendor_identity(row):
-    """Stable supplier identity; display names are not unique in Loctell."""
-    row = row or {}
-    supplier_id = str(row.get("erp_supplier_id") or row.get("supplier_id") or "").strip()
-    if supplier_id:
-        return f"erp:{supplier_id}"
-    return f"name:{_norm_name(row.get('name'))}"
+    return sync_loctell._vendor_identity(row, _norm_name=_norm_name)
 
 
-def _customer_master_key(name):
-    """Display-master identity: keep meaningful internal spacing intact."""
-    return str(name or "").strip().casefold()
+_customer_master_key = sync_loctell._customer_master_key
 
 
 def canonical_customer_master_rows(rows):
-    """Keep one customer-master row per display identity.
-
-    Balances are normalized separately against the Loctell debtor snapshot.
-    Do not erase a real master simply because it has different internal
-    spacing: the Customers page must represent the source master faithfully.
-    """
-    canonical = {}
-    for source in rows or []:
-        row = dict(source)
-        name = str(row.get("name") or "").strip()
-        key = _customer_master_key(name)
-        if not key:
-            continue
-        canonical.setdefault(key, row)
-    return canonical
+    return sync_loctell.canonical_customer_master_rows(rows, _customer_master_key=_customer_master_key)
 
 
 def canonical_debtors_by_name(rows):
-    """Index one exact debtor balance per normalized customer name.
-
-    Equal spelling variants are safe to collapse.  Differing positive balances
-    are an ERP ambiguity, not something the engine may silently add or choose.
-    Refuse to publish until that source inconsistency is resolved.
-    """
-    canonical = {}
-    for source in rows or []:
-        row = dict(source)
-        key = _norm_name(row.get("name"))
-        if not key:
-            continue
-        existing = canonical.get(key)
-        if existing is not None:
-            old = _num(existing.get("outstanding", existing.get("balance", 0.0)))
-            new = _num(row.get("outstanding", row.get("balance", 0.0)))
-            if abs(old - new) > 0.01:
-                raise ErpFetchError(
-                    "conflicting Loctell debtor balances for normalized customer "
-                    f"{key}: {old:.2f} versus {new:.2f}"
-                )
-            continue
-        canonical[key] = row
-    return canonical
+    return sync_loctell.canonical_debtors_by_name(
+        rows, ErpFetchError=ErpFetchError, _norm_name=_norm_name, _num=_num,
+    )
 
 
 VENDOR_LEDGER_START = date(2025, 2, 15)  # full itemized vendor history begins here
 
 
 def fetch_supplier_ledgers_full(sess, creditors, from_d, to_d, *, strict=False):
-    """Full itemized supplier ledgers keyed by Loctell supplier ID.
-
-    Tally supplier convention: Purchase=Credit (raises payable),
-    Payment=Debit (lowers payable).
-
-    The ordinary common-engine path is deliberately resilient: a failed supplier
-    request returns no entries and the prior local snapshot can remain in use.
-    A vendor-only repair can instead request ``strict=True``. In that mode every
-    requested Loctell supplier request must succeed (including an empty ledger),
-    so a partial ledger bundle can never be published.
-    """
-    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    if not creditors:
-        return {}
-
-    def _one(creditor):
-        sid = creditor.get("erp_supplier_id")
-        name = creditor.get("name", "")
-        if not sid:
-            return (creditor, [], None)
-        entries = []
-        try:
-            data = json.loads(_clone_sess(sess).get(
-                f"{ERP_BASE}/crusher/ViewSupplierLedgerTransactions"
-                f"?start={fs}&end={ts}&supplierId={sid}&materialId=-1&crusherId=-1&orderType=2&type=1",
-                timeout=45, verify=True).text)
-            for row in data.get("data", []):
-                cells = [_clean(c) for c in row]
-                if not cells or not cells[0]:
-                    continue
-                if not re.match(r"\d{1,2}-\d{1,2}-\d{4}", cells[0]):
-                    continue  # skip the trailing TOTAL row
-                d = _parse_date(cells[0], to_d)
-                payment = _num(cells[6]) if len(cells) > 6 else 0.0
-                purchase = _num(cells[7]) if len(cells) > 7 else 0.0
-                mode = cells[8] if len(cells) > 8 else ""
-                narration = cells[9] if len(cells) > 9 else ""
-                if purchase > 0:
-                    entries.append({"type": "purchase", "date": str(d), "vch_type": "Purchase",
-                                    "description": narration or "Material Purchase",
-                                    "debit": 0.0, "credit": round(purchase, 2)})
-                if payment > 0:
-                    entries.append({"type": "payment", "date": str(d), "vch_type": "Payment",
-                                    "description": ((narration or "Payment") + (f" — {mode}" if mode else "")).strip(" —"),
-                                    "debit": round(payment, 2), "credit": 0.0})
-        except Exception as e:
-            print(f"  supplier ledger fetch error ({name}); using lightweight fallback: {e}")
-            return (creditor, [], str(e))
-        return (creditor, entries, None)
-
-    result = {}
-    failures = []
-    with ThreadPoolExecutor(max_workers=min(len(creditors), 10)) as pool:
-        for creditor, entries, error in pool.map(_one, creditors):
-            name = creditor.get("name", "")
-            if error:
-                failures.append(f"{name}: {error}")
-                continue
-            if strict:
-                # An empty but successfully-read ledger is still canonical ERP
-                # data.  Preserve the key so callers do not mistake it for a
-                # failed fetch and fall back to an old local calculation.
-                result[_vendor_identity(creditor)] = entries
-            elif entries:
-                result[_vendor_identity(creditor)] = entries
-    if failures and strict:
-        raise ErpFetchError(
-            "supplier ledger fetch failed; refusing a partial vendor bundle: "
-            + "; ".join(failures)
-        )
-    return result
+    return sync_loctell.fetch_supplier_ledgers_full(
+        sess, creditors, from_d, to_d, strict=strict, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError,
+        _clean=_clean, _clone_sess=_clone_sess, _num=_num, _parse_date=_parse_date,
+        _vendor_identity=_vendor_identity,
+    )
 
 
 CUST_LEDGER_START = date(2025, 2, 15)  # full itemized customer history begins here
@@ -1901,298 +1027,47 @@ def _should_fetch_cust_ledgers(today):
 
 
 def fetch_customer_ledgers_full(sess, debtors, from_d, to_d, only_outstanding=True):
-    """Full itemized customer ledgers (every sale + receipt, incl. same-day spot receipts) for a
-    reconciling Tally view, keyed by normalised name. ViewLedgerTransactions cols: [0]=date,
-    [1]=material, [2]=vehicle, [11]=Debit (sale), [12]=Credit (receipt), [13]=mode. Sale=Debit
-    (raises receivable), Receipt=Credit (lowers it). Limited to debtors with an outstanding balance
-    to bound sync load. Resilient: a customer that errors just yields no entries (its ledger falls
-    back to the archive-based build) — never aborts the sync."""
-    fs, ts = from_d.strftime("%d-%m-%Y"), to_d.strftime("%d-%m-%Y")
-    targets = [d for d in debtors
-               if d.get("erp_customer_id") and (not only_outstanding or _num(d.get("outstanding")) > 0)]
-    if not targets:
-        return {}
-
-    def _one(d):
-        cid, name = d.get("erp_customer_id"), d.get("name", "")
-        entries = []
-        try:
-            data = json.loads(_clone_sess(sess).get(
-                f"{ERP_BASE}/crusher/ViewLedgerTransactions",
-                params={"start": fs, "end": ts, "customerId": cid, "materialId": -1,
-                        "transactionType": -1, "marketingPersonId": -1, "orderType": 2, "type": 1},
-                timeout=45, verify=True).text)
-            for row in data.get("data", []):
-                cells = [_clean(c) for c in row]
-                if not cells or not cells[0]:
-                    continue
-                if not re.match(r"\d{1,2}-\d{1,2}-\d{4}", cells[0]):
-                    continue  # skip the trailing TOTAL row
-                dt = _parse_date(cells[0], to_d)
-                debit = _num(cells[11]) if len(cells) > 11 else 0.0
-                credit = _num(cells[12]) if len(cells) > 12 else 0.0
-                material = cells[1] if len(cells) > 1 else ""
-                vehicle = cells[2] if len(cells) > 2 else ""
-                mode = cells[13] if len(cells) > 13 else ""
-                if debit > 0:
-                    entries.append({"type": "sale", "date": str(dt), "vch_type": "Sale",
-                                    "description": (f"{material} — {vehicle}".strip(" —")) or "Sale",
-                                    "debit": round(debit, 2), "credit": 0.0,
-                                    "material": material, "vehicle_no": vehicle,
-                                    "customer_name": name, "erp_customer_id": cid,
-                                    "qty_mt": _num(cells[5]) if len(cells) > 5 else 0.0,
-                                    "rate_per_mt": _num(cells[6]) if len(cells) > 6 else 0.0})
-                if credit > 0:
-                    entries.append({"type": "receipt", "date": str(dt), "vch_type": "Receipt",
-                                    "description": f"Receipt ({mode})" if mode else "Receipt",
-                                    "debit": 0.0, "credit": round(credit, 2)})
-        except Exception as e:
-            print(f"  customer ledger fetch error ({name}); using fallback: {e}")
-            return (name, [])
-        return (name, entries)
-
-    result = {}
-    with ThreadPoolExecutor(max_workers=min(len(targets), CUST_LEDGER_WORKERS)) as pool:
-        for name, entries in pool.map(_one, targets):
-            if entries:
-                result[_norm_name(name)] = entries
-    return result
+    return sync_loctell.fetch_customer_ledgers_full(
+        sess, debtors, from_d, to_d, only_outstanding, CUST_LEDGER_WORKERS=CUST_LEDGER_WORKERS,
+        ERP_BASE=ERP_BASE, _clean=_clean, _clone_sess=_clone_sess, _norm_name=_norm_name, _num=_num,
+        _parse_date=_parse_date,
+    )
 
 
 def _customer_identity_sale_key(row, amount_key):
-    """Loctell's stable sale fingerprint when ListCustomerWiseReport omits customer ID."""
-    return (
-        str(row.get("date") or "")[:10],
-        _norm_name(row.get("material")),
-        _norm_name(row.get("vehicle_no")),
-        round(_num(row.get(amount_key)), 2),
-    )
+    return sync_loctell._customer_identity_sale_key(row, amount_key, _norm_name=_norm_name, _num=_num)
 
 
 def reconcile_fresh_credit_sale_identities(sales, debtors, ledger_sales):
-    """Resolve a renamed fresh credit-sale name only from one exact ERP ledger match.
-
-    ListCustomerWiseReport provides a display name while the detailed customer
-    ledger provides the immutable ERP customer ID.  A missing or ambiguous
-    match must abort publication: allowing it would split receivables between
-    an old and a renamed customer identity.
-    """
-    debtor_names = {_norm_name(row.get("name")) for row in debtors or []}
-    pending = [
-        sale for sale in sales or []
-        if _num(_sale_channels(sale)[1]) > 0.005
-        and _norm_name(sale.get("customer_name")) not in debtor_names
-    ]
-    if not pending:
-        return 0
-    candidates = {}
-    for entry in ledger_sales or []:
-        if _num(entry.get("debit")) <= 0.005:
-            continue
-        candidates.setdefault(_customer_identity_sale_key(entry, "debit"), []).append(entry)
-    resolved, problems = 0, []
-    for sale in pending:
-        key = _customer_identity_sale_key(sale, "credit_amount")
-        matches = candidates.get(key, [])
-        source_ids = {str(row.get("erp_customer_id") or "") for row in matches if row.get("erp_customer_id")}
-        if len(matches) == 1 and len(source_ids) == 1:
-            sale["customer_name"] = matches[0]["customer_name"]
-            sale["erp_customer_id"] = matches[0]["erp_customer_id"]
-            resolved += 1
-            continue
-        problems.append(
-            f"ticket {sale.get('ticket_no') or '?'} on {key[0]} "
-            f"({sale.get('customer_name') or 'blank'}): {len(matches)} ledger matches"
-        )
-    if problems:
-        raise RuntimeError("customer identity guard blocked R2 publish; " + "; ".join(problems[:5]))
-    return resolved
+    return sync_loctell.reconcile_fresh_credit_sale_identities(
+        sales, debtors, ledger_sales, _customer_identity_sale_key=_customer_identity_sale_key,
+        _norm_name=_norm_name, _num=_num, _sale_channels=_sale_channels,
+    )
 
 
 def resolve_fresh_credit_sale_identities(sess, sales, debtors, from_d, to_d):
-    """Fetch detailed ledger evidence only when a fresh credit-sale name changed."""
-    debtor_names = {_norm_name(row.get("name")) for row in debtors or []}
-    needs_identity = any(
-        _num(_sale_channels(sale)[1]) > 0.005
-        and _norm_name(sale.get("customer_name")) not in debtor_names
-        for sale in sales or []
+    return sync_loctell.resolve_fresh_credit_sale_identities(
+        sess, sales, debtors, from_d, to_d, _norm_name=_norm_name, _num=_num, _sale_channels=_sale_channels,
+        fetch_customer_ledgers_full=fetch_customer_ledgers_full,
+        reconcile_fresh_credit_sale_identities=reconcile_fresh_credit_sale_identities,
     )
-    if not needs_identity:
-        return 0
-    ledgers = fetch_customer_ledgers_full(sess, debtors, from_d, to_d)
-    ledger_sales = [
-        entry for entries in ledgers.values() for entry in entries
-        if entry.get("type") == "sale"
-    ]
-    return reconcile_fresh_credit_sale_identities(sales, debtors, ledger_sales)
 
 
-def compute_repayments(debtors_prev, debtors_curr, as_of_date):
-    """
-    Credit repayments = customers whose outstanding balance DECREASED between
-    the previous snapshot and the current snapshot.
-    Returns a list matching the customer_repayments format used by the dashboard.
-    """
-    prev_map = {d["name"]: d for d in debtors_prev}
-    repayments = []
-    for curr in debtors_curr:
-        prev = prev_map.get(curr["name"])
-        if not prev:
-            continue
-        delta = round(prev["outstanding"] - curr["outstanding"], 2)
-        if delta <= 0:
-            continue
-        received_delta = round(curr["received"] - prev["received"], 2)
-        repayments.append({
-            "date": str(as_of_date),
-            "customer_name": curr["name"],
-            "mode": "Cash/Bank",
-            "reference": "ERP balance delta",
-            "payment_received": round(received_delta if received_delta > 0 else delta, 2),
-            "bank_received": 0.0,
-            "cash_received": 0.0,
-            "sale_adjusted": 0.0,
-            "amount": delta,
-            "balance": curr["outstanding"],
-            "previous_balance": prev["outstanding"],
-            "source": "ERP Outstanding Delta",
-        })
-    repayments.sort(key=lambda r: r["amount"], reverse=True)
-    return repayments
+compute_repayments = sync_loctell.compute_repayments
 
 def fetch_customer_ledger_rows(sess, from_d, to_d, erp_customer_id):
-    try:
-        payload = sess.get(
-            f"{ERP_BASE}/crusher/ViewLedgerTransactions",
-            params={
-                "start": from_d.strftime("%d-%m-%Y"),
-                "end": to_d.strftime("%d-%m-%Y"),
-                "customerId": erp_customer_id,
-                "materialId": -1,
-                "transactionType": -1,
-                "marketingPersonId": -1,
-                "orderType": 2,
-                "type": 1,
-            },
-            timeout=35,
-            verify=True,
-        ).json()
-        return payload.get("data", []) or []
-    except Exception as e:
-        print(f"  customer ledger {erp_customer_id}: {e}")
-        raise ErpFetchError(f"customer ledger fetch failed for {erp_customer_id}; skipped Otomy write: {e}") from e
+    return sync_loctell.fetch_customer_ledger_rows(
+        sess, from_d, to_d, erp_customer_id, ERP_BASE=ERP_BASE, ErpFetchError=ErpFetchError,
+    )
 
 def compute_repayments_from_erp(sess, start, end, previous_debtors, current_debtors, debtors_cache=None):
-    # --- Phase 1: pre-fetch all intermediate days' debtors in parallel ---
-    inter_days = [start + timedelta(days=i) for i in range((end - start).days)]
-    need_fetch = [d for d in inter_days if not (debtors_cache and d in debtors_cache)]
-    pre = {}
-    if need_fetch:
-        with ThreadPoolExecutor(max_workers=min(len(need_fetch), ERP_DEBTOR_WORKERS)) as pool:
-            futs = {d: pool.submit(fetch_debtors, _clone_sess(sess), d) for d in need_fetch}
-            for d, f in futs.items():
-                pre[d] = f.result()
-
-    def _day_debtors(d):
-        if d == end:
-            return current_debtors
-        if debtors_cache and d in debtors_cache:
-            return debtors_cache[d]
-        return pre.get(d, [])
-
-    # --- Phase 2: traverse snapshot chain, collect (day, cid, current_row) tasks ---
-    previous_snapshot = {
-        row.get("erp_customer_id"): row
-        for row in previous_debtors
-        if row.get("erp_customer_id") is not None
-    }
-    tasks = []
-    current_day = start
-    while current_day <= end:
-        current_snapshot = {
-            row.get("erp_customer_id"): row
-            for row in _day_debtors(current_day)
-            if row.get("erp_customer_id") is not None
-        }
-        for cid, curr in current_snapshot.items():
-            prev = previous_snapshot.get(cid, {})
-            credit_delta = round(_num(curr.get("received")) - _num(prev.get("received")), 2)
-            balance_change = round(abs(_num(curr.get("outstanding")) - _num(prev.get("outstanding"))), 2)
-            if credit_delta > 0 or balance_change > 0:
-                tasks.append((current_day, cid, curr))
-        previous_snapshot = current_snapshot
-        current_day += timedelta(days=1)
-
-    # --- Phase 3: parallel fetch all customer ledger rows ---
-    def _process_one(task):
-        day, cid, curr = task
-        # Match localhost's import_customer_credit_receipts: a repayment with no identifiable
-        # customer name is skipped (_get_or_create_customer("") -> None -> continue). Otherwise a
-        # blank-name row can't net against its same-day spot sale and inflates the cash/bank book.
-        if not str(curr.get("name", "")).strip():
-            return []
-        rows = fetch_customer_ledger_rows(_clone_sess(sess), day, day, cid)
-        total_debit = 0.0
-        total_credit = 0.0
-        credit_by_channel = {"bank": 0.0, "cash": 0.0}
-        raw_modes = []
-        for row in rows:
-            cols = [_clean(col) for col in row]
-            if not cols or (cols[0] or "").upper() == "TOTAL":
-                continue
-            debit  = _num(cols[11]) if len(cols) > 11 else 0.0
-            credit = _num(cols[12]) if len(cols) > 12 else 0.0
-            mode   = cols[13]       if len(cols) > 13 else ""
-            if debit  > 0: total_debit += debit
-            if credit > 0:
-                total_credit += credit
-                credit_by_channel[_ledger_payment_channel(cols)] += credit
-                raw_modes.append(mode or "Payment")
-        if total_credit <= 0:
-            return []
-        safe_tc = total_credit or 1
-        cash_sa = min(round(credit_by_channel["cash"], 2),
-                      round(total_debit * (credit_by_channel["cash"] / safe_tc), 2))
-        bank_sa = min(round(credit_by_channel["bank"], 2),
-                      round(total_debit * (credit_by_channel["bank"] / safe_tc), 2))
-        cash_amt = round(max(credit_by_channel["cash"] - cash_sa, 0.0), 2)
-        bank_amt = round(max(credit_by_channel["bank"] - bank_sa, 0.0), 2)
-        mode_notes = ", ".join(dict.fromkeys([m for m in raw_modes if m]))[:120]
-        result = []
-        for mode, amount, payment_received, sale_adjusted in (
-            ("Cash", cash_amt, round(credit_by_channel["cash"], 2), cash_sa),
-            ("Bank", bank_amt, round(credit_by_channel["bank"], 2), bank_sa),
-        ):
-            if payment_received <= 0:
-                continue
-            reference = f"ERP-CREDIT-{cid}-{day.isoformat()}-{mode.upper()}"
-            if reference in EXCLUDED_CUSTOMER_RECEIPT_REFS:
-                continue
-            result.append({
-                "date": str(day),
-                "customer_name": curr["name"],
-                "mode": mode,
-                "reference": reference,
-                "payment_received": payment_received,
-                "bank_received": payment_received if mode == "Bank" else 0.0,
-                "cash_received": payment_received if mode == "Cash" else 0.0,
-                "sale_adjusted": round(sale_adjusted, 2),
-                "amount": amount,
-                "balance": round(_num(curr.get("outstanding")), 2),
-                "source": "Customer Ledger",
-                "erp_customer_id": cid,
-                "notes": f"ledger modes={mode_notes}",
-            })
-        return result
-
-    repayments = []
-    if tasks:
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            for result in pool.map(_process_one, tasks):
-                repayments.extend(result)
-
-    repayments.sort(key=lambda row: (row["date"], row["amount"], row.get("customer_name", ""), row.get("mode", "")), reverse=True)
-    return repayments
+    return sync_loctell.compute_repayments_from_erp(
+        sess, start, end, previous_debtors, current_debtors, debtors_cache,
+        ERP_DEBTOR_WORKERS=ERP_DEBTOR_WORKERS,
+        EXCLUDED_CUSTOMER_RECEIPT_REFS=EXCLUDED_CUSTOMER_RECEIPT_REFS, _clean=_clean,
+        _clone_sess=_clone_sess, _ledger_payment_channel=_ledger_payment_channel, _num=_num,
+        fetch_customer_ledger_rows=fetch_customer_ledger_rows, fetch_debtors=fetch_debtors,
+    )
 
 # ─── control room builder ─────────────────────────────────────────────────────
 
@@ -2202,305 +1077,13 @@ def build_control(sales, expenses, from_d, to_d,
                   labour=None, parts=None, machines=None,
                   vendor_payments=None,
                   bank_balance_book=0.0, cash_balance_office_book=0.0):
-    days        = (to_d - from_d).days + 1
-    total_sales = sum(_sale_total(s) for s in sales)
-    total_qty   = sum(_num(s["qty_mt"]) for s in sales)
-    cash_collected = sum(_sale_total(s) for s in sales if s["payment_mode"] != "Credit")
-    credit_sales   = total_sales - cash_collected
-    labour = labour or []
-    parts = parts or []
-    machines = machines or []
-    vendor_payments = vendor_payments or []
-    expense_direct = sum(_num(e["amount"]) for e in expenses)
-    labour_total = sum(_num(row.get("amount")) for row in labour)
-    parts_total = sum(_num(row.get("total_amount")) for row in parts)
-    total_exp = expense_direct + labour_total + parts_total
-    director_expense_total = (
-        sum(
-            _num(e.get("amount"))
-            for e in expenses
-            if _is_director_payment(e.get("category"), e.get("description"), e.get("payment_mode"), e.get("notes"), when=e.get("date"))
-        )
-        + sum(
-            _num(row.get("amount"))
-            for row in labour
-            if _is_director_payment(row.get("worker_name"), row.get("worker_type"), row.get("notes"), when=row.get("date"))
-        )
-        + sum(
-            _num(row.get("total_amount"))
-            for row in parts
-            if _is_director_payment(row.get("machine_name"), row.get("part_name"), row.get("supplier"), row.get("notes"), when=row.get("date"))
-        )
+    return sync_finance.build_control(
+        sales, expenses, from_d, to_d, boulders, debtors, creditors, cash_balance, bank_net, repayments,
+        labour, parts, machines, vendor_payments, bank_balance_book, cash_balance_office_book,
+        _balance_overlay=_balance_overlay, _is_director_payment=_is_director_payment, _num=_num,
+        _overlay_mode=_overlay_mode, _payment_channel=_payment_channel, _sale_channels=_sale_channels,
+        _sale_total=_sale_total,
     )
-    operating_total_exp = total_exp - director_expense_total
-    # Only ERP expense rows have a recorded cash/bank mode.  Do not fabricate
-    # a channel for legacy labour/parts rows that remain in total expenses.
-    operating_expense_cash = 0.0
-    operating_expense_bank = 0.0
-    # The dashboard tiles must use the same reviewed corrections as the
-    # cashbook and balance overlay.  Otherwise an ERP row corrected from cash
-    # to bank appears in the right book but in the wrong dashboard tile.
-    mode_corrections = _balance_overlay().get("corrections", [])
-    for expense in expenses:
-        if _is_director_payment(
-            expense.get("category"), expense.get("description"), expense.get("payment_mode"),
-            expense.get("notes"), when=expense.get("date"),
-        ):
-            continue
-        channel = _overlay_mode(mode_corrections, expense) or _payment_channel(
-            expense.get("payment_mode") or "Cash"
-        )
-        if channel == "cash":
-            operating_expense_cash += _num(expense.get("amount"))
-        else:
-            operating_expense_bank += _num(expense.get("amount"))
-    profit = total_sales - operating_total_exp
-
-    # material mix
-    by_material = {}
-    for s in sales:
-        k = s["material"] or "Unknown"
-        if k not in by_material:
-            by_material[k] = {"material": k, "qty_mt": 0.0, "amount": 0.0, "tickets": 0}
-        by_material[k]["qty_mt"]  += _num(s["qty_mt"])
-        by_material[k]["amount"]  += _sale_total(s)
-        by_material[k]["tickets"] += 1
-
-    # expense mix
-    by_expense = {}
-    for e in expenses:
-        k = e["category"] or "General"
-        by_expense[k] = by_expense.get(k, 0.0) + _num(e["amount"])
-    if labour_total:
-        by_expense["Labour"] = by_expense.get("Labour", 0.0) + labour_total
-    if parts_total:
-        by_expense["Parts"] = by_expense.get("Parts", 0.0) + parts_total
-
-    # customer sales breakdown
-    by_customer = {}
-    for s in sales:
-        c  = s["customer_name"] or "Cash Sale"
-        m  = s["material"]      or "Mixed"
-        k  = (c, m)
-        g  = by_customer.setdefault(k, {
-            "customer_name": c, "material": m,
-            "ticket_count": 0, "qty_mt": 0.0, "amount": 0.0, "mdp_ton": 0.0,
-            "bank_received": 0.0, "cash_received": 0.0,
-            "paid_against_sale": 0.0, "credit_sale_amount": 0.0, "tickets": [],
-        })
-        amt = _sale_total(s)
-        pm  = s["payment_mode"]
-        # Split each sale into its real channels (handles SPLIT payments).
-        s_cash, s_credit, s_upi = _sale_channels(s)
-        accumulate_sale_group(g, amt, _num(s["qty_mt"]), _num(s.get("mdp_ton")), s_cash, s_credit, s_upi)
-        g["tickets"].append({
-            "date": s["date"], "ticket_no": s.get("ticket_no", "—"),
-            "qty_mt": round(_num(s["qty_mt"]), 2),
-            "amount": round(amt, 2), "payment_mode": pm,
-        })
-
-    csr = []
-    for g in by_customer.values():
-        csr.append({
-            "customer_name": g["customer_name"], "material": g["material"],
-            "ticket_count":  g["ticket_count"],
-            "ticket_nos":    [t["ticket_no"] for t in g["tickets"]],
-            "tickets":       g["tickets"],
-            "qty_mt":               round(g["qty_mt"], 2),
-            "amount":               round(g["amount"], 2),
-            "mdp_ton":              round(g["mdp_ton"], 3),
-            "bank_received":        round(g["bank_received"], 2),
-            "cash_received":        round(g["cash_received"], 2),
-            "paid_against_sale":    round(g["paid_against_sale"], 2),
-            "credit_sale_amount":   round(g["credit_sale_amount"], 2),
-        })
-    csr.sort(key=lambda r: r["amount"], reverse=True)
-
-    # expense rows for the detail table
-    expense_rows = []
-    for e in expenses:
-        expense_rows.append({
-            "date":         e["date"],
-            "type":         "Expense",
-            "category":     e["category"] or "Other",
-            "description":  e["description"] or e["category"] or "Expense",
-            "party":        "",
-            "payment_mode": e["payment_mode"] or "",
-            "remarks":      e.get("notes") or "",
-            "amount":       round(_num(e["amount"]), 2),
-            # Preserve the exact decision behind summary.expenses.  The browser
-            # receives no notes field, so it must not try to classify a row again.
-            "is_operating_expense": not _is_director_payment(
-                e.get("category"), e.get("description"), e.get("payment_mode"),
-                e.get("notes"), when=e.get("date"),
-            ),
-        })
-    for row in labour:
-        expense_rows.append({
-            "date": row.get("date"),
-            "type": "Labour",
-            "category": row.get("worker_type") or "Labour",
-            "description": row.get("worker_name") or "Labour entry",
-            "party": row.get("worker_name") or "",
-            "payment_mode": "Paid" if row.get("paid") else "Unpaid",
-            "remarks": row.get("notes") or "",
-            "amount": round(_num(row.get("amount")), 2),
-            "is_operating_expense": not _is_director_payment(
-                row.get("worker_name"), row.get("worker_type"), row.get("notes"),
-                when=row.get("date"),
-            ),
-        })
-    for row in parts:
-        expense_rows.append({
-            "date": row.get("date"),
-            "type": "Part",
-            "category": row.get("machine_name") or "Parts",
-            "description": row.get("part_name") or "Part / Repair",
-            "party": row.get("supplier") or "",
-            "payment_mode": "",
-            "remarks": row.get("notes") or "",
-            "amount": round(_num(row.get("total_amount")), 2),
-            "is_operating_expense": not _is_director_payment(
-                row.get("machine_name"), row.get("part_name"), row.get("supplier"),
-                row.get("notes"), when=row.get("date"),
-            ),
-        })
-    expense_rows.sort(key=lambda r: (r["date"], r["amount"]), reverse=True)
-
-    # trend
-    trend = []
-    for i in range(days):
-        d  = str(from_d + timedelta(days=i))
-        ds = sum(_sale_total(s) for s in sales if s["date"] == d)
-        de = (
-            sum(_num(e["amount"]) for e in expenses if e["date"] == d)
-            + sum(_num(row.get("amount")) for row in labour if row.get("date") == d)
-            + sum(_num(row.get("total_amount")) for row in parts if row.get("date") == d)
-        )
-        trend.append({
-            "date": d, "sales": round(ds, 2), "expenses": round(de, 2),
-            "profit": round(ds - de, 2),
-            "qty_mt": round(sum(_num(s["qty_mt"]) for s in sales if s["date"] == d), 2),
-        })
-
-    # receivables from debtors
-    receivables     = []
-    total_receivable = 0.0
-    for d in sorted(debtors or [], key=lambda r: r["outstanding"], reverse=True):
-        if d["outstanding"] > 0:
-            receivables.append({"name": d["name"], "balance": d["outstanding"]})
-            total_receivable += d["outstanding"]
-    # This tile is a normal customer receivable, not a special hard-coded
-    # balance.  Derive it from the same selected-date debtor list as the
-    # receivables total so it heals with every Loctell correction.
-    kumar_balance = next(
-        (
-            _num(row.get("outstanding", row.get("balance", 0.0)))
-            for row in debtors or []
-            if str(row.get("name") or "").strip().upper() == "KUMAR SIR"
-        ),
-        0.0,
-    )
-
-    # payables from creditors
-    payables       = []
-    total_payable  = 0.0
-    for c in sorted(creditors or [], key=lambda r: r["payable"], reverse=True):
-        if c["payable"] > 0:
-            payables.append({"name": c["name"], "balance": c["payable"]})
-            total_payable += c["payable"]
-
-    # repayments
-    rp = repayments or []
-    rp_total        = round(sum(r["amount"]            for r in rp), 2)
-    rp_pay_total    = round(sum(r["payment_received"]  for r in rp), 2)
-    rp_bank_total   = round(sum(r["bank_received"]     for r in rp), 2)
-    rp_cash_total   = round(sum(r["cash_received"]     for r in rp), 2)
-
-    # Credit-liquidity KPIs are available only for the clean Loctell period.
-    # They use the ticket tender split and gross customer cash received, never
-    # cashbook overlays or reconciliation adjustments.  A positive net-credit
-    # figure is profit/cash that remains with customers at period end.
-    credit_sale_total = round(sum(row["credit_sale_amount"] for row in csr), 2)
-    credit_recovery_total = rp_pay_total
-    credit_liquidity = credit_liquidity_metrics(
-        profit, total_qty, credit_sale_total, credit_recovery_total,
-        eligible=from_d >= date(2026, 6, 1),
-    )
-
-    # alerts
-    alerts = []
-    if profit < 0:
-        alerts.append({"level": "danger", "title": "Loss in selected period",
-                       "detail": "Expenses higher than sales."})
-    if total_qty > 0 and not (boulders or {}).get("total_tonnes"):
-        alerts.append({"level": "warning", "title": "Boulder input missing",
-                       "detail": "Sales exist but quarry input was not captured."})
-    if not alerts:
-        alerts.append({"level": "good", "title": "No major control alert",
-                       "detail": "Data looks stable."})
-
-    return {
-        "period": {"from": str(from_d), "to": str(to_d), "days": days},
-        "summary": {
-            "sales":            round(total_sales, 2),
-            "cash_collected":   round(cash_collected, 2),
-            "credit_sales":     round(credit_sales, 2),
-            "expenses":         round(operating_total_exp, 2),
-            "operating_expense_cash": round(operating_expense_cash, 2),
-            "operating_expense_bank": round(operating_expense_bank, 2),
-            "expenses_before_director_adjustment": round(total_exp, 2),
-            "profit":           round(profit, 2),
-            "margin_pct":       round(profit / total_sales * 100, 1) if total_sales else 0.0,
-            "sales_qty_mt":     round(total_qty, 2),
-            "avg_rate_per_mt":  round(total_sales / total_qty, 2) if total_qty else 0.0,
-            "boulder_input_mt": round((boulders or {}).get("total_tonnes", 0.0), 2),
-            "boulder_trips":    round((boulders or {}).get("total_trips",  0.0), 2),
-            "recovery_pct":     round(total_qty / (boulders or {}).get("total_tonnes", 0) * 100, 1)
-                                if (boulders or {}).get("total_tonnes") else 0.0,
-            "machine_hours":     round(sum(_num(row.get("running_hours")) for row in machines), 2),
-            "machine_fuel_liters": round(sum(_num(row.get("fuel_liters")) for row in machines), 2),
-            "fuel_per_mt":       0.0,
-            "bank_balance":            round(bank_net, 2),
-            "cash_balance_office":     round(cash_balance, 2),
-            "bank_balance_book":       round(bank_balance_book, 2),
-            "cash_balance_office_book": round(cash_balance_office_book, 2),
-            "operating_balance_from":  str(from_d),
-            "kumar_balance":           round(kumar_balance, 2),
-            "credit_payment_received": rp_pay_total,
-            **credit_liquidity,
-            "selected_period_profit_per_tonne":
-                round(profit / total_qty, 2) if total_qty else 0.0,
-            "selected_period_profit_director_adjusted": round(profit, 2),
-            "selected_period_director_adjusted_profit_per_tonne":
-                round(profit / total_qty, 2) if total_qty else 0.0,
-            "receivables": round(total_receivable, 2),
-            "payables":    round(total_payable,    2),
-        },
-        "mix": {
-            "materials": sorted(by_material.values(), key=lambda r: r["amount"], reverse=True),
-            "expenses":  [{"category": k, "amount": round(v, 2)}
-                          for k, v in sorted(by_expense.items(), key=lambda i: i[1], reverse=True)],
-        },
-        "input": {
-            "source":    "ERP",
-            "materials": (boulders or {}).get("materials", []),
-            "suppliers": (boulders or {}).get("suppliers", []),
-        },
-        "customer_sales":        csr,
-        "customer_sales_totals": customer_sales_totals(csr),
-        "customer_repayments":              rp,
-        "customer_repayments_total":        rp_total,
-        "customer_repayments_payment_total": rp_pay_total,
-        "customer_repayments_bank_total":   rp_bank_total,
-        "customer_repayments_cash_total":   rp_cash_total,
-        "machine_summary": [],
-        "expense_rows":    expense_rows,
-        "trend":           trend,
-        "top_receivables": receivables[:5],
-        "top_payables":    payables[:5],
-        "alerts":          alerts,
-    }
 
 # ─── write helper ─────────────────────────────────────────────────────────────
 
@@ -2529,356 +1112,60 @@ def stage_balance_overlay_config():
     _BALANCE_OVERLAY = None
 
 def _bank_amount_key(row):
-    return (
-        str(row.get("date", ""))[:10],
-        round(_num(row.get("credit")), 2),
-        round(_num(row.get("debit")), 2),
-    )
+    return sync_archive._bank_amount_key(row, _num=_num)
 
-def _erp_credit_ref(row):
-    text = " ".join(str(row.get(key) or "") for key in ("id", "description", "reference", "notes"))
-    match = re.search(r"ERP-CREDIT-(\d+)-\d{4}-\d{2}-\d{2}", text)
-    if match:
-        return match.group(1)
-    match = re.search(r"\breceipt-(\d+)-\d{4}-\d{2}-\d{2}\b", text)
-    if match and match.group(1) != "1":
-        return match.group(1)
-    return ""
+_erp_credit_ref = sync_archive._erp_credit_ref
 
 def _bank_dedupe_key(row):
-    source = str(row.get("source") or "").strip()
-    date_value, credit, debit = _bank_amount_key(row)
-    # Two independently-recorded bank expenses can legitimately have the same
-    # date, amount and visible description.  Their stable expense id is the
-    # only safe way to collapse an archive copy with its regenerated copy
-    # without dropping a real payment (for example the two 21-Apr ₹15,000
-    # farmer payments).
-    if source == "Expense" and row.get("id"):
-        return ("expense", str(row["id"]))
-    if source == "Credit Payment" and row.get("id"):
-        # Repayments are aggregated per customer/day/channel.  Different
-        # customers can legitimately pay the same amount on the same date;
-        # collapsing only by date and amount drops a real bank credit.
-        return ("credit-payment", str(row["id"]))
-    return (
-        "bank",
-        source,
-        date_value,
-        str(row.get("description") or ""),
-        credit,
-        debit,
-        str(row.get("bank_name") or ""),
-    )
+    return sync_archive._bank_dedupe_key(row, _bank_amount_key=_bank_amount_key)
 
-def _bank_row_quality(row):
-    text = " ".join(str(row.get(key) or "") for key in ("id", "description", "reference", "notes"))
-    score = 0
-    if "ERP-CREDIT-" in text:
-        score += 10
-    if re.search(r"\breceipt-(?!1-)\d+-\d{4}-\d{2}-\d{2}\b", text):
-        score += 5
-    if " - Customer" in str(row.get("description") or ""):
-        score -= 2
-    if row.get("id"):
-        score += 1
-    if row.get("description"):
-        score += 1
-    return score
+_bank_row_quality = sync_archive._bank_row_quality
 
 def dedupe_bank_rows(rows):
-    merged = {}
-    for row in rows or []:
-        if _is_vendor_payment_bank_row(row):
-            continue
-        if _is_excluded_customer_receipt_bank_row(row):
-            continue
-        key = _bank_dedupe_key(row)
-        if key in merged:
-            merged[key] = row if _bank_row_quality(row) >= _bank_row_quality(merged[key]) else merged[key]
-        else:
-            merged[key] = row
-    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
-
-def _archive_key(section, row):
-    if section == "sales":
-        ticket_no = str(row.get("ticket_no") or "").strip()
-        if ticket_no:
-            return "sales-ticket:" + "|".join(str(part) for part in (
-                row.get("date", ""),
-                ticket_no,
-            ))
-        return "sales:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("vehicle_no", ""),
-            row.get("customer_name", ""),
-            row.get("material", ""),
-            row.get("amount", ""),
-        ))
-    if section == "expenses":
-        return "expenses:" + "|".join(str(part) for part in (
-            row.get("erp_key") or "",
-            row.get("date", ""),
-            row.get("category", ""),
-            row.get("description", ""),
-            row.get("amount", ""),
-            row.get("payment_mode", ""),
-            row.get("notes", ""),
-        ))
-    if section == "receipts":
-        reference = str(row.get("reference") or "").strip()
-        if reference:
-            return "receipts-ref:" + "|".join(str(part) for part in (
-                row.get("date", ""),
-                row.get("mode", ""),
-                reference,
-            ))
-        return "receipts:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("customer_id", row.get("customer_name", "")),
-            row.get("amount", ""),
-            row.get("payment_received", ""),
-            row.get("reference", ""),
-        ))
-    if section == "balances":
-        return "balances:" + str(row.get("date", ""))
-    if section == "boulders":
-        return "boulders:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("source", ""),
-        ))
-    if section == "bank":
-        return "bank:" + "|".join(str(part) for part in _bank_dedupe_key(row))
-    if section == "cash":
-        return "cash:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("ledger", ""),
-            row.get("description", ""),
-            row.get("received", ""),
-            row.get("paid", ""),
-        ))
-    if section == "vendor_payments":
-        reference = str(row.get("reference") or "").strip()
-        if reference:
-            return "vendor-payments-ref:" + "|".join(str(part) for part in (
-                row.get("date", ""),
-                row.get("mode", ""),
-                reference,
-            ))
-        return "vendor-payments:" + "|".join(str(part) for part in (
-            row.get("date", ""),
-            row.get("vendor_id", row.get("vendor_name", "")),
-            row.get("amount", ""),
-            row.get("mode", ""),
-        ))
-    if row.get("id"):
-        return f"{section}:id:{row['id']}"
-    parts = [
-        row.get("date", ""),
-        row.get("ticket_no", ""),
-        row.get("description", ""),
-        row.get("customer_name", ""),
-        row.get("amount", row.get("received", row.get("credit", ""))),
-        row.get("paid", row.get("debit", "")),
-    ]
-    return f"{section}:" + "|".join(str(part) for part in parts)
-
-def _is_vendor_payment_expense(row):
-    text = " ".join(str(row.get(key, "")) for key in ("id", "category", "description", "notes")).upper()
-    return row.get("category") == "Vendor Payment" or "VENDOR PAYMENT" in text or "ERP-SUP-" in text
-
-def _is_vendor_payment_bank_row(row):
-    text = " ".join(str(row.get(key, "")) for key in ("id", "bank_name", "source", "description")).upper()
-    return (
-        row.get("source") == "Vendor Payment"
-        or row.get("bank_name") == "UPI/Bank Vendor Payment"
-        or "VENDOR PAYMENT" in text
-        or "VENDOR-PAYMENT-" in text
+    return sync_archive.dedupe_bank_rows(
+        rows, _bank_dedupe_key=_bank_dedupe_key, _bank_row_quality=_bank_row_quality,
+        _is_excluded_customer_receipt_bank_row=_is_excluded_customer_receipt_bank_row,
+        _is_vendor_payment_bank_row=_is_vendor_payment_bank_row,
     )
 
-def _row_quality(section, row):
-    if section == "sales":
-        score = 0
-        if str(row.get("id") or "") not in ("", "0"):
-            score += 10
-        if row.get("customer_id"):
-            score += 4
-        if row.get("material") and row.get("material") != "6mm":
-            score += 2
-        return score
-    if section == "receipts":
-        score = 0
-        if str(row.get("id") or "") not in ("", "0"):
-            score += 10
-        if row.get("customer_id"):
-            score += 4
-        if row.get("customer_name"):
-            score += 2
-        if row.get("payment_received") is not None:
-            score += 2
-        if row.get("balance") is not None:
-            score += 1
-        return score
-    if section == "balances":
-        score = 0
-        sample_receivable = (row.get("receivables_rows") or row.get("top_receivables") or [{}])[0] if isinstance(row, dict) else {}
-        sample_payable = (row.get("payables_rows") or row.get("top_payables") or [{}])[0] if isinstance(row, dict) else {}
-        if isinstance(sample_receivable, dict) and sample_receivable.get("id") is not None:
-            score += 5
-        if isinstance(sample_payable, dict) and sample_payable.get("id") is not None:
-            score += 5
-        score += min(len(row.get("receivables_rows") or []), 100) / 100
-        score += min(len(row.get("payables_rows") or []), 100) / 100
-        return score
-    return 0
+def _archive_key(section, row):
+    return sync_archive._archive_key(section, row, _bank_dedupe_key=_bank_dedupe_key)
+
+_is_vendor_payment_expense = sync_archive._is_vendor_payment_expense
+
+_is_vendor_payment_bank_row = sync_archive._is_vendor_payment_bank_row
+
+_row_quality = sync_archive._row_quality
 
 def _prefer_archive_row(section, existing, incoming):
-    if section == "sales":
-        merged = dict(existing)
-        merged.update(incoming)
-        if str(incoming.get("id") or "") in ("", "0") and existing.get("id"):
-            merged["id"] = existing["id"]
-        if not incoming.get("customer_id") and existing.get("customer_id"):
-            merged["customer_id"] = existing["customer_id"]
-        return merged
-    if section == "balances":
-        return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
-    if section in {"sales", "receipts"}:
-        return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing
-    return incoming
+    return sync_archive._prefer_archive_row(section, existing, incoming, _row_quality=_row_quality)
 
 def _historical_existing_dates(rows):
-    cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
-    return {
-        str(row.get("date", ""))[:10]
-        for row in rows or []
-        if str(row.get("date", ""))[:10] and str(row.get("date", ""))[:10] < cutoff
-    }
+    return sync_archive._historical_existing_dates(
+        rows, IST=IST, MERGE_PROTECT_BEFORE_DATE=MERGE_PROTECT_BEFORE_DATE,
+    )
 
-def _expense_content_key(row):
-    return "|".join(str(part) for part in (
-        row.get("date", ""),
-        row.get("category", ""),
-        row.get("description", ""),
-        row.get("amount", ""),
-        row.get("payment_mode", ""),
-        row.get("notes", ""),
-    ))
+_expense_content_key = sync_archive._expense_content_key
 
 def _merge_archive_rows(existing, incoming, section, *, drop_current_window=True):
-    if section == "expenses":
-        existing = [row for row in existing if not _is_vendor_payment_expense(row)]
-        incoming = [row for row in incoming if not _is_vendor_payment_expense(row)]
-    if drop_current_window and section in {"sales", "expenses", "internal_transfers", "cash", "bank", "receipts", "vendor_payments"}:
-        # Fresh fetch is authoritative for its window. Every section we re-pull in full over
-        # [sync_start, today] drops its archived rows on/after the sync cutoff, so an ERP row
-        # later edited (remark/amount changed) or reordered can't linger as a stale duplicate
-        # beside its refreshed version — otomy reconciles to the live ERP exactly like the local
-        # DB does. Older (protected) dates keep their archive untouched. Receipts are included so
-        # a re-derived window drops repayment rows the fresh ERP derivation no longer produces —
-        # mirroring localhost's import_customer_credit_receipts, which deletes the range and
-        # re-imports. (Incoming all_repayments covers June-archive + fresh last-month + fresh MTD,
-        # so the dropped [cutoff, today] window is always fully re-supplied.)
-        _cutoff = MERGE_PROTECT_BEFORE_DATE or datetime.now(IST).date().isoformat()
-        existing = [row for row in existing if str(row.get("date", ""))[:10] < _cutoff]
-    protected_dates = _historical_existing_dates(existing) if section in {"sales", "expenses", "internal_transfers", "receipts", "bank", "cash", "vendor_payments"} else set()
-    merged = {}
-    existing_expense_keys = set()
-    for idx, row in enumerate(existing):
-        if section == "bank" and _is_vendor_payment_bank_row(row):
-            continue
-        key = _archive_key(section, row)
-        if section == "expenses":
-            existing_expense_keys.add(_expense_content_key(row))
-            if key in merged:
-                key = f"{key}|archive-row:{row.get('id') or idx}"
-        merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
-    for row in incoming:
-        if section == "bank" and _is_vendor_payment_bank_row(row):
-            continue
-        key = _archive_key(section, row)
-        row_date = str(row.get("date", ""))[:10]
-        if section == "expenses" and _expense_content_key(row) in existing_expense_keys:
-            continue
-        if row_date in protected_dates and key not in merged:
-            continue
-        merged[key] = _prefer_archive_row(section, merged[key], row) if key in merged else row
-    return sorted(merged.values(), key=lambda row: (row.get("date", ""), str(row.get("id", ""))))
+    return sync_archive._merge_archive_rows(
+        existing, incoming, section, drop_current_window=drop_current_window, IST=IST,
+        MERGE_PROTECT_BEFORE_DATE=MERGE_PROTECT_BEFORE_DATE, _archive_key=_archive_key,
+        _expense_content_key=_expense_content_key, _historical_existing_dates=_historical_existing_dates,
+        _is_vendor_payment_bank_row=_is_vendor_payment_bank_row,
+        _is_vendor_payment_expense=_is_vendor_payment_expense, _prefer_archive_row=_prefer_archive_row,
+    )
 
-def _bank_key(row):
-    # Same-day expense payments with the same amount and rendered description
-    # are distinct unless their stable source expense is the same.  This key
-    # is used before dedupe_bank_rows(), so it must preserve the expense id
-    # here as well (21-Apr farmer payments are the regression case).
-    if str(row.get("source") or "") == "Expense" and row.get("id"):
-        return f"expense|{row['id']}"
-    return "|".join(str(row.get(k, "")) for k in ("date", "description", "credit", "debit", "bank_name"))
+_bank_key = sync_archive._bank_key
 
 def derive_bank_transactions(sales, expenses, repayments, existing=None):
-    # Drop archived "Sale" rows so they re-derive fresh with the current split amount
-    # (otherwise a sale whose UPI portion changed shows twice — old full + new split).
-    # Other derived sources (Expense / Credit Payment) are unaffected by
-    # the split and are preserved to avoid dropping rows the recent window can't re-derive.
-    rows = [dict(row, source=row.get("source", "ERP Bank")) for row in (existing or [])
-            if row.get("source") != "Sale" and not _is_vendor_payment_bank_row(row)]
-    rows = [row for row in rows if not _is_excluded_customer_receipt_bank_row(row)]
-    seen = {_bank_key(r) for r in rows}
-    for sale in sales:
-        # Only the UPI/bank portion of the sale belongs on the bank page (SPLIT-aware).
-        _s_cash, _s_credit, s_upi = _sale_channels(sale)
-        if s_upi <= 0:
-            continue
-        r = {
-            "id": f"sale-{sale.get('id') or sale.get('ticket_no') or ''}-{sale.get('date')}",
-            "date": sale.get("date"),
-            "description": (
-                f"Sale received by bank/UPI - {sale.get('customer_name') or 'Customer'}"
-                f" - Ticket {sale.get('ticket_no') or '-'} - {sale.get('vehicle_no') or '-'}"
-            ),
-            "credit": round(s_upi, 2),
-            "debit": 0.0,
-            "bank_name": "UPI/Bank Sale",
-            "source": "Sale",
-        }
-        if _bank_key(r) not in seen:
-            seen.add(_bank_key(r))
-            rows.append(r)
-    for expense in expenses:
-        if _payment_channel(expense.get("payment_mode") or "") == "cash":
-            continue
-        r = {
-            "id": f"expense-{expense.get('id') or ''}-{expense.get('date')}-{expense.get('amount')}",
-            "date": expense.get("date"),
-            "description": f"Expense paid by bank/UPI - {expense.get('category') or 'Expense'} - {expense.get('description') or ''}",
-            "credit": 0.0,
-            "debit": _num(expense.get("amount")),
-            "bank_name": "UPI/Bank Expense",
-            "source": "Expense",
-        }
-        if _bank_key(r) not in seen:
-            seen.add(_bank_key(r))
-            rows.append(r)
-    for idx, receipt in enumerate(repayments or []):
-        if _is_excluded_customer_receipt(receipt):
-            continue
-        bank_received = _num(receipt.get("bank_received"))
-        if bank_received <= 0 and _payment_channel(receipt.get("mode") or "") != "cash":
-            bank_received = _num(receipt.get("payment_received", receipt.get("amount")))
-        if bank_received <= 0:
-            continue
-        r = {
-            "id": f"receipt-{receipt.get('erp_customer_id') or idx}-{receipt.get('date')}",
-            "date": str(receipt.get("date", ""))[:10],
-            "description": f"Credit payment received by bank/UPI - {receipt.get('customer_name') or 'Customer'}",
-            "credit": bank_received,
-            "debit": 0.0,
-            "bank_name": "UPI/Bank Credit Payment",
-            "source": "Credit Payment",
-        }
-        if _bank_key(r) not in seen:
-            seen.add(_bank_key(r))
-            rows.append(r)
-    rows.sort(key=lambda row: (row.get("date", ""), str(row.get("id", ""))), reverse=True)
-    return rows
+    return sync_archive.derive_bank_transactions(
+        sales, expenses, repayments, existing, _bank_key=_bank_key,
+        _is_excluded_customer_receipt=_is_excluded_customer_receipt,
+        _is_excluded_customer_receipt_bank_row=_is_excluded_customer_receipt_bank_row,
+        _is_vendor_payment_bank_row=_is_vendor_payment_bank_row, _num=_num,
+        _payment_channel=_payment_channel, _sale_channels=_sale_channels,
+    )
 
 def write_archive_updates(
     today,
@@ -2894,156 +1181,13 @@ def write_archive_updates(
     balance_snapshots=None,
     ledger_by_month=None,
 ):
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    by_month = {}
-    for section, rows in (
-        ("sales", all_sales),
-        ("expenses", all_expenses),
-        ("internal_transfers", internal_transfers),
-        ("vendor_payments", vendor_payments),
-        ("cash", cash_rows),
-        ("bank", bank_rows),
-        ("boulders", boulder_rows),
-    ):
-        for row in rows:
-            month = str(row.get("date", ""))[:7]
-            if not month:
-                continue
-            by_month.setdefault(month, {}).setdefault(section, []).append(row)
-
-    for idx, row in enumerate(repayments or []):
-        if _is_excluded_customer_receipt(row):
-            continue
-        day = str(row.get("date", ""))[:10]
-        month = day[:7]
-        if not month:
-            continue
-        by_month.setdefault(month, {}).setdefault("receipts", []).append({
-            "id": f"gha-{day}-{idx}",
-            "date": day,
-            # Persist the FULL repayment identity so archived receipts net exactly like
-            # localhost's build_cashbook: customer_name enables same-day spot<->repayment
-            # netting, and payment_received (gross) is what the cash/bank book uses (the bare
-            # `amount` is already net of the ledger sale-adjustment and must NOT be used as the
-            # movement). Reader (archive_receipts_to_repayments) + _row_quality already expect
-            # these fields; the writer just wasn't populating them.
-            "customer_id": row.get("erp_customer_id"),
-            "customer_name": row.get("customer_name"),
-            "amount": row.get("amount", 0.0),
-            "payment_received": row.get("payment_received", row.get("amount", 0.0)),
-            "cash_received": row.get("cash_received", 0.0),
-            "bank_received": row.get("bank_received", 0.0),
-            "sale_adjusted": row.get("sale_adjusted", 0.0),
-            "balance": row.get("balance"),
-            "mode": row.get("mode", "Cash"),
-            "reference": row.get("reference", ""),
-            "notes": (
-                "ERP credit balance repayment; "
-                f"payment_received={row.get('payment_received', row.get('amount', 0.0))}; "
-                f"sale_adjusted={row.get('sale_adjusted', 0.0)}"
-            ),
-        })
-
-    for as_of, snapshot in (balance_snapshots or {}).items():
-        day = str(as_of)[:10]
-        month = day[:7]
-        if not month:
-            continue
-        if not snapshot.get("debtors") or not snapshot.get("creditors"):
-            continue
-        receivables = [
-            {"name": row.get("name"), "balance": round(_num(row.get("outstanding", row.get("balance", 0.0))), 2)}
-            for row in (snapshot.get("debtors") or [])
-            if _num(row.get("outstanding", row.get("balance", 0.0))) > 0
-        ]
-        payables = [
-            {"name": row.get("name"), "balance": round(_num(row.get("payable", row.get("balance", 0.0))), 2)}
-            for row in (snapshot.get("creditors") or [])
-            if _num(row.get("payable", row.get("balance", 0.0))) > 0
-        ]
-        receivables.sort(key=lambda row: row["balance"], reverse=True)
-        payables.sort(key=lambda row: row["balance"], reverse=True)
-        by_month.setdefault(month, {}).setdefault("balances", []).append({
-            "date": day,
-            "receivables": round(sum(row["balance"] for row in receivables), 2),
-            "payables": round(sum(row["balance"] for row in payables), 2),
-            "receivables_rows": receivables,
-            "payables_rows": payables,
-            "top_receivables": receivables[:5],
-            "top_payables": payables[:5],
-        })
-
-    for month, sections in by_month.items():
-        path = ARCHIVE_DIR / f"{month}.json"
-        if path.exists():
-            with open(path, "r") as f:
-                payload = json.load(f)
-        else:
-            payload = {
-                "month": month,
-                "sales": [],
-                "expenses": [],
-                "internal_transfers": [],
-                "receipts": [],
-                "vendor_payments": [],
-                "bank": [],
-                "cash": [],
-                "boulders": [],
-                "labour": [],
-                "parts": [],
-                "machines": [],
-                "balances": [],
-                "ledger": [],
-                "ledger_totals": {},
-            }
-        payload["receipts"] = [
-            row for row in payload.get("receipts", [])
-            if not _is_excluded_customer_receipt(row)
-        ]
-        payload["bank"] = [
-            row for row in payload.get("bank", [])
-            if not _is_excluded_customer_receipt_bank_row(row)
-        ]
-        for section, rows in sections.items():
-            if section == "receipts":
-                payload["receipts"] = [
-                    row for row in payload.get("receipts", [])
-                    if not _is_excluded_customer_receipt(row)
-                ]
-                rows = [
-                    row for row in rows
-                    if not _is_excluded_customer_receipt(row)
-                ]
-            if section == "bank":
-                rows = [
-                    row for row in rows
-                    if not _is_excluded_customer_receipt_bank_row(row)
-                ]
-            payload[section] = _merge_archive_rows(payload.get(section, []), rows, section)
-        canonical_ledger = (ledger_by_month or {}).get(month)
-        if canonical_ledger is not None:
-            payload["ledger"] = canonical_ledger.get("rows", [])
-            payload["ledger_totals"] = canonical_ledger.get("totals", {})
-        with open(path, "w") as f:
-            json.dump(payload, f, default=str, separators=(",", ":"))
-
-    manifest_path = ARCHIVE_DIR / "manifest.json"
-    if manifest_path.exists():
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
-    else:
-        manifest = {"from": "2025-02-14", "months": []}
-    months = sorted({*(manifest.get("months") or []), *by_month.keys()})
-    seed_config = ((local_seed.get("endpoints") or {}).get("exports_config") or {}) if isinstance(local_seed, dict) else {}
-    manifest.update({
-        "generated_at": datetime.now(IST).isoformat(timespec="seconds"),
-        "source": "github-actions archive merge",
-        "from": manifest.get("from") or "2025-02-14",
-        "months": months,
-        "operating_balance_opening": seed_config.get("operating_balance_opening") or manifest.get("operating_balance_opening", {}),
-    })
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=2)
+    return sync_archive.write_archive_updates(
+        today, all_sales, all_expenses, internal_transfers, cash_rows, bank_rows, boulder_rows, repayments,
+        vendor_payments, local_seed, balance_snapshots, ledger_by_month, ARCHIVE_DIR=ARCHIVE_DIR, IST=IST,
+        _is_excluded_customer_receipt=_is_excluded_customer_receipt,
+        _is_excluded_customer_receipt_bank_row=_is_excluded_customer_receipt_bank_row,
+        _merge_archive_rows=_merge_archive_rows, _num=_num,
+    )
 
 def snapshot_key(url):
     parts = urlsplit(url)
@@ -3114,55 +1258,7 @@ def prune_obsolete_derived_range_snapshots() -> tuple[int, int]:
 
 
 def write_compliance_snapshots(dataset, from_date, to_date):
-    """Publish GST and AUDIT CA from the same full archived FY dataset.
-
-    The regular ERP sync may run in recent mode, but these pages are FY-to-date
-    views.  Building them from the full archive prevents a recent-window run from
-    silently replacing April-June rows with zeros.
-    """
-    query = f"from_date={from_date}&to_date={to_date}"
-    audit = build_compliance_audit_ca(dataset)
-    write_snapshot(f"/api/exports/compliance/dataset?{query}", dataset)
-    write_snapshot(
-        f"/api/exports/compliance/summary?{query}",
-        {
-            "engine": dataset["engine"],
-            "period": dataset["period"],
-            "company": dataset["company"],
-            "totals": dataset["totals"],
-            "daily": dataset["daily"],
-            "checks": dataset["checks"],
-            "audit": audit,
-        },
-    )
-    write_snapshot(f"/api/exports/audit-ca/summary?{query}", audit)
-    write_snapshot(
-        f"/api/exports/audit-ca/tally.xml?{query}",
-        {
-            "content_type": "application/xml",
-            "content": build_compliance_tally_xml(dataset),
-        },
-    )
-
-    cursor = from_date.replace(day=1)
-    while cursor <= to_date:
-        year, month = cursor.year, cursor.month
-        write_snapshot(
-            f"/api/exports/gst/gstr1?year={year}&month={month}",
-            build_compliance_gstr1(dataset, year, month),
-        )
-        write_snapshot(
-            f"/api/exports/gst/gstr3b?year={year}&month={month}",
-            build_compliance_gstr3b(dataset, year, month),
-        )
-        write_snapshot(
-            f"/api/exports/gst/gstr2b?year={year}&month={month}",
-            build_compliance_gstr2b(dataset, year, month),
-        )
-        if month == 12:
-            cursor = cursor.replace(year=year + 1, month=1)
-        else:
-            cursor = cursor.replace(month=month + 1)
+    return sync_snapshots.write_compliance_snapshots(dataset, from_date, to_date, write_snapshot=write_snapshot)
 
 def read_snapshot_payload(url):
     path = SNAPSHOT_API_DIR / f"{snapshot_key(url)}.json"
@@ -3369,98 +1465,15 @@ def _balance_overlay():
 
 
 def _overlay_mode(corrs, e):
-    amt = _num(e.get("amount"))
-    hay = ((e.get("category") or "") + " " + (e.get("description") or "") + " " + (e.get("notes") or "")).upper()
-    dt = str(e.get("date", ""))[:10]
-    for c in corrs:
-        if abs(amt - _num(c.get("amount"))) < 1 \
-           and (not c.get("contains") or str(c["contains"]).upper() in hay) \
-           and (not c.get("date_from") or dt >= c["date_from"]) \
-           and (not c.get("date_to") or dt <= c["date_to"]):
-            return c.get("force")
-    return None
+    return sync_finance._overlay_mode(corrs, e, _num=_num)
 
 
 def _overlay_balance(to_iso, sales, expenses, repayments, internal_transfers=None):
-    """Bank/cash as of to_iso: latest anchor + statement bank + corrected movements.
-    Returns (bank, cash) or None if no overlay. Vendor payments live in expenses (not added again)."""
-    ov = _balance_overlay()
-    anchors = [a for a in ov["anchors"] if str(a.get("date")) <= to_iso]
-    if not anchors:
-        return None
-    a = anchors[-1]
-    bank = _num(a.get("bank"))
-    cash = _num(a.get("cash"))
-    anchor_date = str(a.get("date"))
-    cutoff = None
-    if ov["stmt_rows"]:
-        le = [r for r in ov["stmt_rows"] if str(r.get("date")) <= to_iso]
-        if le:
-            bank = _num(le[-1].get("balance"))
-            cutoff = ov["stmt_to"]
-    frm = (date.fromisoformat(anchor_date) + timedelta(days=1)).isoformat()
-    corrs = ov["corrections"]
-    # A spot sale's receipt is already captured by the sale's cash/UPI channels below. When that
-    # same customer's payment also surfaces as a ledger "repayment" (because the ticket carried
-    # any credit/outstanding), subtract the same-day, same-channel overlap so the spot payment is
-    # not double-counted in the balance. (Fixes bank/cash over-count vs actual.)
-    def _rcust(row):
-        return str(row.get("customer_name", "")).strip().upper()
-    spot_cash_by, spot_bank_by = {}, {}
-    for s in sales:
-        d = str(s.get("date", ""))[:10]
-        if not (frm <= d <= to_iso):
-            continue
-        s_cash, _c, s_upi = _sale_channels(s)
-        if s_cash:
-            spot_cash_by[(_rcust(s), d)] = spot_cash_by.get((_rcust(s), d), 0.0) + s_cash
-        if s_upi:
-            spot_bank_by[(_rcust(s), d)] = spot_bank_by.get((_rcust(s), d), 0.0) + s_upi
-    if to_iso >= frm:
-        for s in sales:
-            d = str(s.get("date", ""))[:10]
-            if not (frm <= d <= to_iso):
-                continue
-            # Split each sale: cash portion -> cash, UPI/bank portion -> bank (SPLIT-aware),
-            # so a part-cash/part-UPI sale lands in the right tile (matches localhost).
-            s_cash, _s_credit, s_upi = _sale_channels(s)
-            cash += s_cash
-            if s_upi and (cutoff is None or d > cutoff):
-                bank += s_upi
-        for r in repayments:
-            d = str(r.get("date", ""))[:10]
-            if not (frm <= d <= to_iso):
-                continue
-            amt = _num(r.get("payment_received", r.get("amount")))
-            key = (_rcust(r), d)
-            if _payment_channel(r.get("mode")) == "cash":
-                overlap = min(amt, spot_cash_by.get(key, 0.0))
-                spot_cash_by[key] = spot_cash_by.get(key, 0.0) - overlap
-                cash += amt - overlap
-            elif cutoff is None or d > cutoff:
-                overlap = min(amt, spot_bank_by.get(key, 0.0))
-                spot_bank_by[key] = spot_bank_by.get(key, 0.0) - overlap
-                bank += amt - overlap
-        for e in expenses:
-            d = str(e.get("date", ""))[:10]
-            if not (frm <= d <= to_iso):
-                continue
-            ch = _overlay_mode(corrs, e) or _payment_channel(e.get("payment_mode") or "Cash")
-            if ch == "cash":
-                # Cash paid from the company office is a real cash outflow, including
-                # director-share drawings. Classification changes P&L only.
-                cash -= _num(e.get("amount"))
-            elif cutoff is None or d > cutoff:
-                bank -= _num(e.get("amount"))
-        for transfer in internal_transfers or []:
-            d = str(transfer.get("date", ""))[:10]
-            if not (frm <= d <= to_iso):
-                continue
-            # Contra: cash falls, bank rises; it never affects P&L or GST liability.
-            cash -= _num(transfer.get("amount"))
-            if cutoff is None or d > cutoff:
-                bank += _num(transfer.get("amount"))
-    return round(bank, 2), round(cash, 2)
+    return sync_finance._overlay_balance(
+        to_iso, sales, expenses, repayments, internal_transfers, _balance_overlay=_balance_overlay,
+        _num=_num, _overlay_mode=_overlay_mode, _payment_channel=_payment_channel,
+        _sale_channels=_sale_channels,
+    )
 
 
 def build_ledger_view(
@@ -3478,707 +1491,65 @@ def build_ledger_view(
     overlay_repayments=None,
     internal_transfers=None,
 ):
-    month_start = date(year, month, 1)
-    display_end = min(today, (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1))
-    if month_start > today:
-        return {"year": year, "month": month, "rows": [], "totals": {}}
-
-    def by_date(rows, date_key="date"):
-        out = {}
-        for row in rows or []:
-            value = row.get(date_key, "")
-            if value:
-                out.setdefault(value[:10], []).append(row)
-        return out
-
-    sales_by_date = by_date(sales)
-    expenses_by_date = by_date(expenses)
-    vendor_payments_by_date = by_date(vendor_payments)
-    boulders_by_date = by_date(boulder_rows)
-    repayments_by_date = by_date(repayments)
-    transfers_by_date = by_date(internal_transfers or [])
-
-    def repayment_channels(row):
-        payment = _num(row.get("payment_received", row.get("amount")))
-        cash = _num(row.get("cash_received"))
-        bank = _num(row.get("bank_received"))
-        if cash > 0 or bank > 0:
-            return cash, bank
-        return (payment, 0.0) if _payment_channel(row.get("mode") or "") == "cash" else (0.0, payment)
-
-    bank_balance = _num(opening_bank)
-    cash_balance = _num(opening_cash)
-    rows = []
-    current = movement_start
-    while current < month_start:
-        key = str(current)
-        for sale in sales_by_date.get(key, []):
-            mode = sale.get("payment_mode") or "Credit"
-            if mode.lower() == "credit":
-                continue
-            if _payment_channel(mode) == "cash":
-                cash_balance += _sale_total(sale)
-            else:
-                bank_balance += _sale_total(sale)
-        for receipt in repayments_by_date.get(key, []):
-            cash_balance += _num(receipt.get("cash_received"))
-            bank_balance += _num(receipt.get("bank_received"))
-        for expense in expenses_by_date.get(key, []):
-            if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
-                cash_balance -= _num(expense.get("amount"))
-            else:
-                bank_balance -= _num(expense.get("amount"))
-        for transfer in transfers_by_date.get(key, []):
-            cash_balance -= _num(transfer.get("amount"))
-            bank_balance += _num(transfer.get("amount"))
-        # Vendor payments are already booked as expenses; never subtract the vendor stream
-        # again (that double-counts a vendor who is also an expense, e.g. ASHWATH SOLING).
-        current += timedelta(days=1)
-    current = month_start
-    while current <= display_end:
-        key = str(current)
-        if current >= movement_start:
-            for sale in sales_by_date.get(key, []):
-                mode = sale.get("payment_mode") or "Credit"
-                if mode.lower() == "credit":
-                    continue
-                if _payment_channel(mode) == "cash":
-                    cash_balance += _sale_total(sale)
-                else:
-                    bank_balance += _sale_total(sale)
-            for receipt in repayments_by_date.get(key, []):
-                cash_balance += _num(receipt.get("cash_received"))
-                bank_balance += _num(receipt.get("bank_received"))
-            for expense in expenses_by_date.get(key, []):
-                if _payment_channel(expense.get("payment_mode") or "Cash") == "cash":
-                    cash_balance -= _num(expense.get("amount"))
-                else:
-                    bank_balance -= _num(expense.get("amount"))
-            for transfer in transfers_by_date.get(key, []):
-                cash_balance -= _num(transfer.get("amount"))
-                bank_balance += _num(transfer.get("amount"))
-            # Vendor payments are already booked as expenses; never subtract the vendor
-            # stream again (that double-counts a vendor who is also an expense).
-
-        if current >= month_start:
-            day_sales = sales_by_date.get(key, [])
-            day_expenses = expenses_by_date.get(key, [])
-            day_boulders = boulders_by_date.get(key, [])
-            day_repayments = repayments_by_date.get(key, [])
-            credit_repayment_cash = sum(repayment_channels(row)[0] for row in day_repayments)
-            credit_repayment_bank = sum(repayment_channels(row)[1] for row in day_repayments)
-            expense_cash = 0.0
-            expense_bank = 0.0
-            corrections = _balance_overlay().get("corrections", [])
-            for expense in day_expenses:
-                channel = _overlay_mode(corrections, expense) or _payment_channel(expense.get("payment_mode") or "Cash")
-                if channel == "cash":
-                    expense_cash += _num(expense.get("amount"))
-                else:
-                    expense_bank += _num(expense.get("amount"))
-            # Daily Book expenses come only from the ERP Expense source, where every row has a
-            # Cash or Bank payment mode. Legacy Labour and Parts records are intentionally excluded.
-            boulder_input_mt = sum(_num(row.get("total_tonnes")) for row in day_boulders)
-            # Balance overlay must see the FULL repayment history from the anchor (mirrors the
-            # tile), not just month-to-date — else pre-month receipts (e.g. 29-30 Jun) are missed
-            # and the ledger cash/bank read low. `repayments` here is only mtd; use all-history.
-            _ov = _overlay_balance(key, sales, expenses, overlay_repayments if overlay_repayments is not None else repayments, internal_transfers)
-            row_bank = _ov[0] if _ov else round(bank_balance, 2)
-            row_cash = _ov[1] if _ov else round(cash_balance, 2)
-            rows.append(calculate_daily_ledger_row(
-                key,
-                sales=[(_sale_total(row), *_sale_channels(row), _num(row.get("qty_mt"))) for row in day_sales],
-                repayment_cash=credit_repayment_cash, repayment_bank=credit_repayment_bank,
-                expense_cash=expense_cash, expense_bank=expense_bank,
-                internal_transfer=sum(_num(row.get("amount")) for row in transfers_by_date.get(key, [])),
-                cash_balance=row_cash, bank_balance=row_bank,
-                boulder_tonnes=boulder_input_mt,
-                boulder_trips=sum(_num(row.get("trips")) for row in day_boulders),
-            ))
-        current += timedelta(days=1)
-
-    totals = calculate_daily_ledger_totals(rows)
-    return {"year": year, "month": month, "rows": rows, "totals": totals}
+    return sync_finance.build_ledger_view(
+        sales, expenses, vendor_payments, boulder_rows, repayments, year, month, opening_bank, opening_cash,
+        movement_start, today, overlay_repayments, internal_transfers, _balance_overlay=_balance_overlay,
+        _num=_num, _overlay_balance=_overlay_balance, _overlay_mode=_overlay_mode,
+        _payment_channel=_payment_channel, _sale_channels=_sale_channels, _sale_total=_sale_total,
+    )
 
 
 def build_cashbook_view(from_d, to_d, sales, expenses, repayments, opening, internal_transfers=None):
-    """Build the canonical cash/bank books from the same rows as the ledger.
+    return sync_finance.build_cashbook_view(
+        from_d, to_d, sales, expenses, repayments, opening, internal_transfers, ErpFetchError=ErpFetchError,
+        _balance_overlay=_balance_overlay, _num=_num, _overlay_balance=_overlay_balance,
+        _overlay_mode=_overlay_mode, _payment_channel=_payment_channel, _sale_channels=_sale_channels,
+        _sale_settlement_roundoff=_sale_settlement_roundoff,
+    )
 
-    The opening and closing figures come from the verified anchor/statement overlay. The visible
-    movement rows must tie to that closing figure. If a verified physical count or bank statement
-    re-anchors the balance inside the range, it is shown using the same named source row as
-    localhost. An unexplained gap is a sync failure: the engine never invents a residual row.
-    """
-    from_d = from_d if isinstance(from_d, date) else date.fromisoformat(str(from_d))
-    to_d = to_d if isinstance(to_d, date) else date.fromisoformat(str(to_d))
-
-    def _customer_id_key(row):
-        value = row.get("customer_id", row.get("erp_customer_id"))
-        if value is None or str(value).strip() == "":
-            return None
-        return "id", str(value).strip()
-
-    def _customer_name_key(row):
-        # This is only a cashbook matching key; it does not change the stored
-        # customer name or merge customer-master records.  Fresh ListSale rows
-        # do not carry an ERP customer id, while the matching ledger repayment
-        # does, so exact-name fallback is needed to avoid showing one payment
-        # twice on the same day.
-        value = row.get("customer_name") or row.get("customer") or row.get("name") or ""
-        return "name", " ".join(str(value).split()).upper()
-
-    def _sale_customer_key(row):
-        return _customer_id_key(row) or _customer_name_key(row)
-
-    def _repayment_customer_key(row, spot_rows):
-        date_key = str(row.get("date", ""))[:10]
-        id_key = _customer_id_key(row)
-        if id_key is not None and (id_key, date_key) in spot_rows:
-            return id_key, date_key
-        return _customer_name_key(row), date_key
-
-    def _row(day, particulars, party, kind, incoming, outgoing, ticket_no=None, settlement_roundoff=0.0, remarks=""):
-        return {
-            "date": str(day)[:10],
-            "particulars": particulars,
-            "party": party or "",
-            "kind": kind,
-            "in": round(_num(incoming), 2),
-            "out": round(_num(outgoing), 2),
-            "ticket_no": str(ticket_no or ""),
-            "remarks": remarks or "",
-            # Informational only: the running book balance uses in/out above.
-            # Negative means Loctell settled less than the gross invoice.
-            "settlement_roundoff": round(_num(settlement_roundoff), 2),
-        }
-
-    sales_in_range = [
-        row for row in sales or []
-        if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
-    ]
-    expenses_in_range = [
-        row for row in expenses or []
-        if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
-    ]
-    repayments_in_range = [
-        row for row in repayments or []
-        if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
-    ]
-    transfers_in_range = [
-        row for row in (internal_transfers or [])
-        if str(from_d) <= str(row.get("date", ""))[:10] <= str(to_d)
-    ]
-    spot_cash, spot_bank = {}, {}
-    for sale in sales_in_range:
-        s_cash, _s_credit, s_upi = _sale_channels(sale)
-        key = (_sale_customer_key(sale), str(sale.get("date", ""))[:10])
-        if s_cash:
-            spot_cash[key] = spot_cash.get(key, 0.0) + s_cash
-        if s_upi:
-            spot_bank[key] = spot_bank.get(key, 0.0) + s_upi
-
-    cash_rows, bank_rows = [], []
-    for sale in sales_in_range:
-        s_cash, _s_credit, s_upi = _sale_channels(sale)
-        party = sale.get("customer_name") or "Customer"
-        ticket_no = sale.get("ticket_no") or sale.get("ticket") or sale.get("bill_no")
-        cash_roundoff, bank_roundoff = _sale_settlement_roundoff(sale)
-        if s_cash:
-            cash_rows.append(_row(
-                sale.get("date"), "Spot sale (cash)", party, "sale", s_cash, 0,
-                ticket_no=ticket_no, settlement_roundoff=-cash_roundoff,
-            ))
-        if s_upi:
-            bank_rows.append(_row(
-                sale.get("date"), "Spot sale (UPI/Bank)", party, "sale", s_upi, 0,
-                ticket_no=ticket_no, settlement_roundoff=-bank_roundoff,
-            ))
-
-    for repayment in repayments_in_range:
-        amount = _num(repayment.get("payment_received", repayment.get("amount")))
-        if amount <= 0:
-            continue
-        party = repayment.get("customer_name") or "Customer"
-        if _payment_channel(repayment.get("mode") or "Cash") == "cash":
-            key = _repayment_customer_key(repayment, spot_cash)
-            overlap = min(amount, spot_cash.get(key, 0.0))
-            spot_cash[key] = spot_cash.get(key, 0.0) - overlap
-            net = amount - overlap
-            if net > 0.5:
-                cash_rows.append(_row(repayment.get("date"), "Customer payment (cash)", party, "receipt", net, 0))
-        else:
-            key = _repayment_customer_key(repayment, spot_bank)
-            overlap = min(amount, spot_bank.get(key, 0.0))
-            spot_bank[key] = spot_bank.get(key, 0.0) - overlap
-            net = amount - overlap
-            if net > 0.5:
-                bank_rows.append(_row(repayment.get("date"), "Customer payment (UPI/Bank)", party, "receipt", net, 0))
-
-    overlay = _balance_overlay()
-    corrections = overlay.get("corrections", [])
-    for expense in expenses_in_range:
-        channel = _overlay_mode(corrections, expense) or _payment_channel(expense.get("payment_mode") or "Cash")
-        amount = _num(expense.get("amount"))
-        if amount <= 0:
-            continue
-        label = (expense.get("category") or expense.get("description") or "Expense").strip()
-        party = (expense.get("description") or expense.get("notes") or "").strip()
-        target = cash_rows if channel == "cash" else bank_rows
-        target.append(_row(expense.get("date"), f"Expense: {label}", party, "expense", 0, amount, remarks=expense.get("notes") or ""))
-    for transfer in transfers_in_range:
-        amount = _num(transfer.get("amount"))
-        if amount <= 0:
-            continue
-        cash_rows.append(_row(transfer.get("date"), "Internal transfer to bank", transfer.get("bank_name"), "internal_transfer", 0, amount, remarks=transfer.get("remarks") or ""))
-        bank_rows.append(_row(transfer.get("date"), "Internal transfer from office cash", transfer.get("cash_ledger"), "internal_transfer", amount, 0, remarks=transfer.get("remarks") or ""))
-
-    def _balance(as_of):
-        verified = _overlay_balance(str(as_of), sales, expenses, repayments, internal_transfers)
-        if verified is not None:
-            return verified
-        return (
-            _num(opening.get("bank_balance")),
-            _num(opening.get("cash_balance_office")),
-        )
-
-    previous = from_d - timedelta(days=1)
-    open_bank, open_cash = _balance(previous)
-    close_bank, close_cash = _balance(to_d)
-
-    def _sort_key(row):
-        # A normal daily reconciliation belongs before that day's movements;
-        # a deferred reconciliation/physical anchor belongs after them.  The
-        # old generic adjustment-first sort could show an impossible negative
-        # intermediate cash balance even when the verified daily close was
-        # positive.
-        return (row.get("date", ""), row.get("_cashbook_order", 1), -_num(row.get("in")))
-
-    def _finalize(rows, opening_balance, closing_balance, channel):
-        shown = [dict(row) for row in rows]
-        shown.sort(key=_sort_key)
-        # Workbook closings are evidence, not financial transactions.  Never
-        # generate a "Verified daily cash reconciliation (workbook)" row.
-        running = round(_num(opening_balance), 2)
-        reconciled = []
-        index = 0
-        while index < len(shown):
-            day = shown[index].get("date", "")
-            day_rows = []
-            while index < len(shown) and shown[index].get("date", "") == day:
-                day_rows.append(shown[index])
-                index += 1
-            target = None
-            target_particulars = None
-            # A same-day physical count is independent evidence.  If one is
-            # needed to reconcile the book, publish it with its true source
-            # label rather than disguising it as a workbook movement.
-            if channel == "cash":
-                anchor = next(
-                    (a for a in overlay.get("anchors", []) if str(a.get("date") or "")[:10] == str(day)[:10]),
-                    None,
-                )
-                if anchor and anchor.get("cash") is not None:
-                    target = _num(anchor.get("cash"))
-                    target_particulars = "Verified balance adjustment (physical cash count)"
-            deferred_gap = 0.0
-            if target is not None:
-                gap = round(_num(target) - (running + sum(_num(row.get("in")) - _num(row.get("out")) for row in day_rows)), 2)
-                if abs(gap) > 0.5 and running + gap >= 0:
-                    row = _row(day, target_particulars, "", "adjustment", max(gap, 0), max(-gap, 0))
-                    row["adjustment"] = True
-                    row["_cashbook_order"] = 0
-                    running = advance_book_balance(running, _num(row.get("in")), _num(row.get("out")))
-                    row["balance"] = running
-                    reconciled.append(row)
-                elif abs(gap) > 0.5:
-                    deferred_gap = gap
-            for row in day_rows:
-                running = advance_book_balance(running, _num(row.get("in")), _num(row.get("out")))
-                row["balance"] = running
-                reconciled.append(row)
-            if deferred_gap:
-                row = _row(day, target_particulars, "", "adjustment", 0, max(-deferred_gap, 0))
-                row["adjustment"] = True
-                row["_cashbook_order"] = 2
-                running = round(_num(target), 2)
-                row["balance"] = running
-                reconciled.append(row)
-        shown = reconciled
-        gap = round(_num(closing_balance) - running, 2)
-        if abs(gap) > 0.5:
-            anchor_date = None
-            if channel == "cash":
-                applicable = [
-                    anchor for anchor in overlay.get("anchors", [])
-                    if str(anchor.get("date") or "")[:10] <= str(to_d)
-                ]
-                if applicable:
-                    anchor_date = str(applicable[-1].get("date"))[:10]
-            adjustment_date = anchor_date if anchor_date and anchor_date >= str(from_d) else str(to_d)
-            source = "physical cash count" if channel == "cash" else "bank statement"
-            adjustment = _row(
-                adjustment_date,
-                f"Verified balance adjustment ({source})",
-                "",
-                "adjustment",
-                gap if gap > 0 else 0,
-                -gap if gap < 0 else 0,
-            )
-            adjustment["adjustment"] = True
-            adjustment["_cashbook_order"] = 2
-            shown.append(adjustment)
-            shown.sort(key=_sort_key)
-            shown, running = rebalance_book_rows(
-                shown, round(_num(opening_balance), 2), number=_num)
-            if abs(round(_num(closing_balance) - running, 2)) > 0.5:
-                raise ErpFetchError(
-                    f"common engine {channel} book does not tie for {from_d}..{to_d}: "
-                    f"opening={_num(opening_balance):.2f}, expected_closing={_num(closing_balance):.2f}, "
-                    f"gap_after_anchor={_num(closing_balance) - running:.2f}"
-                )
-        for row in shown:
-            row.pop("_cashbook_order", None)
-        return calculate_cashbook_totals(shown, opening_balance, running, number=_num)
-
-    return {
-        "from": str(from_d),
-        "to": str(to_d),
-        "opening_as_of": str(previous),
-        "cash": _finalize(cash_rows, open_cash, close_cash, "cash"),
-        "bank": _finalize(bank_rows, open_bank, close_bank, "bank"),
-    }
-
-def empty_ledger(name, closing=0.0):
-    return {
-        "name": name,
-        "opening_balance": 0.0,
-        "entries": [],
-        "closing_balance": round(closing, 2),
-        "received": 0.0,
-        "erp_received": 0.0,
-        "age_0_15": 0.0,
-        "age_16_30": 0.0,
-        "age_31_45": 0.0,
-        "age_45_plus": round(max(closing, 0.0), 2),
-    }
+empty_ledger = sync_finance.empty_ledger
 
 def build_vendor_ledgers(vendors_full, vendor_payments, full_ledgers=None):
-    full_ledgers = full_ledgers or {}
-    payments_by_identity = {}
-    payments_by_name = {}
-    for payment in vendor_payments:
-        payments_by_identity.setdefault(_vendor_identity(payment), []).append(payment)
-        payments_by_name.setdefault(payment.get("vendor_name", ""), []).append(payment)
-
-    ledgers = {}
-    for vendor in vendors_full:
-        name = vendor.get("name", "")
-        payable = round(_num(vendor.get("payable")), 2)
-        full_entries = full_ledgers.get(_vendor_identity(vendor))
-        if full_entries is not None:
-            # Tally view from the full loctell ledger: Purchase=Credit, Payment=Debit, running=payable.
-            entries_sorted = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "purchase" else 1))
-            window_net = round(sum(e["credit"] - e["debit"] for e in entries_sorted), 2)
-            opening = round(payable - window_net, 2)
-            if abs(opening) < 100:
-                opening = 0.0  # rounding residual on a fully-captured history, not a real prior balance
-            entries = []
-            running = opening
-            for index, e in enumerate(entries_sorted, start=1):
-                running = round(running + e["credit"] - e["debit"], 2)
-                entries.append({**e, "id": index,
-                                "amount": e.get("credit") or e.get("debit") or 0.0,
-                                "running_balance": running, "balance": running})
-            ledger = empty_ledger(name, payable)
-            ledger.update({
-                "vendor_id": vendor.get("id"), "vendor_name": name,
-                "opening_balance": opening, "entries": entries,
-                "closing_balance": round(running, 2), "source": "erp",
-            })
-            ledgers[str(vendor.get("id"))] = ledger
-            continue
-
-        # Fallback: lightweight payments-only ledger (Tally convention: Payment=Debit).
-        payments = payments_by_identity.get(_vendor_identity(vendor), [])
-        # Older snapshot rows did not retain a supplier ID.  A name fallback
-        # is safe only for an actually ID-less master, never for two suppliers
-        # that happen to share a display name.
-        if not payments and not str(vendor.get("erp_supplier_id") or "").strip():
-            payments = payments_by_name.get(name, [])
-        total_payments = round(sum(_num(row.get("amount")) for row in payments), 2)
-        opening = round(payable + total_payments, 2)
-        entries = []
-        running = opening
-        for index, payment in enumerate(sorted(payments, key=lambda row: (row.get("date", ""), row.get("reference", ""))), start=1):
-            amount = _num(payment.get("amount"))
-            running = round(running - amount, 2)
-            entries.append({
-                "type": "payment", "vch_type": "Payment", "id": index,
-                "date": payment.get("date"),
-                "description": f"Payment ({payment.get('mode') or 'Payment'})" + (f" Ref: {payment.get('reference')}" if payment.get("reference") else ""),
-                "amount": amount, "debit": amount, "credit": 0.0,
-                "running_balance": running, "balance": running,
-            })
-        ledger = empty_ledger(name, payable)
-        ledger.update({
-            "vendor_id": vendor.get("id"), "vendor_name": name,
-            "opening_balance": opening, "entries": entries,
-            "closing_balance": payable, "source": "db",
-        })
-        ledgers[str(vendor.get("id"))] = ledger
-    return ledgers
+    return sync_finance.build_vendor_ledgers(
+        vendors_full, vendor_payments, full_ledgers, _num=_num, _vendor_identity=_vendor_identity,
+        empty_ledger=empty_ledger,
+    )
 
 
 def vendor_payable_due_aging(entries, payable, as_of):
-    """Adapt ERP ledger rows to the shared FIFO payable calculation."""
-    target = round(max(_num(payable), 0.0), 2)
-    if target <= 0:
-        return calculate_payable_due_aging([], [], target, None)
-    invoices, payments = [], []
-    for entry in entries or []:
-        entry_date = str(entry.get("date") or "")[:10]
-        if not entry_date or entry_date > str(as_of):
-            continue
-        amount = round(_num(entry.get("credit") or entry.get("debit")), 2)
-        if amount <= 0:
-            continue
-        if entry.get("type") == "purchase" or entry.get("vch_type") == "Purchase":
-            invoices.append((entry_date, amount))
-        else:
-            # Preserve the existing ERP adapter's non-purchase classification.
-            payments.append(amount)
-    invoices.sort(key=lambda row: row[0])
-    return calculate_payable_due_aging(
-        invoices, payments, target, date.fromisoformat(str(as_of)))
+    return sync_finance.vendor_payable_due_aging(entries, payable, as_of, _num=_num)
 
 
 def vendor_payable_age_buckets(entries, payable, as_of):
-    """Exclusive payable ageing, matching localhost customer-balance logic.
-
-    A purchase creates a supplier bill and a payment clears the oldest bill.
-    Once the authoritative Loctell payable is known, the unpaid remainder is
-    therefore the newest bills first.  Allocating that closing balance from
-    newest to oldest is equivalent to FIFO settlement while retaining the ERP
-    balance as the single source of truth.
-    """
-    target = round(max(_num(payable), 0.0), 2)
-    result = {"age_0_15": 0.0, "age_16_30": 0.0, "age_31_45": 0.0, "age_45_plus": 0.0}
-    if target <= 0:
-        return result
-    as_of_date = date.fromisoformat(str(as_of))
-    bills = []
-    for index, entry in enumerate(entries or []):
-        entry_date = str(entry.get("date") or "")[:10]
-        if not entry_date or entry_date > str(as_of):
-            continue
-        if entry.get("type") != "purchase" and entry.get("vch_type") != "Purchase":
-            continue
-        amount = round(_num(entry.get("credit") or entry.get("amount")), 2)
-        if amount > 0:
-            bills.append((entry_date, index, amount))
-    return exclusive_age_buckets(
-        ((max((as_of_date - date.fromisoformat(entry_date)).days, 0), amount)
-         for entry_date, _index, amount in sorted(bills, reverse=True)),
-        target, round_each=True)
+    return sync_finance.vendor_payable_age_buckets(entries, payable, as_of, _num=_num)
 
 
 def vendor_rows_as_of(master_rows, balance_rows, vendor_ledgers, as_of):
-    # Loctell can have separate supplier masters whose names differ only by
-    # case or punctuation.  Supplier ID, not the display label, owns balance.
-    balances = {
-        _vendor_identity(row): _num(row.get("payable", row.get("balance", 0.0)))
-        for row in balance_rows or []
-        if str(row.get("name") or "").strip()
-    }
-    rows = []
-    for source in master_rows:
-        row = dict(source)
-        name = str(row.get("name") or "").strip()
-        payable = round(balances.get(_vendor_identity(row), 0.0), 2)
-        ledger = vendor_ledgers.get(str(row.get("id"))) or {}
-        entries = [entry for entry in (ledger.get("entries") or []) if str(entry.get("date") or "")[:10] <= str(as_of)]
-        row.update({
-            "active": row.get("active", True),
-            "payable": payable,
-            "total_purchases": round(sum(_num(entry.get("credit")) for entry in entries), 2),
-            "total_payments": round(sum(_num(entry.get("debit")) for entry in entries), 2),
-            **vendor_payable_due_aging(entries, payable, as_of),
-            **vendor_payable_age_buckets(entries, payable, as_of),
-        })
-        rows.append(row)
-    return sorted(rows, key=lambda row: str(row.get("name") or "").upper())
+    return sync_finance.vendor_rows_as_of(
+        master_rows, balance_rows, vendor_ledgers, as_of, _num=_num, _vendor_identity=_vendor_identity,
+        vendor_payable_age_buckets=vendor_payable_age_buckets,
+        vendor_payable_due_aging=vendor_payable_due_aging,
+    )
 
 
 def archived_vendor_balances_as_of(archive_rows, master_rows):
-    """Attach immutable supplier IDs to historical archive balances.
-
-    Monthly archive balances predate the supplier-ID field and contain only the
-    local master ID plus display name.  The dated Vendor page, however, is
-    deliberately ID-backed so same-name Loctell suppliers are never merged.
-    Reusing those name-only archive rows therefore makes every ID-backed
-    supplier look like it has a zero balance.  Resolve each archive row to one
-    current master row before using it; ambiguity is a hard failure rather than
-    publishing an apparently-valid zero-payable month.
-    """
-    masters_by_id = {}
-    masters_by_name = {}
-    for master in master_rows or []:
-        if not str(master.get("name") or "").strip():
-            continue
-        masters_by_id.setdefault(str(master.get("id") or ""), []).append(master)
-        masters_by_name.setdefault(_norm_name(master.get("name")), []).append(master)
-
-    resolved, unresolved = [], []
-    for source in archive_rows or []:
-        name = str(source.get("name") or "").strip()
-        if not name:
-            continue
-        # The archive's numeric ID is authoritative only when it still names
-        # the same supplier; a renamed/reordered master falls back to its
-        # normalized display name instead.
-        candidates = [
-            row for row in masters_by_id.get(str(source.get("id") or ""), [])
-            if _norm_name(row.get("name")) == _norm_name(name)
-        ]
-        if not candidates:
-            candidates = masters_by_name.get(_norm_name(name), [])
-        candidates = [row for row in candidates if str(row.get("erp_supplier_id") or "").strip()]
-        if len(candidates) != 1:
-            unresolved.append(name)
-            continue
-        master = candidates[0]
-        resolved.append({
-            "name": master.get("name") or name,
-            "payable": _num(source.get("payable", source.get("balance", 0.0))),
-            "erp_supplier_id": str(master.get("erp_supplier_id")),
-        })
-
-    if unresolved:
-        raise ErpFetchError(
-            "historical vendor balance identity unresolved; refusing to publish "
-            f"zero-payable snapshot for: {', '.join(sorted(set(unresolved)))}"
-        )
-    return resolved
+    return sync_finance.archived_vendor_balances_as_of(
+        archive_rows, master_rows, ErpFetchError=ErpFetchError, _norm_name=_norm_name, _num=_num,
+    )
 
 
 def historical_vendor_master_rows(current_rows, balance_rows):
-    """Add only retired, historically-balanced suppliers to a dated view.
-
-    Today's Supplier Balance is intentionally the authority for the live
-    Vendor page.  A supplier removed from Loctell must not reappear there.
-    It can nevertheless have had a real payable at the end of a prior month.
-    For that dated snapshot only, recover its stable seed identity so the
-    historical payable remains visible and reconcilable.
-    """
-    result = [dict(row) for row in current_rows or []]
-    existing_keys = {_vendor_identity(row) for row in result}
-    used_ids = {str(row.get("id") or "") for row in result}
-    seed_rows = load_vendor_master()
-    seed_by_id = {}
-    seed_by_name = {}
-    seed_by_erp = {}
-    for row in seed_rows:
-        if not str(row.get("name") or "").strip():
-            continue
-        seed_by_id.setdefault(str(row.get("id") or ""), []).append(row)
-        seed_by_name.setdefault(_norm_name(row.get("name")), []).append(row)
-        if str(row.get("erp_supplier_id") or "").strip():
-            seed_by_erp.setdefault(str(row.get("erp_supplier_id")), []).append(row)
-
-    unresolved = []
-    for source in balance_rows or []:
-        name = str(source.get("name") or "").strip()
-        source_erp = str(source.get("erp_supplier_id") or source.get("supplier_id") or "").strip()
-        if not name:
-            continue
-        if source_erp and f"erp:{source_erp}" in existing_keys:
-            continue
-        if not source_erp and any(_norm_name(row.get("name")) == _norm_name(name) for row in result):
-            continue
-        candidates = []
-        if source_erp:
-            candidates = seed_by_erp.get(source_erp, [])
-        if not candidates:
-            candidates = [
-                row for row in seed_by_id.get(str(source.get("id") or ""), [])
-                if _norm_name(row.get("name")) == _norm_name(name)
-            ]
-        if not candidates:
-            candidates = seed_by_name.get(_norm_name(name), [])
-        if len(candidates) != 1 or not str(candidates[0].get("erp_supplier_id") or "").strip():
-            unresolved.append(name)
-            continue
-        row = dict(candidates[0])
-        if str(row.get("id") or "") in used_ids:
-            row["id"] = f"historical-{row['erp_supplier_id']}"
-        result.append(row)
-        used_ids.add(str(row.get("id") or ""))
-        existing_keys.add(_vendor_identity(row))
-
-    if unresolved:
-        raise ErpFetchError(
-            "historical supplier master unresolved; refusing to publish "
-            f"incomplete payable snapshot for: {', '.join(sorted(set(unresolved)))}"
-        )
-    return result
+    return sync_finance.historical_vendor_master_rows(
+        current_rows, balance_rows, ErpFetchError=ErpFetchError, _norm_name=_norm_name,
+        _vendor_identity=_vendor_identity, load_vendor_master=load_vendor_master,
+    )
 
 
 def canonical_vendor_master(seed_rows, creditors, *, source_master=None):
-    """Merge the checked-in full master with ERP rows by supplier ID.
-
-    The explicit master makes a zero-balance supplier visible.  Creditors are
-    still merged so a supplier newly created in Loctell is never hidden while
-    waiting for a deliberate master-file update.
-    """
-    # A legacy name-only row is an approximation from before supplier IDs were
-    # retained.  If Loctell now reports that name, its distinct ID-backed rows
-    # replace the approximation rather than being merged into one supplier.
-    current_names = {
-        _norm_name(row.get("name"))
-        for row in creditors or []
-        if str(row.get("name") or "").strip() and str(row.get("erp_supplier_id") or "").strip()
-    }
-    master_sources = list(source_master) if source_master is not None else (list(load_vendor_master()) + list(seed_rows or []))
-    by_identity = {}
-    max_id = 0
-    for source in master_sources:
-        row = dict(source or {})
-        name = str(row.get("name") or "").strip()
-        if not name:
-            continue
-        if (not str(row.get("erp_supplier_id") or "").strip()
-                and _norm_name(name) in current_names):
-            continue
-        key = _vendor_identity(row)
-        current = by_identity.get(key, {})
-        merged = {**current, **row, "name": name, "active": row.get("active", current.get("active", True))}
-        if not merged.get("id"):
-            max_id += 1
-            merged["id"] = max_id
-        by_identity[key] = merged
-        max_id = max(max_id, int(merged.get("id") or 0))
-    for creditor in creditors or []:
-        name = str(creditor.get("name") or "").strip()
-        supplier_id = str(creditor.get("erp_supplier_id") or "").strip()
-        if not name or not supplier_id:
-            continue
-        key = _vendor_identity(creditor)
-        current = by_identity.get(key)
-        if current is None:
-            max_id += 1
-            current = {
-                "id": max_id, "name": name, "gstin": "", "phone": "", "address": "",
-                "opening_balance": 0.0, "notes": "", "active": True,
-            }
-        # When the Home > Suppliers master was fetched successfully, it owns
-        # the display spelling.  ListSupplierBalance contributes the payable
-        # and the ledger-link ID only.
-        display_name = current.get("name") if source_master is not None and current.get("name") else name
-        by_identity[key] = {
-            **current, "name": display_name, "erp_supplier_id": supplier_id,
-            "active": current.get("active", True),
-        }
-    return sorted(by_identity.values(), key=lambda row: (str(row.get("name") or "").upper(), _vendor_identity(row)))
+    return sync_finance.canonical_vendor_master(
+        seed_rows, creditors, source_master=source_master, _norm_name=_norm_name,
+        _vendor_identity=_vendor_identity, load_vendor_master=load_vendor_master,
+    )
 
 
 LEDGER_HISTORY_START = date(2026, 3, 1)  # receipts data begins here; before this is folded into opening balance
@@ -4210,180 +1581,21 @@ def _prev_customer_ledgers_by_name():
 
 
 def build_customer_ledgers(customers_full, all_sales, repayments, today, full_ledgers=None):
-    """Per-customer ledger from sales + receipts, linked by NAME (sale customer_id does NOT
-    match the customer list id). When a reconciling FULL loctell ledger (sales + receipts incl.
-    same-day spot receipts) is available it is used and reconciles to the ERP outstanding; else
-    it falls back to the archive-based build (whose running balance can be inflated because spot
-    receipts are missing). Mirrors localhost's ledger shape."""
-    full_ledgers = full_ledgers or {}
-    prev_ledgers_by_name = _prev_customer_ledgers_by_name()
-    hist = load_archive_window(LEDGER_HISTORY_START, today)
-    sales_src = hist.get("sales") or all_sales or []
-    reps_src = hist.get("receipts") or repayments or []
-    sales_by_name = {}
-    for s in sales_src:
-        sales_by_name.setdefault(str(s.get("customer_name", "")).strip().upper(), []).append(s)
-    reps_by_name = {}
-    for r in reps_src:
-        reps_by_name.setdefault(str(r.get("customer_name", "")).strip().upper(), []).append(r)
-
-    ledgers = {}
-    for cust in customers_full:
-        name = cust.get("name", "")
-        key = str(name).strip().upper()
-        closing = round(_num(cust.get("outstanding", cust.get("balance"))), 2)
-
-        # Prefer the FULL reconciling loctell ledger (Sale=Debit, Receipt=Credit incl. spot receipts).
-        full_entries = full_ledgers.get(_norm_name(name))
-        if not full_entries:
-            # No fresh fetch this run: reuse the customer's OWN last reconciling snapshot rather than
-            # overwriting it with the receipt-sparse archive build. Look it up by NAME (not by the
-            # positional id, which shifts between syncs) — reusing by id would graft another customer's
-            # ledger onto this one (wrong material) or drop to the archive build (missing recent
-            # receipts). Keyed by name, each customer keeps its own full receipt history across id shifts.
-            prev = prev_ledgers_by_name.get(_norm_name(name))
-            if isinstance(prev, dict) and prev.get("source") == "erp" and prev.get("entries"):
-                ledgers[str(cust.get("id"))] = prev
-                continue
-        if full_entries:
-            es = sorted(full_entries, key=lambda x: (str(x["date"]), 0 if x["type"] == "sale" else 1))
-            window_net = round(sum(e["debit"] - e["credit"] for e in es), 2)
-            opening = round(closing - window_net, 2)
-            if abs(opening) < 100:
-                opening = 0.0  # rounding residual on a fully-captured history, not a real prior balance
-            received = round(sum(e["credit"] for e in es), 2)
-            erp_entries = []
-            running = opening
-            for idx, e in enumerate(es, start=1):
-                running = round(running + e["debit"] - e["credit"], 2)
-                erp_entries.append({**e, "id": idx, "amount": e.get("debit") or e.get("credit") or 0.0,
-                                    "balance": running})
-            ledger = empty_ledger(name, closing)
-            ledger.update({
-                "customer_id": cust.get("id"), "customer_name": name,
-                "opening_balance": opening, "entries": erp_entries,
-                "closing_balance": round(running, 2), "received": received,
-                "erp_received": received, "source": "erp",
-            })
-            ledgers[str(cust.get("id"))] = ledger
-            continue
-
-        entries = []
-        for s in sales_by_name.get(key, []):
-            total = _sale_total(s)
-            entries.append({
-                "type": "sale",
-                "id": s.get("id"),
-                "date": s.get("date"),
-                "description": (f"{s.get('material') or 'Sale'} — {s.get('vehicle_no') or ''}").strip(" —"),
-                "debit": total, "credit": 0.0, "amount": total,
-                "transport_charge": _num(s.get("transport_charge")),
-                "ticket_no": s.get("ticket_no") or "",
-                "vehicle_no": s.get("vehicle_no") or "",
-                "material": s.get("material") or "",
-                "qty_mt": s.get("qty_mt") or 0,
-                "mdp_ton": s.get("mdp_ton"),
-                "rate_per_mt": s.get("rate_per_mt") or 0,
-                "payment_mode": s.get("payment_mode") or "",
-                "gst_rate": s.get("gst_rate") or 0,
-            })
-        received = 0.0
-        for r in reps_by_name.get(key, []):
-            amt = _num(r.get("payment_received", r.get("amount")))
-            received = round(received + amt, 2)
-            entries.append({
-                "type": "receipt",
-                "id": None,
-                "date": str(r.get("date", ""))[:10],
-                "description": f"Receipt ({r.get('mode') or 'Payment'})" + (f" Ref: {r.get('reference')}" if r.get("reference") else ""),
-                "debit": 0.0, "credit": amt, "amount": amt,
-            })
-        entries.sort(key=lambda x: (str(x.get("date") or ""), x.get("type") or ""))
-        window_net = round(sum(_num(e.get("debit")) - _num(e.get("credit")) for e in entries), 2)
-        opening = round(closing - window_net, 2)
-        # Show an opening line only when it's non-negative (carried-forward dues). A negative
-        # opening means credit repayments are undercounted in the data (the known estimation
-        # gap) — in that case start at 0 like localhost rather than display a misleading
-        # negative. The true balance is always shown via closing_balance (the ERP snapshot).
-        result_entries = []
-        if opening > 0.01:
-            result_entries.append({
-                "type": "opening", "id": None, "date": None,
-                "description": "Opening Balance (before synced window)",
-                "debit": opening, "credit": 0.0, "balance": opening,
-            })
-            running = opening
-        else:
-            running = 0.0
-        for e in entries:
-            running = round(running + _num(e.get("debit")) - _num(e.get("credit")), 2)
-            e["balance"] = running
-            result_entries.append(e)
-        ledger = empty_ledger(name, closing)
-        ledger.update({
-            "customer_id": cust.get("id"),
-            "customer_name": name,
-            "opening_balance": opening,
-            "entries": result_entries,
-            "closing_balance": closing,
-            "received": received,
-            "erp_received": round(_num(cust.get("received", cust.get("erp_received", received))), 2),
-            "source": "db",
-        })
-        ledgers[str(cust.get("id"))] = ledger
-    return ledgers
+    return sync_finance.build_customer_ledgers(
+        customers_full, all_sales, repayments, today, full_ledgers,
+        LEDGER_HISTORY_START=LEDGER_HISTORY_START, _norm_name=_norm_name, _num=_num,
+        _prev_customer_ledgers_by_name=_prev_customer_ledgers_by_name, _sale_total=_sale_total,
+        empty_ledger=empty_ledger, load_archive_window=load_archive_window,
+    )
 
 def _format_material_sold(materials):
-    rows = sorted(
-        materials.items(),
-        key=lambda item: (_num(item[1].get("qty")), _num(item[1].get("amount"))),
-        reverse=True,
-    )
-    if not rows:
-        return "No sale"
-    parts = []
-    for material, totals in rows[:4]:
-        qty = _num(totals.get("qty"))
-        label = material or "Material"
-        parts.append(f"{label} {qty:,.2f} MT" if qty else label)
-    if len(rows) > 4:
-        parts.append(f"+{len(rows) - 4} more")
-    return ", ".join(parts)
+    return sync_finance._format_material_sold(materials, _num=_num)
 
 def _credit_due_15_plus_by_name(customers, all_sales, all_repayments, as_of, days=15):
-    """Calculate unpaid credit material aged ``days`` days or more per customer."""
-    as_of = str(as_of or datetime.now(IST).date())[:10]
-    cutoff = (date.fromisoformat(as_of) - timedelta(days=days)).isoformat()
-    sales_by_name = {}
-    for index, sale in enumerate(all_sales or []):
-        name = str(sale.get("customer_name") or "").strip()
-        customer_key = _norm_name(name)
-        sale_date = str(sale.get("date") or "")[:10]
-        if not customer_key or not sale_date or sale_date > as_of:
-            continue
-        _cash, credit, _upi = _sale_channels(sale)
-        credit = round(max(credit, 0.0), 2)
-        if credit > 0:
-            sales_by_name.setdefault(customer_key, []).append({"date": sale_date, "unpaid": credit, "index": index})
-    receipts_by_name = {}
-    for index, repayment in enumerate(all_repayments or []):
-        name = str(repayment.get("customer_name") or "").strip()
-        customer_key = _norm_name(name)
-        repayment_date = str(repayment.get("date") or "")[:10]
-        amount = round(max(_num(repayment.get("payment_received", repayment.get("amount"))), 0.0), 2)
-        if customer_key and repayment_date and repayment_date <= as_of and amount > 0:
-            receipts_by_name.setdefault(customer_key, []).append({"date": repayment_date, "amount": amount, "index": index})
-
-    result = {}
-    for customer in customers or []:
-        name = str(customer.get("name") or "").strip()
-        customer_key = _norm_name(name)
-        invoices = sorted(sales_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
-        receipts = sorted(receipts_by_name.get(customer_key, []), key=lambda row: (row["date"], row["index"]))
-        target = round(max(_num(customer.get("outstanding", customer.get("balance", 0.0))), 0.0), 2)
-        result[name] = round(calculate_credit_due(
-            invoices, [receipt["amount"] for receipt in receipts], target, cutoff), 2)
-    return result
+    return sync_finance._credit_due_15_plus_by_name(
+        customers, all_sales, all_repayments, as_of, days, IST=IST, _norm_name=_norm_name, _num=_num,
+        _sale_channels=_sale_channels,
+    )
 
 
 def build_customer_range_rows(
@@ -4398,211 +1610,16 @@ def build_customer_range_rows(
     aging_sales=None,
     aging_repayments=None,
 ):
-    metrics = {}
-    for sale in all_sales or []:
-        name = str(sale.get("customer_name") or "").strip()
-        if not name:
-            continue
-        metric = metrics.setdefault(name, {
-            "material_totals": {},
-            "range_total_sales": 0.0,
-            "range_credit_sales": 0.0,
-            "range_payment_received": 0.0,
-            "range_latest_sale_date": "",
-            "latest_sale_date": "",
-        })
-        sale_date = str(sale.get("date", ""))[:10]
-        if sale_date > metric["latest_sale_date"]:
-            metric["latest_sale_date"] = sale_date
-    for sale in range_sales or []:
-        name = str(sale.get("customer_name") or "").strip()
-        if not name:
-            continue
-        metric = metrics.setdefault(name, {
-            "material_totals": {},
-            "range_total_sales": 0.0,
-            "range_credit_sales": 0.0,
-            "range_payment_received": 0.0,
-            "range_latest_sale_date": "",
-            "latest_sale_date": "",
-        })
-        sale_date = str(sale.get("date", ""))[:10]
-        if sale_date > metric["range_latest_sale_date"]:
-            metric["range_latest_sale_date"] = sale_date
-        if sale_date > metric["latest_sale_date"]:
-            metric["latest_sale_date"] = sale_date
-        amount = _sale_total(sale)
-        _sale_cash, sale_credit, _sale_upi = _sale_channels(sale)
-        material = str(sale.get("material") or "Material").strip() or "Material"
-        mat = metric["material_totals"].setdefault(material, {"qty": 0.0, "amount": 0.0})
-        mat["qty"] += _num(sale.get("qty_mt"))
-        mat["amount"] += amount
-        metric["range_total_sales"] += amount
-        metric["range_credit_sales"] += sale_credit
-    for repayment in range_repayments or []:
-        name = str(repayment.get("customer_name") or "").strip()
-        if not name:
-            continue
-        metric = metrics.setdefault(name, {
-            "material_totals": {},
-            "range_total_sales": 0.0,
-            "range_credit_sales": 0.0,
-            "range_payment_received": 0.0,
-            "range_latest_sale_date": "",
-            "latest_sale_date": "",
-        })
-        metric["range_payment_received"] += _num(repayment.get("payment_received", repayment.get("amount")))
-
-    outstanding_by_name = {}
-    use_exact_end_balance = ending_debtors is not None
-    if use_exact_end_balance:
-        # Use the selected date's Loctell debtor list. A customer absent from
-        # that historical list must not inherit today's outstanding balance.
-        for row in ending_debtors or []:
-            name = str(row.get("name") or "").strip()
-            if name:
-                outstanding_by_name[_norm_name(name)] = _num(
-                    row.get("outstanding", row.get("balance", 0.0))
-                )
-    elif archive_balance:
-        for row in archive_balance.get("receivables_rows") or archive_balance.get("top_receivables") or []:
-            name = str(row.get("name") or "").strip()
-            if name:
-                outstanding_by_name[_norm_name(name)] = _num(row.get("balance"))
-
-    due_15_plus = _credit_due_15_plus_by_name(
-        customers_full,
-        aging_sales if aging_sales is not None else all_sales,
-        aging_repayments if aging_repayments is not None
-        else (all_repayments if all_repayments is not None else range_repayments),
-        as_of,
-        days=16,
-    ) if as_of else {}
-    due_30_plus = _credit_due_15_plus_by_name(
-        customers_full,
-        aging_sales if aging_sales is not None else all_sales,
-        aging_repayments if aging_repayments is not None
-        else (all_repayments if all_repayments is not None else range_repayments),
-        as_of,
-        days=31,
-    ) if as_of else {}
-    due_45_plus = _credit_due_15_plus_by_name(
-        customers_full,
-        aging_sales if aging_sales is not None else all_sales,
-        aging_repayments if aging_repayments is not None
-        else (all_repayments if all_repayments is not None else range_repayments),
-        as_of,
-        days=45,
-    ) if as_of else {}
-    rows = []
-    consumed_end_balance_keys = set()
-    for customer in customers_full or []:
-        row = dict(customer)
-        name = str(row.get("name") or "").strip()
-        metric = metrics.get(name, {})
-        balance_key = _norm_name(name)
-        if use_exact_end_balance and balance_key in consumed_end_balance_keys:
-            outstanding = 0.0
-        else:
-            outstanding = outstanding_by_name.get(
-                balance_key,
-                0.0 if use_exact_end_balance else _num(row.get("outstanding", row.get("balance", 0.0))),
-            )
-            if use_exact_end_balance and balance_key in outstanding_by_name:
-                consumed_end_balance_keys.add(balance_key)
-        row.update({
-            "balance": round(outstanding, 2),
-            "outstanding": round(outstanding, 2),
-            "total_outstanding": round(outstanding, 2),
-            "material_sold": _format_material_sold(metric.get("material_totals", {})),
-            "range_total_sales": round(_num(metric.get("range_total_sales")), 2),
-            "range_credit_sales": round(_num(metric.get("range_credit_sales")), 2),
-            "range_payment_received": round(_num(metric.get("range_payment_received")), 2),
-            "credit_due_15_plus": due_15_plus.get(name, round(max(_num(row.get("credit_due_15_plus")), 0.0), 2)),
-            "credit_due_30_plus": due_30_plus.get(name, round(max(_num(row.get("credit_due_30_plus")), 0.0), 2)),
-            "credit_due_45_plus": due_45_plus.get(name, round(max(_num(row.get("credit_due_45_plus")), 0.0), 2)),
-            "range_latest_sale_date": metric.get("range_latest_sale_date") or None,
-            "latest_sale_date": metric.get("latest_sale_date") or None,
-        })
-        rows.append(row)
-    def _date_sort_value(value):
-        return int(str(value or "").replace("-", "") or "0")
-    rows.sort(key=lambda row: (
-        not row.get("active", True),
-        -_date_sort_value(row.get("range_latest_sale_date") or row.get("latest_sale_date")),
-        -_num(row.get("total_outstanding")),
-        str(row.get("name") or ""),
-    ))
-    return rows
+    return sync_finance.build_customer_range_rows(
+        customers_full, all_sales, range_sales, range_repayments, archive_balance, ending_debtors, as_of,
+        all_repayments, aging_sales, aging_repayments,
+        _credit_due_15_plus_by_name=_credit_due_15_plus_by_name,
+        _format_material_sold=_format_material_sold, _norm_name=_norm_name, _num=_num,
+        _sale_channels=_sale_channels, _sale_total=_sale_total,
+    )
 
 def build_gstr1(sales_rows, name_to_gstin, exports_config, year, month):
-    """Compute a GSTR-1 payload for one month from sale rows, mirroring the live
-    backend (routers/exports.py:export_gstr1). Amounts are GST-inclusive, so the
-    taxable value is amount / (1 + rate/100). B2B when the customer has a valid
-    15-char GSTIN, else rolled into the B2C summary. Keeps otomy's static snapshot
-    identical to what localhost returns instead of shipping an empty stub."""
-    gstin = (exports_config or {}).get("gstin", "") or ""
-    state_code = (exports_config or {}).get("state_code", "29") or "29"
-    fp = f"{month:02d}{year}"
-    prefix = f"{year}-{month:02d}-"
-    b2b = {}
-    b2cs_taxable = b2cs_cgst = b2cs_sgst = 0.0
-    total_taxable = 0.0
-    total_qty = 0.0
-    for s in sales_rows:
-        d = str(s.get("date") or "")
-        if not d.startswith(prefix):
-            continue
-        rate = _num(s.get("gst_rate")) or 5.0
-        amount = _num(s.get("amount")) + _num(s.get("transport_charge"))
-        taxable = round(amount / (1 + rate / 100), 2)
-        cgst = round(taxable * (rate / 2) / 100, 2)
-        sgst = round(taxable * (rate / 2) / 100, 2)
-        total_taxable += taxable
-        total_qty += _num(s.get("qty_mt"))
-        cust_gstin = (name_to_gstin.get((s.get("customer_name") or "").strip().lower(), "") or "").strip()
-        if len(cust_gstin) == 15:
-            entry = b2b.setdefault(cust_gstin, {"ctin": cust_gstin, "inv": []})
-            try:
-                idt = datetime.strptime(d[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
-            except ValueError:
-                idt = d
-            entry["inv"].append({
-                "inum": s.get("ticket_no") or f"INV{s.get('id')}",
-                "idt": idt,
-                "val": round(amount, 2),
-                "pos": state_code,
-                "rchrg": "N",
-                "itms": [{"num": 1, "itm_det": {
-                    "txval": taxable, "rt": rate, "igst": 0,
-                    "cgst": cgst, "sgst": sgst, "cess": 0,
-                }}],
-            })
-        else:
-            b2cs_taxable += taxable
-            b2cs_cgst += cgst
-            b2cs_sgst += sgst
-    gstr1 = {
-        "gstin": gstin,
-        "fp": fp,
-        "gt": round(total_taxable, 2),
-        "cur_gt": round(total_taxable, 2),
-    }
-    if b2b:
-        gstr1["b2b"] = list(b2b.values())
-    gstr1["b2cs"] = [{
-        "sply_tp": "INTRA", "pos": state_code, "typ": "OE", "rt": 5,
-        "txval": round(b2cs_taxable, 2), "igst": 0,
-        "cgst": round(b2cs_cgst, 2), "sgst": round(b2cs_sgst, 2), "cess": 0,
-    }] if b2cs_taxable > 0 else []
-    b2b_cgst = sum(itm["itm_det"]["cgst"] for c in b2b.values() for inv in c["inv"] for itm in inv["itms"])
-    b2b_sgst = sum(itm["itm_det"]["sgst"] for c in b2b.values() for inv in c["inv"] for itm in inv["itms"])
-    gstr1["hsn"] = {"data": [{
-        "num": 1, "hsn_sc": "2517", "desc": "Crushed Stone / Aggregate", "uqc": "MT",
-        "qty": round(total_qty, 3), "val": round(total_taxable, 2), "txval": round(total_taxable, 2),
-        "igst": 0, "cgst": round(b2cs_cgst + b2b_cgst, 2), "sgst": round(b2cs_sgst + b2b_sgst, 2), "cess": 0,
-    }]} if total_taxable > 0 else {"data": []}
-    return gstr1
+    return sync_snapshots.build_gstr1(sales_rows, name_to_gstin, exports_config, year, month, _num=_num)
 
 def write_snapshot_bundle(
     today,
@@ -4644,414 +1661,25 @@ def write_snapshot_bundle(
     aging_sales=None,
     aging_repayments=None,
 ):
-    week_start = today - timedelta(days=today.weekday())
-    last_week_start = week_start - timedelta(days=7)
-    last_week_end = week_start - timedelta(days=1)
-    last_month_end = month_start - timedelta(days=1)
-    last_month_start = last_month_end.replace(day=1)
-    ranges = [
-        (today, today),
-        (yesterday, yesterday),
-        (week_start, today),
-        (last_week_start, last_week_end),
-        (month_start, today),
-        (last_month_start, last_month_end),
-        # The FYTD dashboard is a canonical current view, not a historical
-        # one-off.  A recent ERP ingest therefore must refresh it too; leaving
-        # this range to full-only runs makes the FYTD dashboard silently freeze
-        # while Today and MTD continue to advance.
-        (financial_year_start, today),
-    ]
-    # These rolling periods are first-class dashboard choices in Otomy.  The
-    # static site cannot calculate an absent dashboard snapshot on demand, so
-    # generate the exact ranges selected by the UI as part of every engine
-    # refresh.  They replace the prior day's derived snapshots through the
-    # retention pass below; this does not grow R2 storage over time.
-    def calendar_month_range_start(months: int) -> date:
-        # Last 2 Months = previous full calendar month + current MTD; Last 3
-        # Months also includes the full month before that.  Match the UI's
-        # month-boundary semantics exactly rather than a rolling 60/90 days.
-        month_index = today.year * 12 + (today.month - 1) - (months - 1)
-        target_year, target_month_index = divmod(month_index, 12)
-        target_month = target_month_index + 1
-        return date(target_year, target_month, 1)
-
-    rolling_ranges = [
-        (calendar_month_range_start(2), today),
-        (calendar_month_range_start(3), today),
-        *((today - timedelta(days=days - 1), today) for days in (7, 15, 30, 45, 60, 90)),
-    ]
-    for rolling_range in rolling_ranges:
-        if rolling_range not in ranges:
-            ranges.append(rolling_range)
-    # Completed FY months are selectable dashboard periods too.  Without
-    # explicit snapshots April falls through to a different client archive
-    # path while May onward may happen to exist from prior runs.
-    completed_month = financial_year_start
-    while completed_month < month_start:
-        completed_end = (completed_month.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-        completed_range = (completed_month, completed_end)
-        if completed_range not in ranges:
-            ranges.append(completed_range)
-        completed_month = completed_end + timedelta(days=1)
-    if historical_start is not None:
-        historical_end = min(yesterday, last_month_end)
-        ranges.extend([
-            (historical_start, historical_end),
-            (historical_start, yesterday),
-            (historical_start, today),
-        ])
-    for start_day in range(1, today.day + 1):
-        start = today.replace(day=start_day)
-        for end_day in range(start_day, today.day + 1):
-            end = today.replace(day=end_day)
-            if (start, end) not in ranges:
-                ranges.append((start, end))
-    # Regenerate single-day control snapshots back to the balance anchor. A cash/bank book's opening
-    # is control(previous-day); if that historical single-day snapshot is stale (written months ago
-    # before the receipts were reconciled) the book range opens on a wrong figure. Rewriting one
-    # snapshot per day from the anchor to today keeps every historical range opening self-computed
-    # and correct — cheap (~a day's worth per day since the anchor).
-    try:
-        _hist_anchors = _balance_overlay().get("anchors", [])
-        if _hist_anchors:
-            _ad = date.fromisoformat(str(_hist_anchors[-1]["date"]))
-            _dd = _ad
-            while _dd <= today:
-                if (_dd, _dd) not in ranges:
-                    ranges.append((_dd, _dd))
-                _dd += timedelta(days=1)
-    except Exception as _e:
-        print(f"  historical single-day snapshot backfill skipped: {_e}")
-
-    control_by_range = {
-        (today, today): controls["today"],
-        (yesterday, yesterday): controls["yesterday"],
-        (week_start, today): controls.get("week"),
-        (month_start, today): controls["mtd"],
-    }
-
-    def rows_between(rows, start, end):
-        fs, ts = str(start), str(end)
-        return [row for row in rows if fs <= row.get("date", "") <= ts]
-
-    def debtors_as_of(as_of):
-        rows = balance_snapshots.get(str(as_of), {}).get("debtors") or []
-        return [{"name": row.get("name"), "outstanding": row.get("outstanding", row.get("balance", 0.0))} for row in rows]
-
-    def creditors_as_of(as_of):
-        rows = balance_snapshots.get(str(as_of), {}).get("creditors") or []
-        # Supplier Balance may contain same-name masters.  The vendor page is
-        # keyed by its Loctell supplier-ledger ID, so retain that ID when a
-        # dated snapshot is rebuilt.  Dropping it makes every ID-backed vendor
-        # miss its balance and appear as ₹0 in the dated Vendor-page view.
-        return [{
-            "name": row.get("name"),
-            "payable": row.get("payable", row.get("balance", 0.0)),
-            "erp_supplier_id": row.get("erp_supplier_id"),
-        } for row in rows]
-
-    def archive_balance_rows(balance, rows_key, amount_key):
-        """Use archived end balances only when a fresh ERP point snapshot is unavailable."""
-        return [
-            {"name": row.get("name"), amount_key: _num(row.get("balance"))}
-            for row in ((balance or {}).get(rows_key) or [])
-            if str(row.get("name") or "").strip()
-        ]
-
-    def positive_balance_rows(rows, amount_key):
-        result = []
-        for row in rows or []:
-            amount = round(_num(row.get(amount_key, row.get("balance", 0.0))), 2)
-            if not row.get("active", True) or amount <= 0:
-                continue
-            result.append({
-                "id": row.get("id"), "name": row.get("name"), "balance": amount,
-                # Vendor page's payable endpoint uses `payable`; Dashboard top
-                # lists use `balance`. Carry both names for one exact amount.
-                **({"payable": amount} if amount_key == "payable" else {}),
-            })
-        return sorted(result, key=lambda row: (-row["balance"], str(row.get("name") or "")))
-
-    def overlay_anchor_date(as_of):
-        anchors = [
-            row for row in _balance_overlay().get("anchors", [])
-            if str(row.get("date")) <= str(as_of)
-        ]
-        return str(anchors[-1].get("date") or "") if anchors else ""
-
-    seed_endpoints = local_seed.get("endpoints", {}) if isinstance(local_seed, dict) else {}
-    seed_customer_ledgers = local_seed.get("customer_ledgers", {}) if isinstance(local_seed, dict) else {}
-    seed_vendor_ledgers = local_seed.get("vendor_ledgers", {}) if isinstance(local_seed, dict) else {}
-    seed_bank_statements = local_seed.get("bank_statements", {}) if isinstance(local_seed, dict) else {}
-    bank_accounts = seed_endpoints.get("bank_accounts") or load_book_balance_accounts() or [
-        {
-            "id": 1,
-            "name": "Operating Bank",
-            "account_no": "",
-            "bank_name": "ERP Bank",
-            "branch": "",
-            "ifsc": "",
-            "initial_balance": bank_net,
-            "initial_balance_date": str(today),
-            "active": True,
-            "current_balance": bank_net,
-        }
-    ]
-    archive_manifest = load_archive_manifest()
-    exports_config = seed_endpoints.get("exports_config") or {"company_name": "ValliMuruga Industires pvt ltd", "gstin": "", "state_code": "29"}
-    if not exports_config.get("operating_balance_opening") and archive_manifest.get("operating_balance_opening"):
-        exports_config = {
-            **exports_config,
-            "operating_balance_opening": archive_manifest["operating_balance_opening"],
-        }
-    opening = exports_config.get("operating_balance_opening") or {}
-    try:
-        opening_as_of = datetime.fromisoformat(str(opening.get("as_of"))).date()
-    except Exception:
-        opening_as_of = today - timedelta(days=1)
-    movement_start = opening_as_of + timedelta(days=1)
-
-    write_snapshot("/api/me", {"username": "otomy", "can_write": False})
-    write_snapshot("/api/dashboard/latest-date", {"latest_date": str(today)})
-    write_snapshot("/api/machines/odometer", odometer_readings)
-    write_snapshot("/api/machines/odometer-history", odometer_history)
-    write_snapshot("/api/machines/fuel-issued", vmi_loader_fuel_issues)
-    write_snapshot("/api/machines/fuel-received", fuel_received_rows)
-    write_snapshot("/api/machines/fuel-balance", fuel_balance)
-    # The Operations page reads this one static bundle, rather than three
-    # browser requests.  Keep the individual snapshots for compatibility.
-    write_snapshot("/api/machines/summary", {
-        "odometer": odometer_readings,
-        "odometer_history": odometer_history,
-        "fuel_issued": vmi_loader_fuel_issues,
-        "fuel_received": fuel_received_rows,
-        "fuel_balance": fuel_balance,
-    })
-    write_snapshot("/api/customers/", customers_full)
-    write_snapshot("/api/customers/?active_only=false", customers_full)
-    write_snapshot(f"/api/customers/?active_only=false&as_of={today}", customers_full)
-    write_snapshot("/api/customers/outstanding", customers_outstanding)
-    write_snapshot(f"/api/customers/outstanding?as_of={today}", customers_outstanding)
-    write_snapshot("/api/vendors/", vendors_full)
-    write_snapshot("/api/vendors/?active_only=false", vendors_full)
-    write_snapshot(f"/api/vendors/?active_only=false&as_of={today}", vendors_full)
-    write_snapshot("/api/vendors/payables", vendors_payables)
-    write_snapshot(f"/api/vendors/payables?as_of={today}", vendors_payables)
-    # The Vendor page groups this complete, already-synced ledger source by
-    # its selected date range.  Publishing it once avoids a browser request
-    # for every supplier ledger while leaving the individual ledger snapshots
-    # intact for the on-demand detail view.
-    write_snapshot("/api/vendors/ledger-summary", {"ledgers": vendor_ledgers})
-    write_snapshot("/api/bank/accounts", bank_accounts)
-    for account in bank_accounts:
-        write_snapshot(f"/api/bank/accounts/{account['id']}/statement", seed_bank_statements.get(str(account["id"]), []))
-    write_snapshot("/api/emi/", seed_endpoints.get("emi", []))
-    write_snapshot("/api/workers/", [row for row in seed_endpoints.get("workers", []) if row.get("active", True)])
-    write_snapshot("/api/workers/?active_only=false", seed_endpoints.get("workers", []))
-    write_snapshot("/api/exports/config", exports_config)
-    write_snapshot("/api/sync/erp/config", {"erp_base": ERP_BASE, "erp_org": ERP_ORG, "erp_username": ERP_USER, "last_sync": datetime.now(IST).isoformat(timespec="seconds")})
-    write_snapshot("/api/sync/erp/status", {"last_sync": datetime.now(IST).isoformat(timespec="seconds"), "source": "github-actions"})
-
-    customer_ledgers = build_customer_ledgers(customers_full, all_sales, repayments, today, customer_ledgers_full)
-    for row in customers_full:
-        write_snapshot(
-            f"/api/customers/ledger/{row['id']}",
-            customer_ledgers.get(str(row["id"]))
-            or seed_customer_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("outstanding", 0.0))),
-        )
-    for row in vendors_full:
-        write_snapshot(
-            f"/api/vendors/ledger/{row['id']}",
-            vendor_ledgers.get(str(row["id"])) or seed_vendor_ledgers.get(str(row["id"]), empty_ledger(row["name"], row.get("payable", 0.0))),
-        )
-
-    for start, end in ranges:
-        control = control_by_range.get((start, end))
-        if control is None:
-            range_boulders = rows_between(boulder_rows, start, end)
-            control = build_control(
-                rows_between(all_sales, start, end),
-                rows_between(all_expenses, start, end),
-                start,
-                end,
-                boulders={
-                    "total_tonnes": sum(_num(row.get("total_tonnes")) for row in range_boulders),
-                    "total_trips": sum(_num(row.get("trips")) for row in range_boulders),
-                    "materials": [],
-                    "suppliers": [],
-                },
-                debtors=debtors_as_of(end) or [{"name": row["name"], "outstanding": row.get("outstanding", 0.0)} for row in customers_full],
-                creditors=creditors_as_of(end) or [{"name": row["name"], "payable": row.get("payable", 0.0)} for row in vendors_full],
-                cash_balance=cash_balance,
-                bank_net=bank_net,
-                labour=rows_between(labour_rows, start, end),
-                parts=rows_between(parts_rows, start, end),
-                machines=rows_between(machines_rows, start, end),
-                vendor_payments=rows_between(vendor_payments, start, end),
-                bank_balance_book=bank_balance_book,
-                cash_balance_office_book=cash_balance_office_book,
-                repayments=rows_between(repayments, start, end),
-            )
-        archive_balance = archive_balances.get(str(end)) if end < today and isinstance(archive_balances, dict) else None
-        end_debtors = debtors_as_of(end) or archive_balance_rows(
-            archive_balance, "receivables_rows", "outstanding"
-        )
-        end_creditors = creditors_as_of(end)
-        payable_source_rows = end_creditors
-        used_mapped_creditors = False
-        # Older saved balance snapshots have the same name-only shape as the
-        # archive.  Never send either form directly to the ID-backed vendor
-        # renderer: resolve it first or stop the publish.
-        if end_creditors and not all(str(row.get("erp_supplier_id") or "").strip() for row in end_creditors):
-            used_mapped_creditors = True
-        elif not end_creditors and archive_balance:
-            payable_source_rows = archive_balance.get("payables_rows") or []
-            end_creditors = payable_source_rows
-            used_mapped_creditors = True
-        # A supplier can be removed from today's Loctell master after a real
-        # historical payable existed.  Keep it on that dated page only; never
-        # reintroduce it into the live Vendor view.
-        range_vendor_master = historical_vendor_master_rows(vendors_full, end_creditors)
-        if used_mapped_creditors:
-            # Resolve name-only archive balances against the same dated master
-            # that will render them, including a legitimate retired supplier.
-            end_creditors = archived_vendor_balances_as_of(
-                payable_source_rows, range_vendor_master
-            )
-        customer_rows = build_customer_range_rows(
-            customers_full,
-            all_sales,
-            rows_between(all_sales, start, end),
-            rows_between(repayments, start, end),
-            archive_balance,
-            ending_debtors=end_debtors,
-            as_of=end,
-            all_repayments=repayments,
-            aging_sales=aging_sales,
-            aging_repayments=aging_repayments,
-        )
-        vendor_rows = vendor_rows_as_of(range_vendor_master, end_creditors, vendor_ledgers, str(end))
-        receivable_rows = positive_balance_rows(customer_rows, "total_outstanding")
-        payable_rows = positive_balance_rows(vendor_rows, "payable")
-
-        # The control-room payment blocks must mirror the Customer/Vendor
-        # pages exactly.  They remain deliberately separate from Credit
-        # Repayment, whose display removes same-period spot-sale settlements.
-        control["customer_page_rows"] = customer_rows
-        paid_by_vendor = {}
-        for payment in rows_between(vendor_payments, start, end):
-            identity = _vendor_identity(payment)
-            paid_by_vendor[identity] = paid_by_vendor.get(identity, 0.0) + _num(payment.get("amount"))
-        vendor_page_rows = []
-        for row in vendor_rows:
-            page_row = dict(row)
-            entries = (vendor_ledgers.get(str(row.get("id"))) or {}).get("entries") or []
-            page_row["range_purchased"] = round(sum(
-                _num(entry.get("credit", entry.get("amount")))
-                for entry in entries
-                if entry.get("type") == "purchase" and str(start) <= str(entry.get("date") or "")[:10] <= str(end)
-            ), 2)
-            page_row["range_paid"] = round(paid_by_vendor.get(_vendor_identity(row), 0.0), 2)
-            vendor_page_rows.append(page_row)
-        control["vendor_page_rows"] = vendor_page_rows
-
-        if used_mapped_creditors:
-            expected_payables = round(sum(
-                max(0.0, _num(row.get("balance", row.get("payable", 0.0))))
-                for row in payable_source_rows
-            ), 2)
-            actual_payables = round(sum(_num(row.get("payable")) for row in payable_rows), 2)
-            if abs(actual_payables - expected_payables) > 0.01:
-                raise ErpFetchError(
-                    f"historical vendor payable parity failed for {end}: "
-                    f"archive={expected_payables:.2f} snapshot={actual_payables:.2f}"
-                )
-
-        # The Dashboard must not have independent balance math. Its tiles and
-        # top-five lists come directly from the selected-date Customer/Vendor
-        # rows written below.
-        control = apply_seed_control_overrides(control, local_seed, start, end)
-        summary = control.setdefault("summary", {})
-        summary["receivables"] = round(sum(row["balance"] for row in receivable_rows), 2)
-        summary["payables"] = round(sum(row["balance"] for row in payable_rows), 2)
-        control["top_receivables"] = receivable_rows[:5]
-        control["top_payables"] = payable_rows[:5]
-        control["internal_transfers"] = rows_between(internal_transfers, start, end)
-        overlay_balance = _overlay_balance(str(end), all_sales, all_expenses, repayments, internal_transfers)
-        if overlay_balance:
-            summary = control.setdefault("summary", {})
-            summary["bank_balance"] = overlay_balance[0]
-            summary["cash_balance_office"] = overlay_balance[1]
-            summary["operating_balance_from"] = overlay_anchor_date(end)
-        write_snapshot(f"/api/dashboard/control?from_date={start}&to_date={end}", control)
-        write_snapshot(
-            f"/api/customers/?active_only=false&from_date={start}&to_date={end}&as_of={end}",
-            customer_rows,
-        )
-        write_snapshot(f"/api/vendors/?active_only=false&as_of={end}", vendor_rows)
-        write_snapshot(f"/api/vendors/payments/?from_date={start}&to_date={end}", rows_between(vendor_payments, start, end))
-        write_snapshot(f"/api/vendors/payables?as_of={end}", payable_rows)
-        write_snapshot(f"/api/sales/?from_date={start}&to_date={end}", rows_between(all_sales, start, end))
-        write_snapshot(f"/api/expenses/?from_date={start}&to_date={end}", rows_between(all_expenses, start, end))
-        write_snapshot(f"/api/boulders/?from_date={start}&to_date={end}", rows_between(boulder_rows, start, end))
-        write_snapshot(f"/api/machines/?from_date={start}&to_date={end}", rows_between(machines_rows, start, end))
-        write_snapshot(f"/api/labour/?from_date={start}&to_date={end}", rows_between(labour_rows, start, end))
-        write_snapshot(f"/api/parts/?from_date={start}&to_date={end}", rows_between(parts_rows, start, end))
-        write_snapshot(f"/api/sync/erp/bank?from_date={start}&to_date={end}", rows_between(bank_rows, start, end))
-        write_snapshot(f"/api/sync/erp/cash?from_date={start}&to_date={end}", rows_between(cash_rows, start, end))
-
-    ledger_current = build_ledger_view(
-        all_sales,
-        all_expenses,
-        vendor_payments,
-        boulder_rows,
-        (controls.get("mtd") or {}).get("customer_repayments", []),
-        today.year,
-        today.month,
-        opening.get("bank_balance", 0.0),
-        opening.get("cash_balance_office", 0.0),
-        movement_start,
-        today,
-        overlay_repayments=repayments,
+    return sync_snapshots.write_snapshot_bundle(
+        today, yesterday, month_start, financial_year_start, all_sales, all_expenses, internal_transfers,
+        labour_rows, parts_rows, machines_rows, odometer_readings, odometer_history, vmi_loader_fuel_issues,
+        fuel_received_rows, fuel_balance, boulder_rows, iot_rows, cash_rows, bank_rows, cash_balance,
+        bank_net, bank_balance_book, cash_balance_office_book, customers_full, customers_outstanding,
+        vendors_full, vendors_payables, vendor_ledgers, vendor_payments, repayments, local_seed, controls,
+        balance_snapshots, archive_balances, customer_ledgers_full, historical_start, aging_sales,
+        aging_repayments, DATA_DIR=DATA_DIR, ERP_BASE=ERP_BASE, ERP_ORG=ERP_ORG, ERP_USER=ERP_USER,
+        ErpFetchError=ErpFetchError, IST=IST, _balance_overlay=_balance_overlay, _num=_num,
+        _overlay_balance=_overlay_balance, _vendor_identity=_vendor_identity,
+        apply_seed_control_overrides=apply_seed_control_overrides,
+        archived_vendor_balances_as_of=archived_vendor_balances_as_of, build_control=build_control,
+        build_customer_ledgers=build_customer_ledgers, build_customer_range_rows=build_customer_range_rows,
+        build_gstr1=build_gstr1, build_ledger_view=build_ledger_view, empty_ledger=empty_ledger,
+        historical_vendor_master_rows=historical_vendor_master_rows,
+        latest_seed_control=latest_seed_control, load_archive_manifest=load_archive_manifest,
+        load_book_balance_accounts=load_book_balance_accounts, vendor_rows_as_of=vendor_rows_as_of,
+        write_snapshot=write_snapshot,
     )
-    latest_summary = (latest_seed_control(local_seed) or {}).get("summary") or {}
-    if ledger_current.get("rows") and "bank_balance" in latest_summary and "cash_balance_office" in latest_summary:
-        ledger_current["rows"][-1]["bank_balance"] = latest_summary["bank_balance"]
-        ledger_current["rows"][-1]["cash_balance_office"] = latest_summary["cash_balance_office"]
-        ledger_current["totals"]["bank_balance"] = latest_summary["bank_balance"]
-        ledger_current["totals"]["cash_balance_office"] = latest_summary["cash_balance_office"]
-    write_snapshot(f"/api/dashboard/ledger-view?year={today.year}&month={today.month}", ledger_current)
-
-    write_snapshot(
-        f"/api/dashboard/monthly?year={today.year}&month={today.month}",
-        {"year": today.year, "month": today.month, "sales": {}, "expenses": {}, "pnl": {}},
-    )
-    # GSTR-1: compute a real payload per month that has sales (mirrors the live
-    # backend export) so otomy no longer serves an empty stub. Match sale -> customer
-    # by name because sale rows always carry customer_name.
-    name_to_gstin = {(c.get("name") or "").strip().lower(): (c.get("gstin") or "").strip() for c in customers_full}
-    gstr1_months = {(today.year, today.month)}
-    for s in all_sales:
-        d = str(s.get("date") or "")
-        if len(d) >= 7:
-            gstr1_months.add((int(d[:4]), int(d[5:7])))
-    for yr, mo in sorted(gstr1_months):
-        write_snapshot(
-            f"/api/exports/gstr1?year={yr}&month={mo}",
-            build_gstr1(all_sales, name_to_gstin, exports_config, yr, mo),
-        )
-    (DATA_DIR / "snapshot").mkdir(parents=True, exist_ok=True)
-    with open(DATA_DIR / "snapshot" / "manifest.json", "w") as f:
-        json.dump(
-            {
-                "generated_at": datetime.now(IST).isoformat(timespec="seconds"),
-                "source": "github-actions / loctell.com ERP",
-                "ranges": [{"from": str(start), "to": str(end)} for start, end in ranges],
-            },
-            f,
-            indent=2,
-        )
 
 # ─── main ─────────────────────────────────────────────────────────────────────
 

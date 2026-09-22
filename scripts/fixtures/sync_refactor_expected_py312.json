@@ -1,0 +1,58 @@
+{
+  "source_commit": "6174884bad3ad24f83a0292ed316432a7d58f00d",
+  "source_sha256": "7b2c5574387bfdc90c0a765c45e690b007595a2cc7f6deb2cceb598edd4b07e5",
+  "outputs": {
+    "fetches": "250ffd7f88aa838b2d70d664c4ff3abfefbd65bea09278fbec771b9feff6fbb9",
+    "vendor_ledgers": "81a30b070a12c0ddfdaca91ec37c41f35a1317e888f47ac6b4c2d69b23ad2efe",
+    "today": {
+      "book": "f8343ff52e643851184a95627822659a3da3bb99fe73f89ff9d2b60029f02e54",
+      "control": "95412c5a0f074934af527ba369352c7bf289b0e9adcbe1b2ec79382150667af7",
+      "customers": "fa3bee5d0a9f9e7ab7ffbc59b5a691b46e5386a8d83c20ff3756f739fa202259",
+      "cash_rows": 5,
+      "bank_rows": 5
+    },
+    "mtd": {
+      "book": "6057915943be63cf155d6ba9558fa3ea55cf2db2a7c2e59c4cbf26c48955fe3a",
+      "control": "4116b3871cca9851a5b45394955ce42ac7a7f4dbd78e171978e2d8e98bd7d5fb",
+      "customers": "b65cbef4b88649cfcbf27cfce51f97804391f7a98259dde18aa716eab2ce75af",
+      "cash_rows": 20,
+      "bank_rows": 20
+    },
+    "fytd": {
+      "book": "6dcbef6874e7b8a042f1fc66b057aa943f6573894645cb239efadda194c7e3c1",
+      "control": "37088e14ddd6ed480f08b2095d3807bce0a1a25c33ecb4176bc4785573486d97",
+      "customers": "50bc384416ab36ddb8287ba75b464faed34b6c2ff9133956750befdec4293765",
+      "cash_rows": 70,
+      "bank_rows": 70
+    },
+    "current_month": {
+      "book": "a8407cc380449396683a5486534875369ae5891c7a2869a780bfcecc53f9828d",
+      "control": "6d142d34b8bb5ff1055d20a9f16ab24c009323670736c550ac59cf351e5bb7d1",
+      "customers": "b65cbef4b88649cfcbf27cfce51f97804391f7a98259dde18aa716eab2ce75af",
+      "cash_rows": 20,
+      "bank_rows": 20
+    },
+    "previous_month": {
+      "book": "d6eb7c0dc9aaf88a43fbe03414f408b5dfdae9364bdf99d6ff4141ed2a7f0738",
+      "control": "8a450c89989bada1f85b8cc1e180782b0a9bb5f801b13945a5bb11bd4f571287",
+      "customers": "569821849bb07b8b1c716336e31d555bd2bef5fab6e6a17ca5bf31f0ba584fcc",
+      "cash_rows": 15,
+      "bank_rows": 15
+    },
+    "historical": {
+      "book": "2abcc895f98d15856c5436716c227817122520ba65ee9fcf9da22ee7430bd3ff",
+      "control": "a2970fda21fbeb997fe8cf7608d09990766cacf548caba28903191f35650c8e9",
+      "customers": "072a100f61f9d46613d6ffd877135e18b89fae91ae36ffd7483a9deaf6d1e5be",
+      "cash_rows": 20,
+      "bank_rows": 20
+    },
+    "archive_window": "04d2302621c96892979d2c2ff4e4e0c4813db3b5ead71a5c9bc3a2aef124ae9a",
+    "merge_edits_deletions": "69cfe6d6ae7de13ab84a7cf803c04036d73779af1b7e24f1d4ba1cdcbc50ce54",
+    "generated_files": {
+      "count": 5209,
+      "sha256": "860e6fdeb52f06b3f377dc6d37002d5f154a865a9b027fbc94e32e520ca4e2fb"
+    },
+    "snapshot_ranges": "ac43bc20577ad58d9216f613a3f4c25c8260c65cda02922f906da4ad3bf3d1db"
+  },
+  "baseline_python": "3.12.13"
+}

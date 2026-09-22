@@ -27,6 +27,17 @@ from shared_compliance import build_compliance_dataset
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_DIR = ROOT / "data" / "snapshot" / "api"
 
+
+def sync_engine_source() -> str:
+    """Inspect implementations before the compatibility wrappers in gha_sync.
+
+    Keep guards on the whole sync engine: moving a calculation into a module
+    must never remove it from the pre-publication checks.
+    """
+    names = ("sync_loctell.py", "sync_finance.py", "sync_archive.py",
+             "sync_snapshots.py", "gha_sync.py")
+    return "\n\n".join((ROOT / "scripts" / name).read_text() for name in names)
+
 FORBIDDEN_SNAPSHOT_FETCH_ASSIGNMENTS = (
     "data.summary.",
     "data.top_receivables=",
@@ -305,7 +316,7 @@ def verify_credit_aging_guard() -> None:
             f"recent_only={recent_only} fy_only={fy_only} complete_history={complete_history}"
         )
 
-    source = gha_sync_path.read_text()
+    source = sync_engine_source()
     for needle in (
         "aging_history_start = CUST_LEDGER_START",
         "aging_archive_rows = load_archive_window(aging_history_start, today)",
@@ -333,7 +344,7 @@ def verify_credit_aging_guard() -> None:
 
 
 def verify_archive_balance_guard() -> None:
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     if 'if section == "balances":\n        return incoming\n' in source:
         fail("gha_sync.py must not blindly replace historical archive balance rows")
     if 'return incoming if _row_quality(section, incoming) >= _row_quality(section, existing) else existing' not in source:
@@ -344,7 +355,7 @@ def verify_archive_balance_guard() -> None:
 
 
 def verify_dashboard_balance_source_guard() -> None:
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     required = (
         "ending_debtors=None,",
         "end_debtors = debtors_as_of(end) or archive_balance_rows(",
@@ -738,7 +749,7 @@ def verify_no_balance_adjustment_rows() -> None:
     print("Balance-row guard passed: no residual or unsourced adjustment rows are published.")
 
 def verify_sync_tolerance_guard() -> None:
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     required = (
         "ERP_FETCH_RETRIES",
         "ERP_DEBTOR_WORKERS",
@@ -771,7 +782,7 @@ def verify_sync_tolerance_guard() -> None:
 
 
 def verify_cloud_independence_guard() -> None:
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     forbidden = (
         "local_dashboard_overrides",
         "LOCAL_DASHBOARD_OVERRIDES_PATH",
@@ -789,7 +800,7 @@ def verify_cloud_independence_guard() -> None:
 def verify_payment_split_guard() -> None:
     """Ensure the per-ticket payment split (ListSale Final Cash/Credit/UPI) stays wired in,
     so SPLIT sales and bank-paid expenses can't silently collapse back to one channel."""
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     required = (
         "def fetch_sale_splits(",
         "def _sale_channels(",
@@ -870,7 +881,7 @@ def verify_no_vendor_payment_bank_guard() -> None:
         if needle not in root_html:
             fail(f"frontend must filter vendor-payment bank rows: missing {needle!r}")
 
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     for needle in (
         "def _is_vendor_payment_bank_row(row):",
         "if _is_vendor_payment_bank_row(row):\n            continue",
@@ -982,7 +993,7 @@ def verify_pdf_export_guard() -> None:
 
 
 def verify_compliance_code_guard() -> None:
-    source = (ROOT / "scripts" / "gha_sync.py").read_text()
+    source = sync_engine_source()
     required = (
         "from shared_compliance import",
         "def write_compliance_snapshots(dataset, from_date, to_date)",
