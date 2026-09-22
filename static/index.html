@@ -205,6 +205,12 @@ tfoot td{background:#e8eaf6;font-weight:700;padding:9px 12px;border-top:2px soli
 .print-btn:hover{background:#1a237e;color:#fff}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .page-actions .print-btn{margin-left:0}
+.dashboard-block-range,.dashboard-block-custom input{max-width:155px;padding:5px 7px;border:1px solid #d5a16b;border-radius:5px;background:#fffdf5;color:#9a470b;font-size:11px;font-weight:700;cursor:pointer}
+.dashboard-block-custom{display:inline-flex;align-items:center;gap:4px;margin-left:5px;vertical-align:middle;flex-wrap:wrap}
+.dashboard-block-custom[hidden]{display:none}
+.dashboard-block-custom input{max-width:132px}
+.dashboard-block-custom button{padding:5px 8px;border:1px solid #d5a16b;border-radius:5px;background:#fffdf5;color:#9a470b;font-size:11px;font-weight:700;cursor:pointer}
+.dashboard-block-period{font-size:11px;font-weight:400;color:#c2610c}
 @media screen{
   .rolling-range-action-row{flex-wrap:wrap}
   .page-actions{flex-wrap:wrap;max-width:100%;min-width:0}
@@ -2953,8 +2959,187 @@ function printSection(title,tableContainerId){
     if(f&&t&&f.value)dateRange=`Period: ${f.value} to ${t.value}`;
     else if(s&&s.value)dateRange=`Date: ${s.value}`;
   }
-  const isWeeklyCustomerSales=tableContainerId==='dash-customer-sales-card'&&f&&t&&_isPrintWeekOrMore(f.value,t.value);
+  if(el.dataset.rangeFrom&&el.dataset.rangeTo)dateRange=`Period: ${el.dataset.rangeFrom} to ${el.dataset.rangeTo}`;
+  const reportFrom=el.dataset.rangeFrom||f?.value,reportTo=el.dataset.rangeTo||t?.value;
+  const isWeeklyCustomerSales=tableContainerId==='dash-customer-sales-card'&&_isPrintWeekOrMore(reportFrom,reportTo);
   openTablePdf(title,el,dateRange,isWeeklyCustomerSales?'report-print ticket-grid-print':'report-print');
+}
+const DASHBOARD_BLOCK_TITLES={
+  'dash-credit-repayment-card':'Credit Repayment','dash-customer-sales-card':'Customer Wise Sales',
+  'dash-customer-payments-card':'Customer Payments','dash-expenses-card':'Expenses (Cash & Bank)',
+  'dash-vendor-payments-card':'Vendor Payments','dash-bank-book-card':'Bank Book',
+  'dash-cash-book-card':'Cash Book','dash-machine-odometer-card':'Live Machinery Readings',
+  'dash-fuel-ledger-card':'Fuel Ledger Book'
+};
+function dashboardBlockControls(card,selectedDays=''){
+  const print=card.querySelector('h3 .print-btn');
+  if(!print||card.querySelector('.dashboard-block-range'))return;
+  const select=document.createElement('select');
+  select.className='dashboard-block-range no-print';
+  select.setAttribute('aria-label',`${DASHBOARD_BLOCK_TITLES[card.id]} date range`);
+  select.innerHTML='<option value="">Select range</option>'+[15,30,60,80,90].map(days=>`<option value="${days}">Last ${days} days</option>`).join('')+'<option value="custom">Custom dates</option>';
+  select.value=String(selectedDays||'');
+  const custom=document.createElement('span');custom.className='dashboard-block-custom no-print';
+  const fromInput=document.createElement('input'),toInput=document.createElement('input'),go=document.createElement('button');
+  fromInput.type='date';toInput.type='date';go.type='button';go.textContent='Go';
+  fromInput.setAttribute('aria-label',`${DASHBOARD_BLOCK_TITLES[card.id]} from date`);
+  toInput.setAttribute('aria-label',`${DASHBOARD_BLOCK_TITLES[card.id]} to date`);
+  fromInput.value=card.dataset.rangeFrom||'';toInput.value=card.dataset.rangeTo||'';
+  go.addEventListener('click',()=>applyDashboardBlockRange(card.id,'custom',select,fromInput.value,toInput.value));
+  custom.append(fromInput,toInput,go);custom.hidden=select.value!=='custom';
+  select.addEventListener('change',()=>{
+    custom.hidden=select.value!=='custom';
+    if(select.value==='custom')fromInput.focus();
+    else if(select.value)applyDashboardBlockRange(card.id,Number(select.value),select);
+  });
+  print.insertAdjacentElement('afterend',select);
+  select.insertAdjacentElement('afterend',custom);
+}
+function initDashboardBlockControls(){
+  Object.keys(DASHBOARD_BLOCK_TITLES).forEach(id=>{const card=document.getElementById(id);if(card)dashboardBlockControls(card,card.dataset.rangeDays||'');});
+}
+function dashboardGroupedTable(headers,rows,footer){
+  const cells=values=>'<tr>'+values.map(value=>`<td>${value}</td>`).join('')+'</tr>';
+  return `<div class="report-table-wrap"><table class="report-table"><thead><tr>${headers.map(value=>`<th>${esc(value)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(cells).join(''):`<tr><td colspan="${headers.length}" class="empty">No entries in this period</td></tr>`}</tbody><tfoot>${cells(footer)}</tfoot></table></div>`;
+}
+function dashboardConsolidatedTable(id,data){
+  const num=_num;
+  if(id==='dash-credit-repayment-card'){
+    const grouped=new Map(),rc=_reclassifySales(data);
+    _repaymentRowsForDisplay(data,rc).filter(row=>num(row.display_payment_received)>0.005).forEach(row=>{
+      const name=String(row.customer_name||'—').trim()||'—',key=name.toUpperCase();
+      const item=grouped.get(key)||{name,bank:0,cash:0,received:0,adjusted:0,balance:null,date:''};
+      item.bank+=num(row.display_bank_received);item.cash+=num(row.display_cash_received);
+      item.received+=num(row.display_payment_received);item.adjusted+=num(row.sale_adjusted);
+      if(row.balance!=null&&String(row.date||'')>=item.date){item.balance=num(row.balance);item.date=String(row.date||'');}
+      grouped.set(key,item);
+    });
+    const items=[...grouped.values()].sort((a,b)=>b.received-a.received||a.name.localeCompare(b.name));
+    const sum=key=>items.reduce((total,row)=>total+num(row[key]),0);
+    return dashboardGroupedTable(['Customer','Bank / UPI','Cash','Credit Repayment','Sale Adjusted','Latest Balance To Pay'],
+      items.map(row=>[esc(row.name),fmtINR(row.bank),fmtINR(row.cash),fmtINR(row.received),fmtINR(row.adjusted),row.balance==null?'—':fmtINR(row.balance)]),
+      [`<strong>Total (${items.length})</strong>`,fmtINR(sum('bank')),fmtINR(sum('cash')),fmtINR(sum('received')),fmtINR(sum('adjusted')),fmtINR(sum('balance'))]);
+  }
+  if(id==='dash-customer-sales-card'){
+    const grouped=new Map();
+    (data.customer_sales||[]).forEach(row=>{
+      const customer=String(row.customer_name||'—').trim()||'—',material=String(row.material||'—').trim()||'—',key=`${customer.toUpperCase()}\u0000${material.toUpperCase()}`;
+      const item=grouped.get(key)||{customer,material,tickets:0,qty:0,amount:0,bank:0,cash:0,credit:0};
+      item.tickets+=num(row.ticket_count)||((row.ticket_nos||[]).length||1);item.qty+=num(row.qty_mt);
+      item.amount+=num(row.amount);item.bank+=num(row.bank_received);item.cash+=num(row.cash_received);item.credit+=num(row.credit_sale_amount);
+      grouped.set(key,item);
+    });
+    const items=[...grouped.values()].sort((a,b)=>b.amount-a.amount||a.customer.localeCompare(b.customer));
+    const sum=key=>items.reduce((total,row)=>total+num(row[key]),0);
+    return dashboardGroupedTable(['Customer','Material','Tickets','Qty MT','Sale Amount','Bank / UPI','Cash','Credit Sale'],
+      items.map(row=>[esc(row.customer),esc(row.material),fmtNum(row.tickets,0),fmtNum(row.qty,2),fmtINR2(row.amount),fmtINR(row.bank),fmtINR(row.cash),fmtINR(row.credit)]),
+      [`<strong>Total (${items.length})</strong>`,'',fmtNum(sum('tickets'),0),fmtNum(sum('qty'),2),fmtINR2(sum('amount')),fmtINR(sum('bank')),fmtINR(sum('cash')),fmtINR(sum('credit'))]);
+  }
+  if(id==='dash-expenses-card'){
+    const grouped=new Map();
+    (data.expense_rows||[]).filter(row=>row.is_operating_expense!==false).forEach(row=>{
+      const category=String(row.category||row.description||'Expense').trim()||'Expense',key=category.toUpperCase();
+      const item=grouped.get(key)||{category,entries:0,cash:0,bank:0};
+      item.entries++;item[_payChannel(row.payment_mode)==='cash'?'cash':'bank']+=num(row.amount);grouped.set(key,item);
+    });
+    const items=[...grouped.values()].sort((a,b)=>(b.cash+b.bank)-(a.cash+a.bank)||a.category.localeCompare(b.category));
+    const sum=key=>items.reduce((total,row)=>total+num(row[key]),0);
+    return dashboardGroupedTable(['Expense Category','Entries','Cash','Bank / UPI','Total'],
+      items.map(row=>[esc(row.category),fmtNum(row.entries,0),fmtINR(row.cash),fmtINR(row.bank),fmtINR(row.cash+row.bank)]),
+      [`<strong>Total (${items.length})</strong>`,fmtNum(sum('entries'),0),fmtINR(sum('cash')),fmtINR(sum('bank')),fmtINR(sum('cash')+sum('bank'))]);
+  }
+  return '';
+}
+function dashboardBookSummaryTable(book,channel){
+  const side=book[channel]||{},grouped=new Map();
+  (side.rows||[]).forEach(row=>{
+    const name=String(row.particulars||'Other').trim()||'Other',key=name.toUpperCase();
+    const item=grouped.get(key)||{name,count:0,in:0,out:0};
+    item.count++;item.in+=_num(row.in);item.out+=_num(row.out);grouped.set(key,item);
+  });
+  const rows=[...grouped.values()].sort((a,b)=>(b.in+b.out)-(a.in+a.out)||a.name.localeCompare(b.name));
+  return `<div class="metric-note">Opening ${fmtINR(side.opening||0)} · Closing ${fmtINR(side.closing||0)} · ${rows.reduce((n,row)=>n+row.count,0)} movements</div>`+
+    dashboardGroupedTable(['Particulars','Movements',channel==='cash'?'Cash In':'Bank / UPI In',channel==='cash'?'Cash Out':'Bank / UPI Out'],
+      rows.map(row=>[esc(row.name),fmtNum(row.count,0),fmtINR(row.in),fmtINR(row.out)]),
+      ['<strong>Total</strong>',fmtNum(rows.reduce((n,row)=>n+row.count,0),0),fmtINR(side.total_in||0),fmtINR(side.total_out||0)]);
+}
+function dashboardFuelSummaryTable(ledger){
+  const grouped=new Map();
+  ledger.rows.filter(row=>row.kind!=='opening').forEach(row=>{
+    const name=String(row.details||'Other'),key=name.toUpperCase(),item=grouped.get(key)||{name,count:0,received:0,amount:0,spent:0,spendAmount:0};
+    item.count++;item.received+=_num(row.received_litres);item.amount+=_num(row.receipt_amount);
+    item.spent+=_num(row.spend_litres);item.spendAmount+=_num(row.spend_amount);grouped.set(key,item);
+  });
+  const rows=[...grouped.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const sum=key=>rows.reduce((total,row)=>total+_num(row[key]),0);
+  const opening=ledger.rows.find(row=>row.kind==='opening')?.balance_litres;
+  return `<div class="metric-note">Opening ${opening==null?'—':`${fmtNum(opening,2)} L`} · Closing ${ledger.closing_litres==null?'—':`${fmtNum(ledger.closing_litres,2)} L`}</div>`+
+    dashboardGroupedTable(['Details','Entries','Received L','Receipt Amount','Issued L','Fuel Spend'],
+      rows.map(row=>[esc(row.name),fmtNum(row.count,0),fmtNum(row.received,2),fmtINR(row.amount),fmtNum(row.spent,2),fmtINR(row.spendAmount)]),
+      ['<strong>Total</strong>',fmtNum(sum('count'),0),fmtNum(sum('received'),2),fmtINR(sum('amount')),fmtNum(sum('spent'),2),fmtINR(sum('spendAmount'))]);
+}
+function dashboardMachineSummaryTable(from,to){
+  const rows=_machineRangeRows(from,to);
+  const fuel=rows.map(row=>_machineFuelStatsForRange(from,to,row.vehicle_type));
+  const reading=value=>value==null?'—':fmtNum(value,2);
+  return dashboardGroupedTable(['Vehicle Type','Start Reading','End Reading','Difference','Fuel Issued (L)'],
+    rows.map((row,index)=>[esc(row.vehicle_type),reading(row.start_reading),reading(row.end_reading),reading(row.difference),fuel[index].liters==null?'—':fmtNum(fuel[index].liters,2)]),
+    [`<strong>Total Machines (${rows.length})</strong>`,'','','',fmtNum(fuel.reduce((total,item)=>total+_num(item.liters),0),2)]);
+}
+function withDashboardMachineSummary(summary,fn){
+  const keys=['machines','machineHistory','machineFuel','fuelReceived','fuelBalance','machinePrior'];
+  const previous=keys.map(key=>_allData[key]),previousPage=_page.machines;
+  [_allData.machines,_allData.machineHistory,_allData.machineFuel,_allData.fuelReceived,_allData.fuelBalance,_allData.machinePrior]=
+    [summary.odometer||[],summary.odometer_history||[],summary.fuel_issued||[],summary.fuel_received||[],summary.fuel_balance||{},summary.odometer_prior||[]];
+  _page.machines=1;
+  try{return fn();}finally{keys.forEach((key,index)=>{_allData[key]=previous[index];});_page.machines=previousPage;}
+}
+async function applyDashboardBlockRange(id,days,select,customFrom='',customTo=''){
+  if(!DASHBOARD_BLOCK_TITLES[id]||(days!=='custom'&&![15,30,60,80,90].includes(days)))return;
+  const card=document.getElementById(id),from=days==='custom'?customFrom:rollingDayStart(days),to=days==='custom'?customTo:today();
+  if(!card)return;
+  if(!from||!to||from>to||to>today()){flash('Choose a valid From and To date up to today.',false);return;}
+  select.disabled=true;
+  try{
+    let body;
+    if(id==='dash-bank-book-card'||id==='dash-cash-book-card'){
+      const book=await _buildCashBook(from,to);
+      body=dashboardBookSummaryTable(book,id==='dash-bank-book-card'?'bank':'cash');
+    }else if(id==='dash-machine-odometer-card'||id==='dash-fuel-ledger-card'){
+      const query=!isStaticSnapshotHost()?`?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`:'';
+      const summary=await api(`/api/machines/summary${query}`);
+      body=withDashboardMachineSummary(summary,()=>id==='dash-machine-odometer-card'?dashboardMachineSummaryTable(from,to):dashboardFuelSummaryTable(_fuelLedger(from,to)));
+    }else{
+      const data=await cachedJson(_dashCache.control,`${from}|${to}`,`/api/dashboard/control?from_date=${from}&to_date=${to}`);
+      if(!data?.summary)throw new Error('Dashboard data is not ready for this period');
+      await _attachDashboardMasterRows(data,from,to);
+      const host=document.createElement('div');
+      await renderControlRoom(data,host,false);
+      const source=host.querySelector(`#${id}`);
+      if(!source)throw new Error('Block data is not ready');
+      body=source.querySelector('.report-table-wrap,.tbl-wrap')?.outerHTML||'';
+      const consolidated=dashboardConsolidatedTable(id,data);
+      if(consolidated)body=consolidated;
+      const note=source.querySelector('.metric-note');
+      if(note)body+=note.outerHTML;
+    }
+    if(!body)throw new Error('Block data is not ready');
+    if(!card.isConnected)return;
+    const heading=card.querySelector('h3');
+    const header=heading?.cloneNode(true);
+    if(!header)throw new Error('Block heading is not ready');
+    header.querySelectorAll('.dashboard-block-range,.dashboard-block-custom,.dashboard-block-period').forEach(node=>node.remove());
+    const oldPeriod=header.querySelector('span[style*="color:#c2610c"]');
+    if(oldPeriod)oldPeriod.textContent=`— ${from} to ${to}`;
+    else{const period=document.createElement('span');period.className='dashboard-block-period';period.textContent=` — ${from} to ${to}`;header.insertBefore(period,header.querySelector('.print-btn'));}
+    card.innerHTML=header.outerHTML+body;
+    card.dataset.rangeFrom=from;card.dataset.rangeTo=to;card.dataset.rangeDays=String(days);
+    dashboardBlockControls(card,days);
+  }catch(error){
+    select.disabled=false;select.value=card.dataset.rangeDays||'';
+    const custom=card.querySelector('.dashboard-block-custom');if(custom)custom.hidden=select.value!=='custom';
+    flash(error.message||'Could not load this block range',false);
+  }
 }
 function _isPrintWeekOrMore(from,to){
   const start=Date.parse(`${from||''}T00:00:00`),end=Date.parse(`${to||''}T00:00:00`);
@@ -3433,9 +3618,9 @@ function openCashProfitDetail(){
   _decorateCashProfitDetailDocument(popup.document,false);
 }
 
-async function renderControlRoom(data){
+async function renderControlRoom(data,target=document.getElementById('control-room'),loadExtras=true){
   const s=data.summary||{};
-  _cashProfitDetailData=data;
+  if(loadExtras)_cashProfitDetailData=data;
   const expenseTotal=(data.expense_rows||[]).reduce((sum,r)=>sum+(Number(r.amount)||0),0);
   const _rc=_reclassifySales(data);
   // Payment Received From Customer = genuine credit repayment (an OLDER balance paid down). Apply the
@@ -3550,7 +3735,7 @@ async function renderControlRoom(data){
   const cashProfitTile=cashProfitReady
     ? `<button type="button" class="control-metric glass-green control-metric-link" onclick="openCashProfitDetail()" title="Open the exact Cash Profit ₹/T calculation"><span>Cash Profit ₹/T</span><strong>${fmtINR2(s.cash_converted_profit_per_tonne)}</strong><small class="control-drill">View calculation →</small></button>`
     : `<div class="control-metric glass-green" title="Available from 1 Jun 2026"><span>Cash Profit ₹/T</span><strong>—</strong></div>`;
-  document.getElementById('control-room').innerHTML=`
+  target.innerHTML=`
     <div class="control-hero">
       <div class="control-panel">
         <div class="control-eyebrow">Owner Control Room · ${esc(data.period.from)} to ${esc(data.period.to)}</div>
@@ -3649,8 +3834,11 @@ async function renderControlRoom(data){
     <div class="card print-section" id="dash-machine-odometer-card"><h3 class="cashbook-title">⚙️ Live Machinery Readings <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Live Machinery Readings','dash-machine-odometer-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-machine-odometer" style="max-height:520px;overflow:auto"></div></div>
     <div class="card print-section" id="dash-fuel-ledger-card"><h3 class="cashbook-title">⛽ Fuel Ledger Book <span style="font-size:12px;font-weight:400;color:#c2610c">— ${esc(data.period.from)} to ${esc(data.period.to)}</span><button class="print-btn no-print" style="display:inline-flex;margin-left:10px;font-size:11px" onclick="printSection('Fuel Ledger Book','dash-fuel-ledger-card')">Print / PDF</button></h3><div class="tbl-wrap" id="dash-fuel-ledger" style="max-height:520px;overflow:auto"></div></div>
   `;
-  await renderDashboardCashBooks(data.period.from,data.period.to);
-  loadMachines(data.period.from,data.period.to);
+  if(loadExtras){
+    initDashboardBlockControls();
+    await renderDashboardCashBooks(data.period.from,data.period.to);
+    loadMachines(data.period.from,data.period.to);
+  }
 }
 // ── Sales ──────────────────────────────────────────────────────────────────
 function calcSale(){document.getElementById('s-amt').value=((parseFloat(document.getElementById('s-qty').value)||0)*(parseFloat(document.getElementById('s-rate').value)||0)).toFixed(2);}

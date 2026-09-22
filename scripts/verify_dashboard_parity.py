@@ -496,7 +496,7 @@ def extract_snapshot_fetch(html: str, path: Path) -> str:
 
 
 def owner_control_tile_order(html: str) -> tuple[str, ...]:
-    start = html.find("async function renderControlRoom(data)")
+    start = html.find("async function renderControlRoom(data")
     end = html.find('<div class="card cash-card">', start)
     if start == -1 or end == -1 or end <= start:
         fail("could not locate Owner Control Room tile block")
