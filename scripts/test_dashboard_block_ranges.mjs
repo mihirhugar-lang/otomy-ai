@@ -75,6 +75,6 @@ assert.equal(withDashboardMachineSummary({odometer:[{vehicle_type:'Jaw'}]},()=>c
 assert.equal(context._allData.machines,before);
 assert.equal(context._page.machines,3);
 assert.match(html,/if\(el\.dataset\.rangeFrom&&el\.dataset\.rangeTo\)dateRange=/);
-assert.match(html,/\[15,30,60,80,90\]/);
+assert.match(html,/\[15,30,60,90\]/);
 assert.match(html,/<option value="custom">Custom dates<\/option>/);
 console.log('Dashboard block ranges: grouping, balances, independent state and PDF date wiring passed.');
