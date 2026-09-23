@@ -2977,7 +2977,7 @@ function dashboardBlockControls(card,selectedDays=''){
   const select=document.createElement('select');
   select.className='dashboard-block-range no-print';
   select.setAttribute('aria-label',`${DASHBOARD_BLOCK_TITLES[card.id]} date range`);
-  select.innerHTML='<option value="">Select range</option>'+[15,30,60,80,90].map(days=>`<option value="${days}">Last ${days} days</option>`).join('')+'<option value="custom">Custom dates</option>';
+  select.innerHTML='<option value="">Select range</option>'+[15,30,60,90].map(days=>`<option value="${days}">Last ${days} days</option>`).join('')+'<option value="custom">Custom dates</option>';
   select.value=String(selectedDays||'');
   const custom=document.createElement('span');custom.className='dashboard-block-custom no-print';
   const fromInput=document.createElement('input'),toInput=document.createElement('input'),go=document.createElement('button');
@@ -3095,7 +3095,7 @@ function withDashboardMachineSummary(summary,fn){
   try{return fn();}finally{keys.forEach((key,index)=>{_allData[key]=previous[index];});_page.machines=previousPage;}
 }
 async function applyDashboardBlockRange(id,days,select,customFrom='',customTo=''){
-  if(!DASHBOARD_BLOCK_TITLES[id]||(days!=='custom'&&![15,30,60,80,90].includes(days)))return;
+  if(!DASHBOARD_BLOCK_TITLES[id]||(days!=='custom'&&![15,30,60,90].includes(days)))return;
   const card=document.getElementById(id),from=days==='custom'?customFrom:rollingDayStart(days),to=days==='custom'?customTo:today();
   if(!card)return;
   if(!from||!to||from>to||to>today()){flash('Choose a valid From and To date up to today.',false);return;}
