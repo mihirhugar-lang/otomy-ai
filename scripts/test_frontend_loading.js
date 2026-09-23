@@ -146,7 +146,7 @@ async function verify(file) {
     _dashCache:{control:new Map()},mtdStart:()=>'',today:()=>'',
     cachedJson:async()=>({summary:{}}),_dashUnavailable:()=>{throw Error('unavailable');},
     _attachDashboardMasterRows:()=>{const d=deferred();attaches.push(d);return d.promise;},
-    renderDashSummary:()=>renders.push('render'),renderControlRoom:async()=>{}});
+    renderDashSummary:()=>renders.push('render'),renderDailyControlCentre:()=>{},renderControlRoom:async()=>{}});
   vm.runInContext('let _dashLoadSeq=0,_dashRetried=false;'+part(source,'async function loadDash(){','async function loadControlRoom(){'),dashCtx);
   const older=vm.runInContext('loadDash()',dashCtx);await new Promise(setImmediate);
   const newer=vm.runInContext('loadDash()',dashCtx);await new Promise(setImmediate);

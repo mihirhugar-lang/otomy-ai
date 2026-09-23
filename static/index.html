@@ -258,6 +258,11 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .control-alert{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:var(--shadow);padding:14px 16px}
 .control-alert.good{border-left:5px solid var(--green)}.control-alert.warning{border-left:5px solid var(--amber)}.control-alert.danger{border-left:5px solid var(--red)}
 .control-alert strong{display:block;font-size:14px}.control-alert span{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+.daily-control-centre{margin:0 0 14px;border:1px solid #cfd8e6;border-left:5px solid #1f4e79;background:linear-gradient(145deg,#f7fbff,#fffaf0);box-shadow:var(--shadow)}
+.daily-control-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:11px}.daily-control-head h3{margin:0;color:#17365d}.daily-control-subtitle{font-size:11px;color:var(--muted);margin-top:3px;font-weight:600}.daily-control-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.daily-control-readonly{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#e8f5e9;color:#1b5e20;border:1px solid #b7dfbd;font-size:10px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;white-space:nowrap}
+.daily-control-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.daily-control-stat{border:1px solid #d8e1ee;background:#fff;border-radius:10px;padding:9px 10px;min-width:0}.daily-control-stat span{display:block;color:#667085;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.35px}.daily-control-stat strong{display:block;color:#17365d;font-size:18px;margin-top:3px;line-height:1.1}.daily-control-stat.danger{border-color:#efb4b4;background:#fff7f7}.daily-control-stat.danger strong{color:#b42318}.daily-control-stat.warning{border-color:#f3cf8d;background:#fffaf0}.daily-control-stat.warning strong{color:#a15c00}.daily-control-stat.good{border-color:#a9dbc0;background:#f3fff8}.daily-control-stat.good strong{color:#16714a}.daily-control-stat.period strong{font-size:12px;line-height:1.35;margin-top:4px;word-break:break-word}
+.daily-control-details{margin-top:10px;border-top:1px solid #d8e1ee;padding-top:9px}.daily-control-details summary{cursor:pointer;color:#1f4e79;font-size:12px;font-weight:800;list-style-position:outside;margin-left:16px}.daily-control-list{display:grid;gap:7px;margin-top:9px}.daily-control-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;background:#fff;border:1px solid #e1e7ef;border-radius:8px;padding:8px 10px}.daily-control-severity{display:inline-flex;align-items:center;justify-content:center;min-width:55px;border-radius:999px;padding:3px 7px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.3px}.daily-control-item.danger .daily-control-severity{background:#ffebee;color:#b71c1c}.daily-control-item.warning .daily-control-severity{background:#fff3e0;color:#9a4f00}.daily-control-item.good .daily-control-severity{background:#e8f5e9;color:#1b5e20}.daily-control-copy strong{display:block;font-size:12px;color:#27364a}.daily-control-copy span{display:block;font-size:11px;color:#667085;margin-top:2px;line-height:1.35}.daily-control-checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.daily-control-check{font-size:10px;font-weight:700;border-radius:999px;padding:4px 8px;background:#eef2f6;color:#526070}.daily-control-check.pass{background:#e8f5e9;color:#1b5e20}.daily-control-check.fail{background:#fff3e0;color:#9a4f00}
+.daily-control-item.has-report{grid-template-columns:auto minmax(0,1fr) auto}.daily-control-report-btn{align-self:center;margin:0!important;padding:5px 8px!important;font-size:9px!important;white-space:nowrap}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .bar-row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}
 .bar-track{height:10px;border-radius:20px;background:#f2f4f7;overflow:hidden}.bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f59e0b,#b45309)}
@@ -348,6 +353,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .control-metric{padding:10px;border-radius:13px;min-width:0}
   .control-metric span{font-size:9px;line-height:1.25}
   .control-metric strong{font-size:17px;line-height:1.2;word-break:break-word}
+  .daily-control-head{align-items:stretch;flex-direction:column}.daily-control-actions{justify-content:flex-start}.daily-control-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-control-item,.daily-control-item.has-report{grid-template-columns:1fr}.daily-control-severity{justify-self:start}.daily-control-report-btn{justify-self:start}
   .cash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   .cash-grid .kpi{min-height:0}
   .form-grid{grid-template-columns:1fr}
@@ -844,6 +850,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     </div>
     <div class="page-actions no-print"><button class="print-btn" onclick="printDashboard()">Print / PDF</button><button class="print-btn" onclick="printDashboardConsolidated()">Consolidated Print / PDF</button></div>
   </div>
+<div id="daily-control-centre" class="card daily-control-centre" aria-live="polite"><div class="empty">Loading daily controls…</div></div>
 <div id="dash-profit-bar"></div>
 <div class="kpi-row">
   <div class="kpi"><div class="kpi-label">Gross Sales</div><div class="kpi-value" id="d-sales">—</div></div>
@@ -3242,9 +3249,9 @@ async function printDashboardConsolidated(){
     const expenseRows=expenses.map(r=>`<tr><td>${esc(r.category)}</td><td>${fmtNum(r.entries,0)}</td><td>${fmtINR(r.cash)}</td><td>${fmtINR(r.bank)}</td><td>${fmtINR(r.cash+r.bank)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No expenses in this period</td></tr>';
     const expenseCash=expenses.reduce((s,r)=>s+r.cash,0),expenseBank=expenses.reduce((s,r)=>s+r.bank,0);
     await _ensureDashboardPrintBooks(f,t);
-    const profit=document.getElementById('dash-profit-bar'),kpis=document.querySelector('#section-dashboard .kpi-row'),ownerControl=document.querySelector('#control-room .control-hero');
+    const dailyControl=document.getElementById('daily-control-centre'),profit=document.getElementById('dash-profit-bar'),kpis=document.querySelector('#section-dashboard .kpi-row'),ownerControl=document.querySelector('#control-room .control-hero');
     const customerPayments=_dashboardCardCopy('dash-customer-payments-card'),vendorPayments=_dashboardCardCopy('dash-vendor-payments-card'),machineReadings=_dashboardCardCopy('dash-machine-odometer-card'),fuelLedger=_dashboardCardCopy('dash-fuel-ledger-card');
-    const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Consolidated Report</h1><p>Period: ${esc(f)} to ${esc(t)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit?profit.outerHTML:''}${kpis?kpis.outerHTML:''}${ownerControl?ownerControl.outerHTML:''}
+    const content=`<div class="print-ph"><h1>CrusherOps — Dashboard Consolidated Report</h1><p>Period: ${esc(f)} to ${esc(t)} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${dailyControl?dailyControl.outerHTML:''}${profit?profit.outerHTML:''}${kpis?kpis.outerHTML:''}${ownerControl?ownerControl.outerHTML:''}
       <div class="card print-section"><h3>Credit Repayment — Consolidated by Customer</h3><div class="report-table-wrap"><table class="report-table consolidated-repayment-table"><thead><tr><th>Customer</th><th>Bank / UPI</th><th>Cash</th><th>Credit Repayment</th><th>Sale Adjusted</th><th>Latest Balance To Pay</th></tr></thead><tbody>${repaymentRows}</tbody><tfoot><tr><td><strong>Total (${repayments.length})</strong></td><td><strong>${fmtINR(repaymentBank)}</strong></td><td><strong>${fmtINR(repaymentCash)}</strong></td><td><strong>${fmtINR(repaymentPayment)}</strong></td><td><strong>${fmtINR(repaymentAdjusted)}</strong></td><td><strong>${fmtINR(repaymentBalance)}</strong></td></tr></tfoot></table></div></div>
       <div class="card print-section"><h3>Customer Wise Sales — Consolidated</h3><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Customer</th><th>Material</th><th>Total Tickets</th><th>Qty MT</th><th>Sale Amount</th><th>Bank / UPI</th><th>Cash</th><th>Credit Sale</th></tr></thead><tbody>${salesRows}</tbody><tfoot><tr><td colspan="2"><strong>Total (${sales.length})</strong></td><td><strong>${fmtNum(salesTickets,0)}</strong></td><td><strong>${fmtNum(salesQty,2)}</strong></td><td><strong>${fmtINR2(salesAmount)}</strong></td><td><strong>${fmtINR(salesBank)}</strong></td><td><strong>${fmtINR(salesCash)}</strong></td><td><strong>${fmtINR(salesCredit)}</strong></td></tr></tfoot></table></div></div>
       ${customerPayments}
@@ -3268,12 +3275,13 @@ async function printDashboard(doPrint=true){
   const f=document.getElementById('dash-from').value||d;
   const t=document.getElementById('dash-to').value||d;
   await _ensureDashboardPrintBooks(f,t);
+  const dailyControl=document.getElementById('daily-control-centre');
   const profit=document.getElementById('dash-profit-bar');
   const kpis=document.querySelector('#section-dashboard .kpi-row');
   const body=document.getElementById('dash-print-area');
   if(!profit||!kpis||!body){flash('Dashboard print content not ready',false);return;}
   const landscape='<style media="print">@page{size:A4 landscape;margin:4mm}</style>';
-  const content=`${landscape}<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
+  const content=`${landscape}<div class="print-ph"><h1>CrusherOps — Dashboard Daily Report</h1><p>Day: ${d} &nbsp;|&nbsp; Period: ${f} to ${t} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div>${dailyControl?dailyControl.outerHTML:''}${profit.outerHTML}${kpis.outerHTML}${body.outerHTML}`;
   const printClass=_isPrintWeekOrMore(f,t)?'dashboard-print ticket-grid-print':'dashboard-print';
   if(doPrint)runPrint('Dashboard Daily Report', content, printClass);
   else{const pa=document.getElementById('print-area');pa.className=printClass;pa.innerHTML=content;}
@@ -3399,6 +3407,7 @@ async function loadDash(){
     await _attachDashboardMasterRows(controlData,f,t);
     if(seq!==_dashLoadSeq)return;
     renderDashSummary(controlData,d);
+    renderDailyControlCentre(controlData);
     await renderControlRoom(controlData);
   }catch(e){if(seq===_dashLoadSeq)_dashUnavailable();}
 }
@@ -3469,6 +3478,64 @@ function _repaymentRowsForDisplay(data,reclassified){
     });
   });
   return rows.filter(row=>row.display_payment_received>0.005);
+}
+
+let _dailyControlReports=[];
+function _dailyControlModel(data){
+  const s=data?.summary||{},period=data?.period||{},issues=[];
+  const periodText=`${period.from||'—'} to ${period.to||'—'}`;
+  const summaryReport={title:'Selected-period financial control',note:`Read-only dashboard summary for ${periodText}.`,columns:['Metric','Value'],rows:[['Gross sales',fmtINR(s.sales)],['Operating expenses',fmtINR(s.expenses)],['Selected-period profit',fmtINR(s.selected_period_profit_director_adjusted??s.profit)],['Sales tonnes',fmtNum(s.sales_qty_mt,2)],['Boulder input MT',fmtNum(s.boulder_input_mt,2)],['Bank balance',fmtINR(s.bank_balance)],['Cash balance in office',fmtINR(s.cash_balance_office)]]};
+  (data?.alerts||[]).filter(alert=>alert&&alert.level!=='good').forEach(alert=>issues.push({level:alert.level==='danger'?'danger':'warning',title:String(alert.title||'Dashboard control alert'),detail:String(alert.detail||'Review the selected-period source rows.'),report:{...summaryReport,title:String(alert.title||summaryReport.title)}}));
+
+  const ticketCounts=new Map(),missingTicketRows=[];
+  let missingTicketRefs=0;
+  (data?.customer_sales||[]).forEach(row=>{
+    const tickets=(Array.isArray(row.ticket_nos)?row.ticket_nos:[]).map(value=>String(value||'').trim()).filter(value=>value&&value!=='—'&&value!=='-');
+    const declared=Math.max(0,Math.round(_num(row.ticket_count))),missing=declared>tickets.length?declared-tickets.length:(!tickets.length&&_num(row.amount)>0?1:0);
+    if(missing){missingTicketRefs+=missing;missingTicketRows.push([row.customer_name||'—',row.material||'—',declared||1,tickets.join(', ')||'Missing',fmtINR(row.amount)]);}
+    tickets.forEach(ticket=>{const key=ticket.toUpperCase();ticketCounts.set(key,(ticketCounts.get(key)||0)+1);});
+  });
+  const duplicateTickets=[...ticketCounts.entries()].filter(([,count])=>count>1);
+  if(missingTicketRefs)issues.push({level:'warning',title:`${missingTicketRefs} sales ticket reference${missingTicketRefs===1?' is':'s are'} missing`,detail:'Review the affected sale rows in Loctell before relying on ticket continuity.',report:{title:'Missing sales ticket references',note:`Selected period: ${periodText}.`,columns:['Customer','Material','Expected tickets','Ticket references','Sale amount'],rows:missingTicketRows}});
+  if(duplicateTickets.length)issues.push({level:'warning',title:`${duplicateTickets.length} repeated ticket reference${duplicateTickets.length===1?' needs':'s need'} review`,detail:`Repeated: ${duplicateTickets.slice(0,5).map(([ticket])=>ticket).join(', ')}${duplicateTickets.length>5?' and more':''}. A repeated ticket can be valid only when supported by the source entry.`,report:{title:'Repeated sales ticket references',note:`Selected period: ${periodText}.`,columns:['Ticket reference','Occurrences'],rows:duplicateTickets.map(([ticket,count])=>[ticket,count])}});
+
+  const classificationPattern=/DEFAULT\s+LEDGER|UNCLASSIFIED|UNCATEGORI[ZS]ED|SUSPENSE/i;
+  const classificationExpenses=(data?.expense_rows||[]).filter(row=>classificationPattern.test([row.category,row.description,row.party,row.remarks].join(' ')));
+  if(classificationExpenses.length){
+    const names=[...new Set(classificationExpenses.map(row=>String(row.category||row.description||row.party||'Expense').trim()).filter(Boolean))];
+    issues.push({level:'warning',title:`${classificationExpenses.length} expense entr${classificationExpenses.length===1?'y uses':'ies use'} Default/Suspense ledger`,detail:`Found${names.length?`: ${names.slice(0,4).join(', ')}`:''}. Review only where the ledger choice is not intentional; source rows remain unchanged.`,report:{title:'Expense ledger classification review',note:`Default, suspense or unclassified text in ${periodText}. Employees maintained as vendor masters are accepted and are not flagged.`,columns:['Date','Category','Ledger / Description','Remarks','Party','Mode','Amount'],rows:classificationExpenses.map(row=>[row.date||'—',row.category||'Expense',row.description||'—',row.remarks||'—',row.party||'—',row.payment_mode||'—',fmtINR(row.amount)])}});
+  }
+
+  const agedCustomers=(data?.customer_page_rows||[]).map(row=>({row,aging:_customerAgingBands(row)})).filter(item=>item.aging.age46plus>0);
+  const agedCustomerAmount=agedCustomers.reduce((sum,item)=>sum+item.aging.age46plus,0);
+  if(agedCustomers.length)issues.push({level:'warning',title:`${agedCustomers.length} customer balance${agedCustomers.length===1?' is':'s are'} aged 45+ days`,detail:`Collection exposure: ${fmtINR(agedCustomerAmount)} as of ${period.to||'the selected date'}.`,report:{title:'Customer balances aged 45+ days',note:`Read-only collection review as of ${period.to||'the selected date'}.`,columns:['Customer','0–15 days','16–30 days','31–44 days','45+ days','Total outstanding'],rows:agedCustomers.map(({row,aging})=>[row.name||'Customer',fmtINR(aging.age0to15),fmtINR(aging.age16to30),fmtINR(aging.age31to45),fmtINR(aging.age46plus),fmtINR(Math.max(0,_num(row.total_outstanding)))])}});
+
+  const agedVendors=(data?.vendor_page_rows||[]).map(row=>({row,amount:Math.max(0,_num(row.age_45_plus))})).filter(item=>item.amount>0);
+  const agedVendorAmount=agedVendors.reduce((sum,item)=>sum+item.amount,0);
+  if(agedVendors.length)issues.push({level:'warning',title:`${agedVendors.length} vendor balance${agedVendors.length===1?' is':'s are'} aged 45+ days`,detail:`Payment exposure: ${fmtINR(agedVendorAmount)} as of ${period.to||'the selected date'}.`,report:{title:'Vendor balances aged 45+ days',note:`Read-only payment review as of ${period.to||'the selected date'}. Employee vendor masters are included according to the existing business setup.`,columns:['Vendor','0–15 days','16–30 days','31–45 days','45+ days','Total payable'],rows:agedVendors.map(({row})=>[row.name||'Vendor',fmtINR(row.age_0_15),fmtINR(row.age_16_30),fmtINR(row.age_31_45),fmtINR(row.age_45_plus),fmtINR(Math.max(0,_num(row.payable)))])}});
+
+  const cashBankAvailable=s.bank_balance!=null&&s.cash_balance_office!=null,tonnesLinked=!(_num(s.sales)>0&&_num(s.sales_qty_mt)<=0),boulderLinked=!(_num(s.sales_qty_mt)>0&&_num(s.boulder_input_mt)<=0);
+  const checks=[{name:'Canonical dashboard summary loaded',passed:Boolean(data?.summary)},{name:'Cash and bank book balances available',passed:cashBankAvailable},{name:'Sales value has sale tonnes',passed:tonnesLinked},{name:'Boulder input captured when tonnes sold',passed:boulderLinked},{name:'Sales ticket references complete',passed:missingTicketRefs===0},{name:'No repeated ticket references',passed:duplicateTickets.length===0},{name:'No default or suspense classifications',passed:classificationExpenses.length===0}];
+  return {issues,checks,critical:issues.filter(issue=>issue.level==='danger').length,review:issues.filter(issue=>issue.level==='warning').length,passed:checks.filter(check=>check.passed).length,period};
+}
+function printDailyControlFinding(index){
+  const report=_dailyControlReports[index];
+  if(!report){flash('Review details are not ready',false);return;}
+  const rows=(report.rows||[]).map(row=>`<tr>${row.map(value=>`<td>${esc(value)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,(report.columns||[]).length)}" class="empty">No supporting rows</td></tr>`;
+  const heading=(report.columns||[]).map(value=>`<th>${esc(value)}</th>`).join('');
+  const landscape=(report.columns||[]).length>5?'<style media="print">@page{size:A4 landscape;margin:5mm}</style>':'';
+  const content=`${landscape}<div class="print-ph"><h1>CrusherOps — ${esc(report.title)}</h1><p>${esc(report.note||'Read-only review detail')} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div><div class="card"><div class="report-table-wrap"><table class="report-table"><thead><tr>${heading}</tr></thead><tbody>${rows}</tbody></table></div><div class="metric-note">Read-only evidence from the selected dashboard data. No source entry was changed.</div></div>`;
+  runPrint(report.title,content,'report-print');
+}
+function renderDailyControlCentre(data){
+  const target=document.getElementById('daily-control-centre');
+  if(!target)return;
+  const model=_dailyControlModel(data);_dailyControlReports=model.issues.map(issue=>issue.report||null);
+  const issueRows=model.issues.length?model.issues.map((issue,index)=>`<div class="daily-control-item ${issue.level}${issue.report?' has-report':''}"><span class="daily-control-severity">${issue.level==='danger'?'Critical':'Review'}</span><div class="daily-control-copy"><strong>${esc(issue.title)}</strong><span>${esc(issue.detail)}</span></div>${issue.report?`<button class="print-btn no-print daily-control-report-btn" type="button" onclick="printDailyControlFinding(${index})">Details PDF</button>`:''}</div>`).join(''):`<div class="daily-control-item good"><span class="daily-control-severity">Clear</span><div class="daily-control-copy"><strong>No exception found in the tested controls</strong><span>This means only the checks listed below passed for the selected period; it is not a substitute for CA or statutory review.</span></div></div>`;
+  const checkRows=model.checks.map(check=>`<span class="daily-control-check ${check.passed?'pass':'fail'}">${check.passed?'✓':'Review'} ${esc(check.name)}</span>`).join('');
+  const from=model.period.from||document.getElementById('dash-from')?.value||'—',to=model.period.to||document.getElementById('dash-to')?.value||'—';
+  target.dataset.rangeFrom=from;target.dataset.rangeTo=to;
+  target.innerHTML=`<div class="daily-control-head"><div><h3>Daily Control Centre</h3><div class="daily-control-subtitle">Read-only exceptions from the same selected-period dashboard data. Nothing can be edited or posted here.</div></div><div class="daily-control-actions"><span class="daily-control-readonly">Read only</span><button class="print-btn no-print" type="button" onclick="printSection('Daily Control Centre','daily-control-centre')">Print / PDF</button></div></div><div class="daily-control-summary"><div class="daily-control-stat danger"><span>Critical</span><strong>${model.critical}</strong></div><div class="daily-control-stat warning"><span>Review</span><strong>${model.review}</strong></div><div class="daily-control-stat good"><span>Checks passed</span><strong>${model.passed}/${model.checks.length}</strong></div><div class="daily-control-stat period"><span>Selected period</span><strong>${esc(from)}<br>to ${esc(to)}</strong></div></div><details class="daily-control-details" ${model.issues.length?'open':''}><summary>${model.issues.length?`Review ${model.issues.length} finding${model.issues.length===1?'':'s'}`:'Show tested controls'}</summary><div class="daily-control-list">${issueRows}</div><div class="daily-control-checks">${checkRows}</div></details>`;
 }
 
 function renderDashSummary(data,d){
