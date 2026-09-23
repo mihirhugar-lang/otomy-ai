@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel, model_validator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 import os
@@ -53,6 +53,12 @@ _MACHINE_SUMMARY_DISK_CACHE_PATH = (
     Path.home() / "Library" / "Application Support" / "CrusherOps" / "machine-summary-cache.json"
 )
 _MACHINE_SUMMARY_DISK_CACHE_MAX_ENTRIES = 90
+_ODOMETER_HISTORY_CACHE: dict[str, dict] = {}
+_ODOMETER_HISTORY_LOCK = threading.Lock()
+_ODOMETER_HISTORY_WORKERS = 8
+_ODOMETER_HISTORY_BATCH_DAYS = 8
+_ODOMETER_HISTORY_CACHE_TTL_SECONDS = 10 * 60
+_CORE_ODOMETER_TYPES = {"Jaw", "Cone", "VSI", "Hitachi", "VMI Loader"}
 _LOG = logging.getLogger(__name__)
 
 
@@ -157,8 +163,8 @@ def fetch_live_odometer_readings(session: Optional[requests.Session] = None, erp
     return fetch_odometer_readings(session=session, erp_base=erp_base)
 
 
-def _roll_odometer_openings_from_prior_day(rows: list[dict], prior_rows: list[dict]) -> list[dict]:
-    """Display each operating-day opening as the prior day's final reading.
+def _roll_odometer_openings_from_prior(rows: list[dict], prior_rows: list[dict]) -> list[dict]:
+    """Display each operating-day opening as the last genuine prior reading.
 
     Loctell represents a not-yet-recorded day as an all-zero placeholder.
     That placeholder must retain a zero difference, but it must not erase the
@@ -183,6 +189,127 @@ def _roll_odometer_openings_from_prior_day(rows: list[dict], prior_rows: list[di
             row["difference"] = 0.0
         rolled.append(row)
     return rolled
+
+
+def _financial_year_start(day: date) -> date:
+    return date(day.year if day.month >= 4 else day.year - 1, 4, 1)
+
+
+def _date_range(from_day: date, to_day: date) -> list[date]:
+    days = []
+    cursor = from_day
+    while cursor <= to_day:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return days
+
+
+def _fetch_odometer_days(
+    session: requests.Session,
+    erp_base: str,
+    days: list[date],
+) -> list[dict]:
+    """Fetch exact daily rows, caching completed historical days in memory."""
+    today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    now = time.monotonic()
+    unique_days = sorted(set(days))
+    with _ODOMETER_HISTORY_LOCK:
+        cached = {
+            day: entry["readings"]
+            for day in unique_days
+            if day < today
+            and (entry := _ODOMETER_HISTORY_CACHE.get(day.isoformat())) is not None
+            and now - float(entry.get("ts") or 0) < _ODOMETER_HISTORY_CACHE_TTL_SECONDS
+        }
+    missing = [day for day in unique_days if day not in cached]
+    fetched: dict[date, list[dict]] = {}
+    errors = []
+
+    def fetch_day(day: date) -> tuple[date, list[dict]]:
+        return day, fetch_odometer_readings(
+            _clone_erp_session(session), erp_base, day, day
+        )
+
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(_ODOMETER_HISTORY_WORKERS, len(missing))) as pool:
+            futures = {pool.submit(fetch_day, day): day for day in missing}
+            for future in as_completed(futures):
+                day = futures[future]
+                try:
+                    fetched_day, readings = future.result()
+                    fetched[fetched_day] = readings
+                except Exception as exc:
+                    errors.append(f"{day}: {exc}")
+    if errors:
+        raise HTTPException(502, "Loctell machinery history unavailable: " + "; ".join(errors[:3]))
+
+    historical = {
+        day.isoformat(): {"ts": time.monotonic(), "readings": readings}
+        for day, readings in fetched.items()
+        if day < today
+    }
+    if historical:
+        with _ODOMETER_HISTORY_LOCK:
+            _ODOMETER_HISTORY_CACHE.update(historical)
+
+    rows = []
+    for day in unique_days:
+        readings = fetched.get(day, cached.get(day))
+        if readings is not None:
+            rows.append({"date": day.isoformat(), "readings": readings})
+    return rows
+
+
+def _latest_prior_odometer_history(
+    session: requests.Session,
+    erp_base: str,
+    selected_start: date,
+) -> tuple[list[dict], list[dict]]:
+    """Walk backward by exact day until every primary machine has an opening."""
+    cursor = selected_start - timedelta(days=1)
+    lower_bound = _financial_year_start(selected_start)
+    found: dict[str, dict] = {}
+    history: list[dict] = []
+
+    while cursor >= lower_bound and not _CORE_ODOMETER_TYPES.issubset(found):
+        batch_start = max(lower_bound, cursor - timedelta(days=_ODOMETER_HISTORY_BATCH_DAYS - 1))
+        batch = _fetch_odometer_days(session, erp_base, _date_range(batch_start, cursor))
+        history.extend(batch)
+        for day_row in sorted(batch, key=lambda row: row["date"], reverse=True):
+            for row in day_row["readings"]:
+                vehicle_type = str(row.get("vehicle_type") or "")
+                if vehicle_type in found or not row.get("has_reading") or row.get("end_reading") is None:
+                    continue
+                found[vehicle_type] = dict(row)
+        cursor = batch_start - timedelta(days=1)
+
+    prior_rows = []
+    for vehicle_type, _registration in _ODOMETER_TARGETS:
+        prior_rows.append(found.get(vehicle_type, {
+            "vehicle_type": vehicle_type,
+            "end_reading": None,
+            "start_reading": None,
+            "difference": None,
+            "has_reading": False,
+        }))
+    return sorted(history, key=lambda row: row["date"]), prior_rows
+
+
+def fetch_odometer_history_for_range(
+    session: requests.Session,
+    erp_base: str,
+    from_day: date,
+    to_day: date,
+) -> tuple[list[dict], list[dict]]:
+    """Return the selected daily history plus genuine pre-range openings."""
+    if from_day > to_day:
+        raise HTTPException(400, "From date must not be after To date.")
+    selected = _fetch_odometer_days(session, erp_base, _date_range(from_day, to_day))
+    prior_history, prior_rows = _latest_prior_odometer_history(
+        session, erp_base, from_day
+    )
+    by_day = {row["date"]: row for row in [*prior_history, *selected]}
+    return [by_day[day] for day in sorted(by_day)], prior_rows
 
 
 def fetch_machine_fuel_issues(session: Optional[requests.Session] = None, erp_base: Optional[str] = None) -> list[dict]:
@@ -352,23 +479,30 @@ def _fetch_operations_machine_summary_live(
     authenticated sessions let them run concurrently without three logins.
     """
     erp_base, session = _erp_session()
-    # The 6 AM operating-day opening is the prior day's final measured
-    # odometer.  Fetch it alongside the selected period with the same
-    # authenticated session, so the browser never invents an opening reading.
+    # The 6 AM operating-day opening is the last genuine measured odometer,
+    # which may be several days old when a machine was idle.  Fetch exact
+    # per-day history like Otomy; a one-day zero placeholder must not erase it.
     tz = ZoneInfo("Asia/Kolkata")
     selected_start = from_date or datetime.now(tz).date()
-    prior_day = selected_start - timedelta(days=1)
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    selected_end = to_date or datetime.now(tz).date()
+    with ThreadPoolExecutor(max_workers=6) as pool:
         odometer = pool.submit(fetch_odometer_readings, _clone_erp_session(session), erp_base, from_date, to_date)
-        prior_odometer = pool.submit(fetch_odometer_readings, _clone_erp_session(session), erp_base, prior_day, prior_day)
+        odometer_history = pool.submit(
+            fetch_odometer_history_for_range,
+            _clone_erp_session(session), erp_base, selected_start, selected_end,
+        )
         fuel_issued = pool.submit(fetch_machine_fuel_issues, _clone_erp_session(session), erp_base)
         fuel_received = pool.submit(fetch_fuel_received, _clone_erp_session(session), erp_base)
         fuel_balance = pool.submit(fetch_fuel_dashboard_balance, _clone_erp_session(session), erp_base)
         current_odometer = odometer.result()
-        previous_odometer = prior_odometer.result()
+        history_rows, previous_odometer = odometer_history.result()
         fuel_received_rows = fuel_received.result()
         return {
-            "odometer": _roll_odometer_openings_from_prior_day(current_odometer, previous_odometer),
+            "odometer": _roll_odometer_openings_from_prior(current_odometer, previous_odometer),
+            "odometer_history": history_rows,
+            # Keep both names while the local and static clients converge on
+            # the same snapshot contract.
+            "odometer_prior": previous_odometer,
             "prior_odometer": previous_odometer,
             "fuel_issued": fuel_issued.result(),
             "fuel_received": fuel_received_rows,
@@ -587,6 +721,8 @@ def fetch_operations_machine_summary(
 
     return {
         "odometer": _configured_odometer_placeholders(),
+        "odometer_history": [],
+        "odometer_prior": [],
         "prior_odometer": [],
         "fuel_issued": [],
         "fuel_received": [],
