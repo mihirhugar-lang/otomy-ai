@@ -2170,10 +2170,23 @@ function _activeSectionName(){
   const active=document.querySelector('.section.active');
   return active?.id?.replace('section-','')||'dashboard';
 }
+function _refreshDashboardPresetForSync(){
+  const from=document.getElementById('dash-from'),to=document.getElementById('dash-to'),day=document.getElementById('dash-date');
+  const active=from?.closest('.preset-bar')?.querySelector('.pbtn.act');
+  const match=String(active?.getAttribute('onclick')||'').match(/preset\('dashboard','([^']+)'/);
+  if(!match)return false;
+  const range=calcPreset(match[1]);
+  from.value=range[0];to.value=range[1];if(day)day.value=range[1];
+  return true;
+}
 async function _reloadActiveSectionAfterSync(){
   _clearReadCaches();
   const section=_activeSectionName();
-  if(section==='dashboard')return loadDash();
+  // Relative Dashboard presets must cross midnight with the data. A tab left
+  // open on "Today" otherwise reloads yesterday's still-selected inputs and
+  // shows the fresh-sync toast without changing the visible report. Custom
+  // dates have no active preset, so they remain deliberately untouched.
+  if(section==='dashboard'){_refreshDashboardPresetForSync();return loadDash();}
   if(section==='sales')return loadSales();
   if(section==='exptonne')return loadExpTonne();
   if(section==='customers')return loadCustomers();

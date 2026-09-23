@@ -114,6 +114,32 @@ async function verify(file) {
   await vm.runInContext('checkForFreshSync()',statusCtx);
   assert(reloaded,'Last-Modified-only deployment was not detected');
 
+  // A Dashboard tab left open overnight keeps yesterday in its date inputs.
+  // A fresh sync must advance an active relative preset (especially Today),
+  // while preserving an intentionally selected custom/historical range.
+  let requestedPreset='';
+  const dates={
+    'dash-from':{value:'2026-09-22'},
+    'dash-to':{value:'2026-09-22'},
+    'dash-date':{value:'2026-09-22'},
+  };
+  const todayButton={getAttribute:()=>"preset('dashboard','today',this)"};
+  const presetBar={querySelector:()=>todayButton};
+  dates['dash-from'].closest=()=>presetBar;
+  const rolloverCtx=vm.createContext({document:{getElementById:id=>dates[id]},
+    calcPreset:p=>{requestedPreset=p;return ['2026-09-23','2026-09-23'];}});
+  vm.runInContext(part(source,'function _refreshDashboardPresetForSync(){','async function _reloadActiveSectionAfterSync(){'),rolloverCtx);
+  assert.equal(vm.runInContext('_refreshDashboardPresetForSync()',rolloverCtx),true);
+  assert.equal(requestedPreset,'today');
+  assert.deepEqual([dates['dash-from'].value,dates['dash-to'].value,dates['dash-date'].value],
+    ['2026-09-23','2026-09-23','2026-09-23']);
+  presetBar.querySelector=()=>null;
+  dates['dash-from'].value='2026-07-01';dates['dash-to'].value='2026-07-31';dates['dash-date'].value='2026-07-31';
+  assert.equal(vm.runInContext('_refreshDashboardPresetForSync()',rolloverCtx),false);
+  assert.deepEqual([dates['dash-from'].value,dates['dash-to'].value,dates['dash-date'].value],
+    ['2026-07-01','2026-07-31','2026-07-31']);
+  assert.match(source,/if\(section==='dashboard'\)\{_refreshDashboardPresetForSync\(\);return loadDash\(\);\}/);
+
   // The selected range may change while master rows are still loading.
   const attaches=[], renders=[];
   const dashCtx=vm.createContext({document:{getElementById:()=>({value:'2026-09-13'})},
