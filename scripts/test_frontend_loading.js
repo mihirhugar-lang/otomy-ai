@@ -22,6 +22,26 @@ async function verify(file) {
   for (const script of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     if (script[1].trim()) new vm.Script(script[1], {filename:file});
   }
+  // Phase 3 GST Control Centre stays read-only and never invents ITC/net tax.
+  assert.match(source,/id="gst-monthly-control"/);
+  assert.match(source,/Input tax credit and net GST payable are deliberately not estimated/);
+  const gstCtx=vm.createContext({Map,Set,Date,Number,String,Math,
+    fyStart:()=>'2026-04-01',today:()=>'2026-09-24',monthNow:()=>'2026-09',
+    fmtINR2:v=>'INR '+Number(v||0).toFixed(2),esc:v=>String(v??'')});
+  vm.runInContext(part(source,'function _validComplianceGSTIN(', 'function _warningHTML('),gstCtx);
+  assert.equal(vm.runInContext('JSON.stringify(_gstMonthPeriod("2026-09"))',gstCtx),
+    '{"value":"2026-09","from":"2026-09-01","to":"2026-09-24","calendarEnd":"2026-09-30","closed":false}');
+  assert.equal(vm.runInContext('_gstInternalTarget("2026-12",10)',gstCtx),'2027-01-10');
+  const gstFixture={totals:{sales_count:1,gross_sales:105,taxable_sales:100,igst:0,cgst:2.5,sgst:2.5,output_tax:5},
+    checks:{daily_sales_reconcile:true,daily_tax_reconcile:true,valid_company_gstin:true,invalid_customer_gstin:1,missing_hsn:1,duplicate_invoice_keys:0,warnings:['No customer GSTIN is mapped; review classification.']},
+    sales:[{date:'2026-08-15',invoice_no:'INV-1',customer_name:'Fixture',customer_gstin:'BADGSTIN',hsn_code:'',gross_value:105}]};
+  gstCtx.gstFixture=gstFixture;
+  assert.equal(vm.runInContext('_gstExceptionRows(gstFixture).length',gstCtx),2);
+  const gstHtml=vm.runInContext('_gstMonthlyControlHTML(gstFixture,_gstMonthPeriod("2026-08"))',gstCtx);
+  assert.match(gstHtml,/Review items<\/span><strong>3/);
+  assert.match(gstHtml,/Source advisories:/);
+  assert.match(gstHtml,/Needs portal 2B \+ ledgers/);
+  assert.match(gstHtml,/Net GST payable<\/td><td style="text-align:right">—/);
   const requests = [];
   const ctx = vm.createContext({assert, Map, Set, Date, console,
     fetch: () => { const d=deferred(); requests.push(d); return d.promise; },
