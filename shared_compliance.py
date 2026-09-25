@@ -232,6 +232,8 @@ def build_compliance_dataset(
         )
 
     receipts_out: list[dict] = []
+    excluded_snapshot_receipts: list[dict] = []
+    excluded_zero_value_receipts: list[dict] = []
     for index, row in enumerate(receipts or [], 1):
         d = _date(_value(row, "date"))
         if not in_window(d):
@@ -240,8 +242,7 @@ def build_compliance_dataset(
             _name_key(_value(row, "customer_name", ""))
         ) or {}
         amount = _num(_value(row, "payment_received", _value(row, "amount", 0)))
-        receipts_out.append(
-            {
+        receipt_record = {
                 "id": _value(row, "id", index),
                 "date": d,
                 "customer_name": str(_value(row, "customer_name", "") or customer.get("name") or "Customer"),
@@ -252,7 +253,13 @@ def build_compliance_dataset(
                 "source": str(_value(row, "source", "ERP receipt") or "ERP receipt"),
                 "notes": str(_value(row, "notes", "") or ""),
             }
-        )
+        if receipt_record["mode"].strip().lower() == "erp snapshot":
+            excluded_snapshot_receipts.append(receipt_record)
+            continue
+        if receipt_record["amount"] == 0:
+            excluded_zero_value_receipts.append(receipt_record)
+            continue
+        receipts_out.append(receipt_record)
 
     vendor_payments_out: list[dict] = []
     for index, row in enumerate(vendor_payments or [], 1):
@@ -372,6 +379,10 @@ def build_compliance_dataset(
         "expenses": expenses_out,
         "receipts": receipts_out,
         "vendor_payments": vendor_payments_out,
+        "audit_exclusions": {
+            "erp_snapshot_receipts": excluded_snapshot_receipts,
+            "zero_value_receipts": excluded_zero_value_receipts,
+        },
         "daily": list(daily_map.values()),
         "totals": totals,
         "checks": checks,
