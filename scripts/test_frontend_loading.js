@@ -77,6 +77,31 @@ async function verify(file) {
   assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").status',auditCtx),'Evidence review required');
   assert(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("GSTIN"))',auditCtx));
   assert(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("bank or UPI"))',auditCtx));
+
+  // Phase 7 reconciles material movement, machine meters and fuel without
+  // presenting sales/input as physical production recovery.
+  assert.match(source,/id="ops-control-centre"/);
+  assert.match(source,/movement ratio, not physical crusher recovery/);
+  const opsCtx=vm.createContext({Map,Set,Date,Number,String,Math,
+    _num:v=>Number(v||0),fmtNum:(v,p=2)=>Number(v||0).toFixed(p),fmtINR:v=>'INR '+Number(v||0).toFixed(2)});
+  vm.runInContext(part(source,'function _operationsMachineKey(', 'let _operationsControlReports='),opsCtx);
+  opsCtx.opsControl={summary:{sales_qty_mt:80}};
+  opsCtx.opsBoulders=[{date:'2026-09-01',source:'ERP Input',trips:4,tonnes_per_trip:25,total_tonnes:100}];
+  opsCtx.opsSource={machines:[{vehicle_type:'Jaw',start_reading:100,end_reading:110,difference:10}],
+    fuelIssues:[{date:'2026-09-01',vehicle_type:'JAW CRUSHER',fuel_type:'DIESEL',fuel_issued:20}],
+    fuelReceipts:[{date:'2026-09-01',supplier_name:'Fixture Fuel',fuel_type:'DIESEL',quantity:30,amount:3000}],
+    ledger:{rows:[{kind:'opening',date:'2026-09-01',balance_litres:100},{kind:'receipt',date:'2026-09-01',received_litres:30,balance_litres:130},{kind:'issue',date:'2026-09-01',spend_litres:20,balance_litres:110}],closing_litres:110},
+    refreshing:false,cached:true,hasFuelBalance:true};
+  assert.equal(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").issues.length',opsCtx),0);
+  assert.equal(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").passed',opsCtx),10);
+  assert.equal(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").metrics.soldInputPct',opsCtx),80);
+  vm.runInContext('opsSource.machines[0]={vehicle_type:"Jaw",start_reading:110,end_reading:100,difference:-10};opsSource.ledger.closing_litres=90;opsSource.ledger.rows[2].balance_litres=-1',opsCtx);
+  assert(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("negative"))',opsCtx));
+  assert(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("equation"))',opsCtx));
+  vm.runInContext('opsSource.refreshing=true;opsSource.cached=false',opsCtx);
+  assert.equal(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").checks.find(x=>x.name.includes("source is current")).passed',opsCtx),false);
+  vm.runInContext('opsSource.refreshing=false;opsSource.cached=true;opsSource.stale=true;opsSource.cacheAgeSeconds=600',opsCtx);
+  assert(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("stale cache"))',opsCtx));
   const requests = [];
   const ctx = vm.createContext({assert, Map, Set, Date, console,
     fetch: () => { const d=deferred(); requests.push(d); return d.promise; },

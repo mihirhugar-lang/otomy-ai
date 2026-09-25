@@ -266,6 +266,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .ca-closing-card{border-left-color:#6a1b9a;background:linear-gradient(145deg,#fbf8ff,#fffdf7)}.ca-closing-card .daily-control-head h3{color:#4a235a}.ca-closing-status strong{font-size:13px;line-height:1.3}.ca-closing-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.ca-closing-panel{background:#fff;border:1px solid #dde3ec;border-radius:10px;padding:10px;min-width:0}.ca-closing-panel h4{margin:0 0 8px;color:#27364a;font-size:12px}.ca-closing-table{width:100%;border-collapse:collapse;font-size:10px}.ca-closing-table th,.ca-closing-table td{padding:6px 7px;border-bottom:1px solid #edf0f4;text-align:right;white-space:nowrap}.ca-closing-table th:first-child,.ca-closing-table td:first-child{text-align:left}.ca-closing-table th{background:#f5f7fa;color:#526070;font-size:9px;text-transform:uppercase;letter-spacing:.25px}.ca-closing-table tr:last-child td{border-bottom:0}.ca-closing-ok{color:#16714a;font-weight:800}.ca-closing-review{color:#a15c00;font-weight:800}.ca-closing-balance-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:9px}.ca-closing-balance{background:#f7f9fc;border:1px solid #e1e7ef;border-radius:8px;padding:8px}.ca-closing-balance span{display:block;color:#667085;font-size:9px;font-weight:800;text-transform:uppercase}.ca-closing-balance strong{display:block;color:#27364a;font-size:13px;margin-top:3px}
 .audit-readiness-card{border-left-color:#0b7285;background:linear-gradient(145deg,#f1fcff,#fffdf7)}.audit-readiness-card .daily-control-head h3{color:#075b68}.audit-readiness-grid{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(360px,1.2fr);gap:10px;margin-top:10px}.audit-manual-list{display:grid;gap:6px}.audit-manual-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #edf0f4;padding:6px 0;font-size:10px}.audit-manual-item:last-child{border-bottom:0}.audit-manual-item strong{color:#27364a}.audit-manual-item span{color:#805000;text-align:right;font-weight:800}
 .gst-control-card{border-left-color:#087f5b;background:linear-gradient(145deg,#f2fff9,#fffdf7)}.gst-control-card .daily-control-head h3{color:#075e45}.gst-control-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.gst-control-note{margin-top:9px;padding:8px 10px;border-radius:8px;background:#fff8e7;border:1px solid #f0cf86;color:#805000;font-size:10px;line-height:1.45}.gst-exception-panel{margin-top:10px}.gst-exception-panel h4{margin:0 0 7px;color:#27364a;font-size:12px}.gst-control-card .ca-closing-table td:nth-child(n+2),.gst-control-card .ca-closing-table th:nth-child(n+2){text-align:left;white-space:normal}
+.ops-control-card{border-left-color:#2f6f5e;background:linear-gradient(145deg,#f2fbf7,#fffaf0)}.ops-control-card .daily-control-head h3{color:#24594c}.ops-control-card .ca-closing-table td:nth-child(n+2),.ops-control-card .ca-closing-table th:nth-child(n+2){white-space:normal}.ops-control-boundary{margin-top:9px;padding:8px 10px;border-radius:8px;background:#f5f7fa;border:1px solid #d9e0e8;color:#526070;font-size:10px;line-height:1.45}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .bar-row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}
 .bar-track{height:10px;border-radius:20px;background:#f2f4f7;overflow:hidden}.bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f59e0b,#b45309)}
@@ -1142,6 +1143,8 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
     </div>
     <button class="print-btn" onclick="printCurrentOpsTab()">Print / PDF</button>
   </div>
+
+  <div id="ops-control-centre" class="card daily-control-centre ops-control-card" aria-live="polite"><div class="empty">Loading operations controls…</div></div>
 
   <div class="card">
     <h3>Boulder Input</h3>
@@ -2598,7 +2601,20 @@ function opsPreset(p,btn){
   opsReload();
 }
 function clearOpsBtns(){document.getElementById('ops-preset-bar').querySelectorAll('.pbtn').forEach(b=>b.classList.remove('act'));}
-function opsReload(){loadBoulders();loadMachines();}
+let _opsControlSeq=0;
+async function opsReload(){
+  const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value,target=document.getElementById('ops-control-centre');
+  if(!from||!to||from>to){if(target)target.innerHTML='<div class="empty">Choose a valid operations date range.</div>';return;}
+  const seq=++_opsControlSeq;if(target)target.innerHTML='<div class="empty">Loading operations controls…</div>';
+  const controlPromise=cachedJson(_dashCache.control,`${from}|${to}`,`/api/dashboard/control?from_date=${from}&to_date=${to}`).then(value=>({value})).catch(error=>({error}));
+  const [boulders,machines,controlResult]=await Promise.all([loadBoulders(),loadMachines(),controlPromise]);
+  if(seq!==_opsControlSeq)return;
+  const errors=[];
+  if(!Array.isArray(boulders))errors.push('Boulder input source is unavailable.');
+  if(!machines)errors.push('Machinery and fuel source is unavailable.');
+  if(!controlResult.value?.summary)errors.push(`Dashboard sales source is unavailable${controlResult.error?.message?`: ${controlResult.error.message}`:'.'}`);
+  renderOperationsControl(controlResult.value||null,boulders,machines,errors,from,to);
+}
 
 // ── PDF download ───────────────────────────────────────────────────────────
 function isMobilePrint(){
@@ -4685,7 +4701,7 @@ function renderLedgerView(data){
 }
 
 // ── Operations ─────────────────────────────────────────────────────────────
-function loadOpsDefaults(){loadBoulders();loadMachines();loadEMI();loadWorkers();}
+function loadOpsDefaults(){opsReload();loadEMI();loadWorkers();}
 function calcBoulder(){document.getElementById('b-total').value=((parseFloat(document.getElementById('b-trips').value)||0)*(parseFloat(document.getElementById('b-tpt').value)||0)).toFixed(2);}
 function calcRunHrs(){document.getElementById('m-run').value=(Math.max(0,(parseFloat(document.getElementById('m-end').value)||0)-(parseFloat(document.getElementById('m-start').value)||0))).toFixed(1);}
 function calcLabour(){document.getElementById('l-amt').value=((parseFloat(document.getElementById('l-days').value)||0)*(parseFloat(document.getElementById('l-wage').value)||0)).toFixed(0);}
@@ -4705,7 +4721,8 @@ async function loadBoulders(){
     _allData.boulders=rows;_page.boulders=_page.boulders||1;
     _renderCache.boulders=()=>renderBoulders();
     renderBoulders();
-  }catch(e){}
+    return rows;
+  }catch(e){return null;}
 }
 function renderBoulders(){
   applyTableRangeMode('boulders','boulders-tbl');
@@ -4831,8 +4848,10 @@ async function loadMachines(dashboardFrom,dashboardTo){
     _allData.machines=rows;_allData.machineHistory=history;_allData.machineFuel=fuelRows;_allData.fuelReceived=fuelReceivedRows;_allData.fuelBalance=fuelBalance;_page.machines=_page.machines||1;_page.fuelReceived=_page.fuelReceived||1;
     _renderCache.machines=()=>renderMachines();
     renderMachines();
+    return summary;
   }catch(e){
     ['machines-tbl','dash-machine-odometer','dash-fuel-ledger'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<div class="empty">Live machinery readings unavailable — retry after the next Loctell refresh.</div>';});
+    return null;
   }
 }
 function renderMachines(){
@@ -4887,6 +4906,65 @@ function _fuelLedger(from,to){
     rows.push({...row,balance_litres:runningLitres});
   });
   return {rows,opening_litres:monthOpening,closing_litres:runningLitres,tracking_from:trackingFrom,opening_date:openingDate};
+}
+function _operationsMachineKey(value){
+  const key=String(value||'').trim().toUpperCase().replace(/[^A-Z0-9]+/g,' ');
+  if(key.includes('JAW'))return 'JAW';if(key.includes('CONE'))return 'CONE';if(key.includes('VSI'))return 'VSI';if(key.includes('HITACHI'))return 'HITACHI';if(key.includes('LOADER'))return 'VMI LOADER';return key;
+}
+function _operationsControlSource(summary,from,to){
+  if(!summary)return null;
+  return withDashboardMachineSummary(summary,()=>{
+    const inRange=row=>{const d=String(row?.date||'').slice(0,10);return d>=from&&d<=to;},diesel=row=>String(row?.fuel_type||'DIESEL').toUpperCase()==='DIESEL';
+    return {machines:_machineRangeRows(from,to),fuelIssues:(summary.fuel_issued||[]).filter(row=>inRange(row)&&diesel(row)),fuelReceipts:(summary.fuel_received||[]).filter(row=>inRange(row)&&diesel(row)),ledger:_fuelLedger(from,to),refreshing:Boolean(summary.refreshing),cached:Boolean(summary.cached),stale:Boolean(summary.stale),cacheAgeSeconds:summary.cache_age_seconds,cacheSource:summary.cache_source||'',hasFuelBalance:summary.fuel_balance?.diesel_litres!=null&&Number.isFinite(Number(summary.fuel_balance.diesel_litres))};
+  });
+}
+function _operationsControlModel(control,boulders,source,sourceErrors,from,to){
+  const summary=control?.summary||{},rows=Array.isArray(boulders)?boulders:[],issues=[];
+  const report=(title,columns,reportRows,note='Read-only Loctell/ERP evidence for the selected operations period.')=>({title,note:`${note} Period: ${from} to ${to}.`,columns,rows:reportRows});
+  (sourceErrors||[]).forEach(message=>issues.push({level:String(message).startsWith('Machinery')?'warning':'danger',title:message.replace(/\.$/,''),detail:'The related control cannot be completed until this source is available.',report:report('Operations source availability',['Source finding'],[[message]])}));
+  const boulderTonnes=Math.round(rows.reduce((sum,row)=>sum+_num(row.total_tonnes),0)*100)/100,boulderTrips=rows.reduce((sum,row)=>sum+_num(row.trips),0),soldTonnes=_num(summary.sales_qty_mt);
+  const invalidBoulders=rows.filter(row=>!String(row.date||'').trim()||_num(row.trips)<=0||_num(row.tonnes_per_trip)<=0||_num(row.total_tonnes)<=0||Math.abs(_num(row.total_tonnes)-_num(row.trips)*_num(row.tonnes_per_trip))>.05);
+  if(invalidBoulders.length)issues.push({level:'danger',title:`${invalidBoulders.length} boulder input row${invalidBoulders.length===1?' has':'s have'} invalid quantity math`,detail:'Trips, MT/trip and total MT must be positive and reconcile before operational ratios are relied on.',report:report('Boulder input quantity exceptions',['Date','Source','Trips','MT/trip','Reported MT','Calculated MT'],invalidBoulders.map(row=>[row.date||'Missing',row.source||'—',fmtNum(row.trips,0),fmtNum(row.tonnes_per_trip,3),fmtNum(row.total_tonnes,2),fmtNum(_num(row.trips)*_num(row.tonnes_per_trip),2)]))});
+  if(soldTonnes>0&&Array.isArray(boulders)&&boulderTonnes<=0)issues.push({level:'danger',title:'Sold tonnes exist without boulder input',detail:`Sales show ${fmtNum(soldTonnes,2)} MT, but no boulder input is recorded in the same period.`,report:report('Sales without boulder input',['Metric','Value'],[['Sold tonnes',fmtNum(soldTonnes,2)],['Boulder input',fmtNum(boulderTonnes,2)]])});
+
+  const sourceReady=Boolean(source)&&!(source.refreshing&&!source.cached),machines=source?.machines||[],fuelIssues=source?.fuelIssues||[],fuelReceipts=source?.fuelReceipts||[],ledger=source?.ledger||{rows:[]};
+  if(source&&source.refreshing&&!source.cached)issues.push({level:'warning',title:'Machinery and fuel source is still refreshing',detail:'Loctell has not supplied a usable cached response yet; reload the selected period after the source refresh completes.',report:report('Machinery/fuel refresh state',['Refreshing','Cached','Cache source'],[['Yes','No',source.cacheSource||'None']])});
+  if(source?.stale)issues.push({level:'warning',title:'Machinery and fuel data is from a stale cache',detail:`A live Loctell refresh is in progress${source.cacheAgeSeconds==null?'':`; cached data is ${Math.round(_num(source.cacheAgeSeconds)/60)} minute(s) old`}.`,report:report('Machinery/fuel cache state',['Stale','Cache age seconds','Cache source'],[['Yes',source.cacheAgeSeconds??'—',source.cacheSource||'None']])});
+  const measuredMachines=machines.filter(row=>row.start_reading!=null&&row.end_reading!=null),invalidMachines=measuredMachines.filter(row=>_num(row.end_reading)<_num(row.start_reading)||_num(row.difference)<0);
+  if(invalidMachines.length)issues.push({level:'danger',title:`${invalidMachines.length} machine reading${invalidMachines.length===1?' is':'s are'} negative`,detail:'An ending meter below its opening meter must be corrected or supported in Loctell.',report:report('Negative machine meter movement',['Machine','Start','End','Difference'],invalidMachines.map(row=>[row.vehicle_type||'—',fmtNum(row.start_reading,2),fmtNum(row.end_reading,2),fmtNum(row.difference,2)]))});
+  if(sourceReady&&(boulderTonnes>0||soldTonnes>0)&&!measuredMachines.length)issues.push({level:'warning',title:'No measured machine readings for an active material period',detail:'Boulder input or sales exists, but no start/end machinery meter is available for the selected dates.',report:report('Missing machine readings',['Boulder input MT','Sold tonnes','Measured machines'],[[fmtNum(boulderTonnes,2),fmtNum(soldTonnes,2),0]])});
+
+  const invalidIssues=fuelIssues.filter(row=>!String(row.date||'').trim()||!String(row.vehicle_type||'').trim()||_num(row.fuel_issued)<=0),invalidReceipts=fuelReceipts.filter(row=>!String(row.date||'').trim()||_num(row.quantity)<=0||_num(row.amount)<0);
+  if(invalidIssues.length)issues.push({level:'danger',title:`${invalidIssues.length} fuel issue row${invalidIssues.length===1?' is':'s are'} incomplete`,detail:'Each issue needs a date, machine and positive litres.',report:report('Fuel issue exceptions',['Date','Machine','Fuel type','Litres','Remarks'],invalidIssues.map(row=>[row.date||'Missing',row.vehicle_type||'Missing',row.fuel_type||'DIESEL',fmtNum(row.fuel_issued,2),row.remarks||'—']))});
+  if(invalidReceipts.length)issues.push({level:'danger',title:`${invalidReceipts.length} fuel receipt row${invalidReceipts.length===1?' is':'s are'} invalid`,detail:'Each receipt needs a date and positive quantity; amount cannot be negative.',report:report('Fuel receipt exceptions',['Date','Supplier','Quantity L','Amount','Remarks'],invalidReceipts.map(row=>[row.date||'Missing',row.supplier_name||'—',fmtNum(row.quantity,2),fmtINR(row.amount),row.remarks||'—']))});
+  const measuredKeys=new Set(measuredMachines.map(row=>_operationsMachineKey(row.vehicle_type))),unmatchedIssues=fuelIssues.filter(row=>!measuredKeys.has(_operationsMachineKey(row.vehicle_type)));
+  if(sourceReady&&unmatchedIssues.length)issues.push({level:'warning',title:`${unmatchedIssues.length} fuel issue${unmatchedIssues.length===1?' has':'s have'} no matching measured machine`,detail:'The fuel issue is retained, but litres/hour cannot be cross-checked for that machine in this period.',report:report('Fuel issues without matching machine readings',['Date','Machine','Litres','Fuel issue reading','Remarks'],unmatchedIssues.map(row=>[row.date||'—',row.vehicle_type||'—',fmtNum(row.fuel_issued,2),row.fuel_issue_reading==null?'—':fmtNum(row.fuel_issue_reading,2),row.remarks||'—']))});
+
+  const ledgerRows=ledger.rows||[],opening=ledgerRows[0]?.balance_litres,received=ledgerRows.reduce((sum,row)=>sum+_num(row.received_litres),0),issued=ledgerRows.reduce((sum,row)=>sum+_num(row.spend_litres),0),reported=ledger.closing_litres,calculated=opening==null?null:Math.round((_num(opening)+received-issued)*100)/100,ledgerReady=opening!=null&&reported!=null&&source?.hasFuelBalance,ledgerMatches=ledgerReady&&Math.abs(calculated-_num(reported))<=.01,negativeBalances=ledgerRows.filter(row=>row.balance_litres!=null&&_num(row.balance_litres)<-.01);
+  if(sourceReady&&!source.hasFuelBalance)issues.push({level:'warning',title:'Fuel stock balance is unavailable',detail:'Receipts/issues may be listed, but opening-to-closing diesel reconciliation cannot be completed without Loctell stock balance.',report:report('Fuel balance availability',['Opening','Received','Issued','Reported closing'],[['Unavailable',fmtNum(received,2),fmtNum(issued,2),'Unavailable']])});
+  if(ledgerReady&&!ledgerMatches)issues.push({level:'danger',title:'Fuel opening-to-closing equation does not match',detail:`Opening + received − issued gives ${fmtNum(calculated,2)} L versus reported ${fmtNum(reported,2)} L.`,report:report('Fuel stock equation mismatch',['Opening L','Received L','Issued L','Calculated L','Reported L','Difference L'],[[fmtNum(opening,2),fmtNum(received,2),fmtNum(issued,2),fmtNum(calculated,2),fmtNum(reported,2),fmtNum(calculated-_num(reported),2)]])});
+  if(negativeBalances.length)issues.push({level:'danger',title:'Fuel ledger falls below zero',detail:`${negativeBalances.length} running balance${negativeBalances.length===1?' is':'s are'} negative and require source review.`,report:report('Negative fuel balances',['Date','Details','Balance L'],negativeBalances.map(row=>[row.date||'—',row.details||'—',fmtNum(row.balance_litres,2)]))});
+
+  const measuredHours=Math.round(measuredMachines.reduce((sum,row)=>sum+Math.max(0,_num(row.difference)),0)*100)/100,fuelLitres=Math.round(fuelIssues.reduce((sum,row)=>sum+Math.max(0,_num(row.fuel_issued)),0)*100)/100;
+  const checks=[{name:'Dashboard sales source loaded',passed:Boolean(control?.summary)},{name:'Boulder input source loaded',passed:Array.isArray(boulders)},{name:'Boulder quantity math reconciles',passed:Array.isArray(boulders)&&invalidBoulders.length===0},{name:'Boulder input present when tonnes are sold',passed:!(soldTonnes>0&&boulderTonnes<=0)},{name:'Machinery and fuel source is current',passed:sourceReady&&!source?.stale},{name:'No negative machine meter movement',passed:sourceReady&&invalidMachines.length===0},{name:'Fuel issue fields are complete',passed:sourceReady&&invalidIssues.length===0},{name:'Fuel receipt values are valid',passed:sourceReady&&invalidReceipts.length===0},{name:'Fuel opening-to-closing equation matches',passed:sourceReady&&ledgerMatches},{name:'Fuel running balance stays non-negative',passed:sourceReady&&ledgerReady&&negativeBalances.length===0}];
+  const critical=issues.filter(issue=>issue.level==='danger').length,review=issues.filter(issue=>issue.level==='warning').length;
+  return {status:critical?'Action required':review?'Review source data':'Tested controls clear',issues,checks,critical,review,passed:checks.filter(check=>check.passed).length,metrics:{boulderTonnes,boulderTrips,soldTonnes,inputLessSold:Math.round((boulderTonnes-soldTonnes)*100)/100,soldInputPct:boulderTonnes>0?Math.round(soldTonnes/boulderTonnes*10000)/100:null,measuredHours,fuelLitres,litresPerHour:measuredHours>0?fuelLitres/measuredHours:null,litresPerSold:soldTonnes>0?fuelLitres/soldTonnes:null,litresPerInput:boulderTonnes>0?fuelLitres/boulderTonnes:null},machines,ledger:{opening,received,issued,calculated,reported,ready:ledgerReady,matches:ledgerMatches,from:ledger.opening_date||from,to},from,to};
+}
+let _operationsControlReports=[];
+function printOpsControlFinding(index){
+  const item=_operationsControlReports[index];if(!item){flash('Operations review details are not ready',false);return;}
+  const heading=(item.columns||[]).map(value=>`<th>${esc(value)}</th>`).join(''),rows=(item.rows||[]).map(row=>`<tr>${row.map(value=>`<td>${esc(value)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${Math.max(1,(item.columns||[]).length)}" class="empty">No supporting rows</td></tr>`,landscape=(item.columns||[]).length>5?'<style media="print">@page{size:A4 landscape;margin:5mm}</style>':'';
+  runPrint(item.title,`${landscape}<div class="print-ph"><h1>CrusherOps — ${esc(item.title)}</h1><p>${esc(item.note||'Read-only operations evidence')} &nbsp;|&nbsp; Printed: ${pdfGeneratedStamp()}</p></div><div class="card"><div class="report-table-wrap"><table class="report-table"><thead><tr>${heading}</tr></thead><tbody>${rows}</tbody></table></div><div class="metric-note">Read-only evidence. Correct source records only in Loctell ERP.</div></div>`,'report-print');
+}
+function renderOperationsControl(control,boulders,summary,sourceErrors,from,to){
+  const target=document.getElementById('ops-control-centre');if(!target)return;
+  const source=_operationsControlSource(summary,from,to),model=_operationsControlModel(control,boulders,source,sourceErrors,from,to),m=model.metrics,l=model.ledger;
+  _operationsControlReports=model.issues.map(issue=>issue.report||null);target.dataset.rangeFrom=from;target.dataset.rangeTo=to;
+  const statusClass=model.critical?'danger':model.review?'warning':'good',issueRows=model.issues.length?model.issues.map((issue,index)=>`<div class="daily-control-item ${issue.level}${issue.report?' has-report':''}"><span class="daily-control-severity">${issue.level==='danger'?'Critical':'Review'}</span><div class="daily-control-copy"><strong>${esc(issue.title)}</strong><span>${esc(issue.detail)}</span></div>${issue.report?`<button class="print-btn no-print daily-control-report-btn" type="button" onclick="printOpsControlFinding(${index})">Details PDF</button>`:''}</div>`).join(''):`<div class="daily-control-item good"><span class="daily-control-severity">Clear</span><div class="daily-control-copy"><strong>No exception found in the tested operations controls</strong><span>This confirms only the controls listed below for the selected period.</span></div></div>`;
+  const checks=model.checks.map(check=>`<span class="daily-control-check ${check.passed?'pass':'fail'}">${check.passed?'✓':'Review'} ${esc(check.name)}</span>`).join(''),ratio=value=>value==null?'—':fmtNum(value,2),reading=value=>value==null?'—':fmtNum(value,2);
+  const fuelByMachine=new Map();(source?.fuelIssues||[]).forEach(row=>{const key=_operationsMachineKey(row.vehicle_type);fuelByMachine.set(key,(fuelByMachine.get(key)||0)+_num(row.fuel_issued));});
+  const machineRows=model.machines.map(row=>`<tr><td>${esc(row.vehicle_type||'—')}</td><td>${reading(row.start_reading)}</td><td>${reading(row.end_reading)}</td><td>${reading(row.difference)}</td><td>${fmtNum(fuelByMachine.get(_operationsMachineKey(row.vehicle_type))||0,2)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No machine rows available</td></tr>';
+  target.innerHTML=`<div class="daily-control-head"><div><h3>Operations Control Centre</h3><div class="daily-control-subtitle">Read-only material, machine and fuel reconciliation from Loctell ERP. Nothing is edited or posted here.</div></div><div class="daily-control-actions"><span class="daily-control-readonly">Read only</span><button class="print-btn no-print" type="button" onclick="printSection('Operations Control Centre','ops-control-centre')">Control PDF</button></div></div><div class="daily-control-summary"><div class="daily-control-stat ${statusClass} ca-closing-status"><span>Control status</span><strong>${esc(model.status)}</strong></div><div class="daily-control-stat danger"><span>Critical</span><strong>${model.critical}</strong></div><div class="daily-control-stat warning"><span>Review</span><strong>${model.review}</strong></div><div class="daily-control-stat good"><span>Checks passed</span><strong>${model.passed}/${model.checks.length}</strong></div></div><div class="ca-closing-balance-grid"><div class="ca-closing-balance"><span>Boulder input</span><strong>${fmtNum(m.boulderTonnes,2)} MT</strong><div class="metric-note">${fmtNum(m.boulderTrips,0)} trips</div></div><div class="ca-closing-balance"><span>Sold output</span><strong>${fmtNum(m.soldTonnes,2)} MT</strong></div><div class="ca-closing-balance"><span>Input less sold</span><strong>${fmtNum(m.inputLessSold,2)} MT</strong></div><div class="ca-closing-balance"><span>Sold ÷ input</span><strong>${m.soldInputPct==null?'—':`${fmtNum(m.soldInputPct,2)}%`}</strong></div><div class="ca-closing-balance"><span>Measured machine hours</span><strong>${fmtNum(m.measuredHours,2)}</strong></div><div class="ca-closing-balance"><span>Diesel issued</span><strong>${fmtNum(m.fuelLitres,2)} L</strong></div><div class="ca-closing-balance"><span>Fuel / measured hour</span><strong>${m.litresPerHour==null?'—':`${fmtNum(m.litresPerHour,2)} L`}</strong></div><div class="ca-closing-balance"><span>Fuel / sold MT · input MT</span><strong>${ratio(m.litresPerSold)} · ${ratio(m.litresPerInput)} L</strong></div></div><div class="ca-closing-grid"><div class="ca-closing-panel"><h4>Machine readings & fuel linkage</h4><div class="report-table-wrap"><table class="ca-closing-table"><thead><tr><th>Machine</th><th>Start</th><th>End</th><th>Difference</th><th>Fuel L</th></tr></thead><tbody>${machineRows}</tbody></table></div></div><div class="ca-closing-panel"><h4>Fuel — Opening + Received − Issued = Closing</h4><div class="report-table-wrap"><table class="ca-closing-table"><thead><tr><th>Opening L</th><th>Received L</th><th>Issued L</th><th>Calculated L</th><th>Reported L</th><th>Status</th></tr></thead><tbody><tr><td>${reading(l.opening)}</td><td>${fmtNum(l.received,2)}</td><td>${fmtNum(l.issued,2)}</td><td>${reading(l.calculated)}</td><td>${reading(l.reported)}</td><td class="${l.matches?'ca-closing-ok':'ca-closing-review'}">${l.matches?'Matches':l.ready?'Mismatch':'Not available'}</td></tr></tbody></table></div><div class="metric-note">Selected period: ${esc(from)} to ${esc(to)} · Fuel equation: ${esc(l.from)} to ${esc(l.to)}${source?.refreshing?' · Loctell refresh in progress':''}</div></div></div><div class="ops-control-boundary"><strong>System boundary:</strong> Sold output ÷ boulder input is a movement ratio, not physical crusher recovery. Loctell does not currently provide opening production stock, produced tonnes and closing production stock, so this page does not invent a yield or stock figure. Fuel opening-to-closing starts from Loctell's available tracking date.</div><details class="daily-control-details" ${model.issues.length?'open':''}><summary>${model.issues.length?`Review ${model.issues.length} operations finding${model.issues.length===1?'':'s'}`:'Show tested operations controls'}</summary><div class="daily-control-list">${issueRows}</div><div class="daily-control-checks">${checks}</div></details>`;
 }
 function renderFuelReceived(){
   const from=document.getElementById('op-from')?.value,to=document.getElementById('op-to')?.value;
