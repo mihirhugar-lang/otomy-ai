@@ -27,7 +27,10 @@ async function verify(file) {
   assert.match(source,/Input tax credit and net GST payable are deliberately not estimated/);
   const gstCtx=vm.createContext({Map,Set,Date,Number,String,Math,
     fyStart:()=>'2026-04-01',today:()=>'2026-09-24',monthNow:()=>'2026-09',
-    fmtINR2:v=>'INR '+Number(v||0).toFixed(2),esc:v=>String(v??'')});
+    fmtINR2:v=>'INR '+Number(v||0).toFixed(2),esc:v=>String(v??''),
+    _num:v=>Number(v||0),
+    _complianceRound:(v,p=2)=>{const m=10**p;return Math.round(Number(v||0)*m)/m;},
+    _complianceInRange:(row,f,t)=>String(row?.date||'').slice(0,10)>=f&&String(row?.date||'').slice(0,10)<=t});
   vm.runInContext(part(source,'function _validComplianceGSTIN(', 'function _warningHTML('),gstCtx);
   assert.equal(vm.runInContext('JSON.stringify(_gstMonthPeriod("2026-09"))',gstCtx),
     '{"value":"2026-09","from":"2026-09-01","to":"2026-09-24","calendarEnd":"2026-09-30","closed":false}');
@@ -42,6 +45,38 @@ async function verify(file) {
   assert.match(gstHtml,/Source advisories:/);
   assert.match(gstHtml,/Needs portal 2B \+ ledgers/);
   assert.match(gstHtml,/Net GST payable<\/td><td style="text-align:right">—/);
+  const snapshotSource={company:{gstin:'29AAICV4284G1ZV'},period:{fy_start:'2026-04-01'},sales:[],expenses:[],
+    receipts:[{id:1,date:'2026-09-01',amount:100,mode:'Bank',reference:'UTR-1'},{id:2,date:'2026-09-01',amount:999,mode:'ERP Snapshot',reference:'Anchor'},{id:3,date:'2026-09-01',amount:0,mode:'Cash',reference:'Same-sale adjustment'}],
+    vendor_payments:[],daily:[{date:'2026-09-01',gross_sales:0,output_tax:0}]};
+  gstCtx.snapshotSource=snapshotSource;
+  assert.equal(vm.runInContext('_sliceComplianceDataset(snapshotSource,"2026-09-01","2026-09-01").receipts.length',gstCtx),1);
+  assert.equal(vm.runInContext('_sliceComplianceDataset(snapshotSource,"2026-09-01","2026-09-01").totals.receipts',gstCtx),100);
+  assert.equal(vm.runInContext('_sliceComplianceDataset(snapshotSource,"2026-09-01","2026-09-01").audit_exclusions.erp_snapshot_receipts.length',gstCtx),1);
+  assert.equal(vm.runInContext('_sliceComplianceDataset(snapshotSource,"2026-09-01","2026-09-01").audit_exclusions.zero_value_receipts.length',gstCtx),1);
+
+  // Phase 6 is a read-only audit evidence check. Blank party GSTINs are valid
+  // audit inputs; only populated invalid values become findings.
+  assert.match(source,/id="ca-audit-readiness"/);
+  assert.match(source,/The ERP dataset has no scanned-bill or attachment field/);
+  const auditCtx=vm.createContext({Map,Set,Date,Number,String,Math,
+    _num:v=>Number(v||0),_validComplianceGSTIN:v=>/^[0-9]{2}[A-Z0-9]{13}$/.test(String(v||'').trim().toUpperCase()),
+    fmtINR:v=>'INR '+Number(v||0).toFixed(2)});
+  vm.runInContext(part(source,'function _caAuditMode(', 'function printCAAuditFinding('),auditCtx);
+  auditCtx.auditFixture={company:{name:'Fixture',gstin:'29AAICV4284G1ZV'},
+    checks:{daily_sales_reconcile:true,daily_tax_reconcile:true,valid_company_gstin:true,duplicate_invoice_keys:0},
+    sales:[{id:1,date:'2026-09-01',invoice_no:'INV-1',customer_name:'Cash Buyer',customer_gstin:'',gross_value:100}],
+    expenses:[{id:2,date:'2026-09-01',category:'Fuel',description:'Diesel',vendor_name:'Supplier',vendor_gstin:'',amount:20,payment_mode:'Cash',erp_key:'EXP-2'}],
+    receipts:[{id:3,date:'2026-09-01',customer_name:'Cash Buyer',customer_gstin:'',amount:100,mode:'Cash',reference:''}],
+    vendor_payments:[{id:4,date:'2026-09-01',vendor_name:'Supplier',vendor_gstin:'',amount:20,mode:'Cash',reference:''}],
+    daily:[{date:'2026-09-01'}],audit_exclusions:{erp_snapshot_receipts:[{id:9,date:'2026-09-01'}],zero_value_receipts:[{id:10,date:'2026-09-01'}]}};
+  assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").issues.length',auditCtx),0);
+  assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").passed',auditCtx),11);
+  assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").inventory.excludedSnapshots',auditCtx),1);
+  assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").inventory.excludedZeroReceipts',auditCtx),1);
+  vm.runInContext('auditFixture.sales[0].gross_value=0;auditFixture.sales[0].customer_gstin="BADGSTIN";auditFixture.receipts[0].mode="Bank";auditFixture.expenses[0].category="Other";auditFixture.expenses[0].description="Default Ledger"',auditCtx);
+  assert.equal(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").status',auditCtx),'Evidence review required');
+  assert(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("GSTIN"))',auditCtx));
+  assert(vm.runInContext('_caAuditReadinessModel(auditFixture,{},[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("bank or UPI"))',auditCtx));
   const requests = [];
   const ctx = vm.createContext({assert, Map, Set, Date, console,
     fetch: () => { const d=deferred(); requests.push(d); return d.promise; },
