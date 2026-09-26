@@ -267,6 +267,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
 .audit-readiness-card{border-left-color:#0b7285;background:linear-gradient(145deg,#f1fcff,#fffdf7)}.audit-readiness-card .daily-control-head h3{color:#075b68}.audit-readiness-grid{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(360px,1.2fr);gap:10px;margin-top:10px}.audit-manual-list{display:grid;gap:6px}.audit-manual-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #edf0f4;padding:6px 0;font-size:10px}.audit-manual-item:last-child{border-bottom:0}.audit-manual-item strong{color:#27364a}.audit-manual-item span{color:#805000;text-align:right;font-weight:800}
 .gst-control-card{border-left-color:#087f5b;background:linear-gradient(145deg,#f2fff9,#fffdf7)}.gst-control-card .daily-control-head h3{color:#075e45}.gst-control-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.gst-control-note{margin-top:9px;padding:8px 10px;border-radius:8px;background:#fff8e7;border:1px solid #f0cf86;color:#805000;font-size:10px;line-height:1.45}.gst-exception-panel{margin-top:10px}.gst-exception-panel h4{margin:0 0 7px;color:#27364a;font-size:12px}.gst-control-card .ca-closing-table td:nth-child(n+2),.gst-control-card .ca-closing-table th:nth-child(n+2){text-align:left;white-space:normal}
 .ops-control-card{border-left-color:#2f6f5e;background:linear-gradient(145deg,#f2fbf7,#fffaf0)}.ops-control-card .daily-control-head h3{color:#24594c}.ops-control-card .ca-closing-table td:nth-child(n+2),.ops-control-card .ca-closing-table th:nth-child(n+2){white-space:normal}.ops-control-boundary{margin-top:9px;padding:8px 10px;border-radius:8px;background:#f5f7fa;border:1px solid #d9e0e8;color:#526070;font-size:10px;line-height:1.45}
+.management-card{border-left-color:#243b64;background:linear-gradient(145deg,#f5f8ff,#fffaf0)}.management-card .daily-control-head h3{color:#243b64}.management-module-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:10px}.management-module{background:#fff;border:1px solid #dbe3ee;border-radius:10px;padding:10px;min-width:0}.management-module h4{margin:0;color:#27364a;font-size:11px}.management-module strong{display:block;font-size:12px;margin-top:5px}.management-module span{display:block;color:#667085;font-size:9px;margin-top:4px;line-height:1.35}.management-module.danger{border-color:#efb4b4;background:#fff7f7}.management-module.warning{border-color:#f3cf8d;background:#fffaf0}.management-module.good{border-color:#a9dbc0;background:#f3fff8}.management-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.management-card .ca-closing-table td:nth-child(n+2),.management-card .ca-closing-table th:nth-child(n+2){white-space:normal}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
 .bar-row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:10px 0;font-size:12px}
 .bar-track{height:10px;border-radius:20px;background:#f2f4f7;overflow:hidden}.bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f59e0b,#b45309)}
@@ -357,7 +358,7 @@ body.static-locked .sidebar,body.static-locked .main,body.static-locked .mobile-
   .control-metric{padding:10px;border-radius:13px;min-width:0}
   .control-metric span{font-size:9px;line-height:1.25}
   .control-metric strong{font-size:17px;line-height:1.2;word-break:break-word}
-  .daily-control-head{align-items:stretch;flex-direction:column}.daily-control-actions{justify-content:flex-start}.daily-control-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-control-item,.daily-control-item.has-report{grid-template-columns:1fr}.daily-control-severity{justify-self:start}.daily-control-report-btn{justify-self:start}.ca-closing-grid,.gst-control-grid,.audit-readiness-grid{grid-template-columns:1fr}.ca-closing-balance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .daily-control-head{align-items:stretch;flex-direction:column}.daily-control-actions{justify-content:flex-start}.daily-control-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.daily-control-item,.daily-control-item.has-report{grid-template-columns:1fr}.daily-control-severity{justify-self:start}.daily-control-report-btn{justify-self:start}.ca-closing-grid,.gst-control-grid,.audit-readiness-grid,.management-grid{grid-template-columns:1fr}.ca-closing-balance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.management-module-grid{grid-template-columns:1fr}
   .cash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   .cash-grid .kpi{min-height:0}
   .form-grid{grid-template-columns:1fr}
@@ -792,6 +793,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
 <script src="/static/pdf-share.js?v=2026-09-12-browser-pdf-v1"></script>
 <script src="/static/insights.js"></script>
 <script src="/static/insights-v2.js"></script>
+<script src="/static/management.js?v=2026-09-25-phase8-v1"></script>
 </head>
 <body>
 
@@ -802,6 +804,7 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div class="sidebar-logo">⛏ <span>CrusherOps</span></div>
   <div class="nav-section">Main</div>
   <div class="nav-item active" onclick="nav('dashboard')"><span class="icon">⊡</span><span>Dashboard</span></div>
+  <div class="nav-item" onclick="nav('management')"><span class="icon">◆</span><span>Management</span></div>
   <div class="nav-item" onclick="nav('insights')"><span class="icon">◔</span><span>Insights</span></div>
   <div class="nav-item" onclick="nav('ledger')"><span class="icon">▦</span><span>Daily Book</span></div>
   <div class="nav-section">Financials</div>
@@ -869,6 +872,22 @@ tfoot td{background:#f2e7c9 !important;border-top:2px solid #1f4e79 !important;c
   <div id="dash-print-area">
     <div id="control-room"></div>
   </div>
+</div>
+
+<!-- MANAGEMENT -->
+<div class="section" id="section-management">
+  <div class="page-header"><div><h2>Owner &amp; CA Management Control Centre</h2><p>One read-only page consolidating financial, compliance, audit and operations controls.</p></div><button class="print-btn no-print" onclick="printPageReport('Owner & CA Management Control Centre','section-management')">Management PDF</button></div>
+  <div class="preset-bar no-print">
+    <span class="preset-label">Period:</span>
+    <button class="pbtn" onclick="preset('management','today',this)">Today</button>
+    <button class="pbtn" onclick="preset('management','yesterday',this)">Yesterday</button>
+    <button class="pbtn" onclick="preset('management','week',this)">This Week</button>
+    <button class="pbtn act" onclick="preset('management','mtd',this)">Month Till Date</button>
+    <button class="pbtn" onclick="preset('management','lastmonth',this)">Last Month</button>
+    <button class="pbtn" onclick="preset('management','fytd',this)">FY Till Date</button>
+    <div class="preset-dates"><label>From:</label><input type="date" id="mgmt-from" onchange="clearPresetBtns('management')"><label>To:</label><input type="date" id="mgmt-to" onchange="clearPresetBtns('management')"><button class="pbtn" onclick="loadManagement()">Go</button></div>
+  </div>
+  <div id="management-pack" class="card daily-control-centre management-card" aria-live="polite"><div class="empty">Loading management controls…</div></div>
 </div>
 
 <!-- INSIGHTS -->
@@ -2203,6 +2222,7 @@ async function _reloadActiveSectionAfterSync(){
   // shows the fresh-sync toast without changing the visible report. Custom
   // dates have no active preset, so they remain deliberately untouched.
   if(section==='dashboard'){_refreshDashboardPresetForSync();return loadDash();}
+  if(section==='management')return loadManagement();
   if(section==='sales')return loadSales();
   if(section==='exptonne')return loadExpTonne();
   if(section==='customers')return loadCustomers();
@@ -2366,7 +2386,7 @@ function setSort(section,key,renderFnName){
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
-const TITLES={dashboard:'Dashboard',insights:'Director Analytics',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Daily Book',gst:'GST Control Centre',auditca:'AUDIT CA'};
+const TITLES={dashboard:'Dashboard',management:'Management',insights:'Director Analytics',sales:'Sales Ledger',expenses:'Expenses Ledger',exptonne:'Expenses / Tonne',customers:'Customers & Debtors',vendors:'Vendors & Creditors',bank:'Cash & Bank',pl:'Profit & Loss',ops:'Operations',ledger:'Daily Book',gst:'GST Control Centre',auditca:'AUDIT CA'};
 function toggleMobileNav(open){
   document.body.classList.toggle('mobile-nav-open', Boolean(open));
 }
@@ -2404,6 +2424,13 @@ function setAuditLandingToMTD(){
   const bar=document.getElementById('ca-from')?.closest('.preset-bar');
   if(bar)bar.querySelectorAll('.pbtn').forEach(btn=>btn.classList.toggle('act',String(btn.getAttribute('onclick')||'').includes("preset('auditca','mtd'")));
 }
+function setManagementLandingToMTD(){
+  const[f,t]=calcPreset('mtd');
+  document.getElementById('mgmt-from').value=f;
+  document.getElementById('mgmt-to').value=t;
+  const bar=document.getElementById('mgmt-from')?.closest('.preset-bar');
+  if(bar)bar.querySelectorAll('.pbtn').forEach(btn=>btn.classList.toggle('act',String(btn.getAttribute('onclick')||'').includes("preset('management','mtd'")));
+}
 function nav(name){
   try{sessionStorage.setItem('cx_active_section',name);}catch(e){}  // remember page so a refresh stays here
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -2413,6 +2440,7 @@ function nav(name){
   document.getElementById('page-title').textContent=TITLES[name]||name;
   toggleMobileNav(false);
   if(name==='dashboard'){resetRangeToToday('dashboard');document.getElementById('dash-date').value=today();loadDash();}
+  if(name==='management'){setManagementLandingToMTD();loadManagement();}
   if(name==='insights'){const fromEl=document.getElementById('insights-from'),toEl=document.getElementById('insights-to');if(!fromEl.value||!toEl.value){const[f,t]=calcPreset('fytd');fromEl.value=f;toEl.value=t;}loadInsights();}
   if(name==='sales'){resetRangeToToday('sales');fillCustSelect('s-customer');loadSales();}
   if(name==='exptonne'){resetRangeToToday('exptonne');loadExpTonne();}
@@ -2435,6 +2463,7 @@ function subTab(id,el){
 // ── Preset logic ───────────────────────────────────────────────────────────
 const PRESET_CFG={
   dashboard:{from:'dash-from',to:'dash-to',reload:()=>loadDash()},
+  management:{from:'mgmt-from',to:'mgmt-to',reload:()=>loadManagement()},
   insights:{from:'insights-from',to:'insights-to',reload:()=>loadInsights()},
   sales:{from:'s-from',to:'s-to',reload:()=>loadSales()},
   expenses:{from:'e-from',to:'e-to',reload:()=>loadExpenses()},
@@ -3339,9 +3368,10 @@ window.onload=async function(){
   document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   // Set all date defaults
   ['s-date','e-date','b-date','m-date','l-date','p-date','ba-initdate','bt-date','cr-date','vp-date','emi-due','rpt-daily-date','mu-date'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
-  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','dash-to','gst-to','ca-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
+  ['s-from','s-to','e-from','e-to','c-from','c-to','v-from','v-to','op-from','op-to','dash-to','gst-to','ca-to','mgmt-to'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=t;});
   setLedgerLandingToMTD();
   setAuditLandingToMTD();
+  setManagementLandingToMTD();
   document.getElementById('dash-from').value=t;
   document.getElementById('dash-date').value=t;
   _populateLedgerMonths();

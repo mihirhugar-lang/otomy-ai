@@ -19,6 +19,9 @@ function deferred() {
 }
 async function verify(file) {
   const source = fs.readFileSync(file, 'utf8');
+  const baseDir=path.basename(path.dirname(file))==='static'?path.dirname(path.dirname(file)):path.dirname(file);
+  const managementSource=fs.readFileSync(path.join(baseDir,'static','management.js'),'utf8');
+  new vm.Script(managementSource,{filename:path.join(baseDir,'static','management.js')});
   for (const script of source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     if (script[1].trim()) new vm.Script(script[1], {filename:file});
   }
@@ -102,6 +105,34 @@ async function verify(file) {
   assert.equal(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").checks.find(x=>x.name.includes("source is current")).passed',opsCtx),false);
   vm.runInContext('opsSource.refreshing=false;opsSource.cached=true;opsSource.stale=true;opsSource.cacheAgeSeconds=600',opsCtx);
   assert(vm.runInContext('_operationsControlModel(opsControl,opsBoulders,opsSource,[],"2026-09-01","2026-09-01").issues.some(x=>x.title.includes("stale cache"))',opsCtx));
+
+  // Phase 8 is one read-only Management page which consolidates existing
+  // module findings without double-counting the same exception title.
+  assert.match(source,/onclick="nav\('management'\)"/);
+  assert.match(source,/id="section-management"/);
+  assert.match(source,/Owner &amp; CA Management Control Centre/);
+  assert.match(source,/static\/management\.js/);
+  assert.match(managementSource,/This page consolidates existing control models/);
+  const managementCtx=vm.createContext({Map,Set,Date,Number,String,Math});
+  vm.runInContext(part(managementSource,'function _managementConsolidateModules(', 'function _managementPackModel('),managementCtx);
+  managementCtx.modules=[{name:'Dashboard',model:{issues:[{level:'danger',title:'Same finding'}],checks:[{},{}],passed:1}},{name:'Audit',model:{issues:[{level:'danger',title:'Same finding'},{level:'warning',title:'Review finding'}],checks:[{}],passed:0}}];
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).findings.length',managementCtx),2);
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).critical',managementCtx),1);
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).review',managementCtx),1);
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).passed',managementCtx),1);
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).checks',managementCtx),3);
+  assert.equal(vm.runInContext('_managementConsolidateModules(modules).findings[0].areas.length',managementCtx),2);
+  const packCtx=vm.createContext({Map,Set,Date,Number,String,Math,
+    _num:v=>Number(v||0),_dailyControlModel:()=>({issues:[],checks:[{}],critical:0,review:0,passed:1}),
+    _caClosingRangeState:()=>({passed:true}),_caClosingModel:()=>({status:'Controls clear',issues:[],checks:[{}],critical:0,review:0,passed:1,bookRows:[]}),
+    _caAuditReadinessModel:()=>({status:'Automated checks clear',issues:[],checks:[{}],critical:0,review:0,passed:1,inventory:{sales:1},manual:['Bank statement']}),
+    _operationsControlSource:()=>({}),_operationsControlModel:()=>({status:'Tested controls clear',issues:[],checks:[{}],critical:0,review:0,passed:1,metrics:{boulderTonnes:100,soldInputPct:80,measuredHours:10,fuelLitres:20,inputLessSold:20},ledger:{ready:true,matches:true}})});
+  vm.runInContext(managementSource,packCtx);
+  packCtx.packFixture={control:{summary:{sales:1000,expenses:600,profit:400,cash_balance_office:100,bank_balance:200,receivables:300,payables:150,sales_qty_mt:80}},compliance:{totals:{taxable_sales:900,output_tax:100},checks:{daily_sales_reconcile:true,daily_tax_reconcile:true,valid_company_gstin:true,warnings:[]}},book:{cash:{},bank:{}},boulders:[],machines:{},errors:{},from:'2026-09-01',to:'2026-09-25'};
+  assert.equal(vm.runInContext('_managementPackModel(packFixture).modules.length',packCtx),5);
+  assert.equal(vm.runInContext('_managementPackModel(packFixture).status',packCtx),'Automated controls clear');
+  assert.equal(vm.runInContext('_managementPackModel(packFixture).metrics.outputGST',packCtx),100);
+  assert.equal(vm.runInContext('_managementPackModel(packFixture).checks',packCtx),7);
   const requests = [];
   const ctx = vm.createContext({assert, Map, Set, Date, console,
     fetch: () => { const d=deferred(); requests.push(d); return d.promise; },
