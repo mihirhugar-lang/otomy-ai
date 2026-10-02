@@ -112,6 +112,7 @@ REQUIRED_CUSTOMER_RANGE_FIELDS = (
     "material_sold",
     "range_credit_sales",
     "range_payment_received",
+    "range_spot_receipt_overlap",
     "credit_due_15_plus",
     "credit_due_30_plus",
     "credit_due_45_plus",

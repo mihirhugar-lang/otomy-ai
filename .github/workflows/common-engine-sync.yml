@@ -186,6 +186,8 @@ jobs:
           node scripts/test_machinery_range_ui.js
           python3 scripts/test_vendor_aging.py
           python3 scripts/test_dashboard_balance_parity.py
+          python3 scripts/test_customer_collections.py
+          node scripts/test_customer_collections.js
           python3 scripts/test_machinery_range_readings.py
           python3 scripts/test_pull_r2_incremental.py
           python3 scripts/test_r2_working_set.py

@@ -74,6 +74,37 @@ def customer_balance(opening, sales, receipts, snapshot=None):
     return snapshot if snapshot is not None else opening + sales - receipts
 
 
+def spot_receipt_overlap(spot_rows, adjusted_receipt_rows):
+    """Match daily spot sales to evidenced ledger receipts, without prorating twice.
+
+    Sale tuples contain (identity, day, channel, amount); receipt tuples add
+    (adjustment, gross_payment). ERP adjustments are prorated across channels,
+    so their DAILY sum caps overlap. Actual gross receipts cap each channel.
+    Receipts without adjustment evidence cannot consume spot-sale payments.
+    """
+    spot, payments, evidence = {}, {}, {}
+    for customer, day, channel, amount in spot_rows:
+        key = (customer, str(day)[:10], channel)
+        spot[key] = spot.get(key, 0.0) + max(float(amount or 0.0), 0.0)
+    for customer, day, channel, adjustment, payment in adjusted_receipt_rows:
+        daily = (customer, str(day)[:10])
+        key = (*daily, channel)
+        gross = max(float(payment or 0.0), 0.0)
+        adjusted = min(max(float(adjustment or 0.0), 0.0), gross)
+        if adjusted <= 0:
+            continue
+        payments[key] = payments.get(key, 0.0) + gross
+        evidence[daily] = evidence.get(daily, 0.0) + adjusted
+    matched = {}
+    for key, payment in payments.items():
+        daily = key[:2]
+        matched[daily] = matched.get(daily, 0.0) + min(payment, spot.get(key, 0.0))
+    overlap = {}
+    for (customer, day), amount in matched.items():
+        overlap[customer] = overlap.get(customer, 0.0) + min(amount, evidence[(customer, day)])
+    return {customer: round(amount, 2) for customer, amount in overlap.items()}
+
+
 def accumulate_sale_group(group, amount, quantity, mdp, cash, credit, bank):
     """Add every ticket once; MDP is summed, never substituted with net tonnes."""
     group["ticket_count"] += 1
