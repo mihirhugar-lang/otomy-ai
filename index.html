@@ -1526,6 +1526,26 @@ function _receiptChannels(row){
   if(cash||bank)return {cash,bank};
   return _payChannel(row&&row.mode)==='cash'?{cash:payment,bank:0}:{cash:0,bank:payment};
 }
+function _customerCreditReceived(row){
+  return Math.max(0,_num(row.range_payment_received)-_num(row.range_spot_receipt_overlap));
+}
+function _customerCollection(row){
+  return _customerCreditReceived(row)+Math.max(0,_num(row.range_total_sales)-_num(row.range_credit_sales));
+}
+function _spotReceiptOverlap(sales,receipts){
+  const spot=new Map(),adjusted=new Map(),names=new Map();
+  const key=(r,channel)=>JSON.stringify([String(r.customer_name||'Customer').trim(),String(r.date||'').slice(0,10),channel]);
+  sales.forEach(r=>{const c=_saleChannels(r);[['cash',c.cash],['bank',c.upi]].forEach(([channel,amount])=>{const k=key(r,channel);spot.set(k,(spot.get(k)||0)+Math.max(0,amount));});});
+  receipts.forEach(r=>{
+    if(r.mode==='ERP Snapshot')return;
+    const gross=r.payment_received!=null?_num(r.payment_received):_receiptPaymentAmount(r);
+    const evidence=r.sale_adjusted!=null?_num(r.sale_adjusted):(_receiptNoteAmount(r.notes,'sale_adjusted')||0);
+    const k=key(r,_payChannel(r.mode));
+    adjusted.set(k,(adjusted.get(k)||0)+Math.min(Math.max(0,evidence),Math.max(0,gross)));
+  });
+  adjusted.forEach((amount,k)=>{const name=JSON.parse(k)[0];names.set(name,(names.get(name)||0)+Math.min(amount,spot.get(k)||0));});
+  return names;
+}
 // Localhost keys spot sales and customer receipts by ERP customer id. Older archive rows may
 // not have that id, so use the normalized customer name only as the compatibility fallback.
 function _partyKey(row){
@@ -1739,6 +1759,7 @@ function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSale
   const due30=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,31);
   const due45=_archiveCreditDue15Plus(balance,agingSales,agingReceipts,asOf,45);
   const byName=new Map();
+  const receiptOverlap=_spotReceiptOverlap(sales,receipts);
   function ensure(name){
     const key=(name||'Customer').trim()||'Customer';
     if(!byName.has(key))byName.set(key,{name:key,materials:new Map(),range_total_sales:0,range_credit_sales:0,range_payment_received:0,range_latest_sale_date:'',latest_sale_date:'',outstanding:0,id:null});
@@ -1780,6 +1801,7 @@ function _archiveCustomerRows(balance,sales=[],receipts=[],idByName={},agingSale
     range_total_sales:Math.round(row.range_total_sales*100)/100,
     range_credit_sales:Math.round(row.range_credit_sales*100)/100,
     range_payment_received:Math.round(row.range_payment_received*100)/100,
+    range_spot_receipt_overlap:Math.round((receiptOverlap.get(row.name)||0)*100)/100,
     credit_due_15_plus:Math.round(_num(due15[String(row.name||'').trim().toUpperCase()])*100)/100,
     credit_due_30_plus:Math.round(_num(due30[String(row.name||'').trim().toUpperCase()])*100)/100,
     credit_due_45_plus:Math.round(_num(due45[String(row.name||'').trim().toUpperCase()])*100)/100,
@@ -3810,7 +3832,7 @@ async function renderControlRoom(data,target=document.getElementById('control-ro
   // against selected-range sales plus later credit repayment.  Credit sales
   // remain outstanding, and ERP Snapshot alignment rows are excluded at the
   // source of range_payment_received.
-  const customerCollection=row=>Math.max(0,_num(row.range_payment_received))+Math.max(0,_num(row.range_total_sales)-_num(row.range_credit_sales));
+  const customerCollection=_customerCollection;
   const customerPageData=(data.customer_page_rows||[]).filter(row=>customerCollection(row)>0||(row.active!==false&&_num(row.range_total_sales)>0));
   const customerPaymentTotal=customerPageData.reduce((sum,row)=>sum+customerCollection(row),0);
   const customerSalesTotal=customerPageData.reduce((sum,row)=>sum+_num(row.range_total_sales),0);
@@ -4194,7 +4216,7 @@ async function loadCustomers(){
     const active=rows.filter(r=>r.active);
     // Keep the debtor/balance KPIs based on active masters, but collections
     // must include every genuine payment in the selected range.
-    const customerCollection=row=>Math.max(0,_num(row.range_payment_received))+Math.max(0,_num(row.range_total_sales)-_num(row.range_credit_sales));
+    const customerCollection=_customerCollection;
     const customerRangeRows=rows.filter(r=>r.active||customerCollection(r)>0);
     // Receivables are amounts customers need to pay us. Credit and zero rows
     // must not reduce this total, matching the Dashboard Receivables tile.
@@ -4205,7 +4227,7 @@ async function loadCustomers(){
     document.getElementById('c-range-sold').textContent=fmtINR(active.reduce((s,r)=>s+_num(r.range_total_sales),0));
     document.getElementById('c-spot-sale').textContent=fmtINR(active.reduce((s,r)=>s+Math.max(0,_num(r.range_total_sales)-_num(r.range_credit_sales)),0));
     document.getElementById('c-credit-sale').textContent=fmtINR(active.reduce((s,r)=>s+Math.max(0,_num(r.range_credit_sales)),0));
-    document.getElementById('c-credit-received').textContent=fmtINR(customerRangeRows.reduce((s,r)=>s+Math.max(0,_num(r.range_payment_received)),0));
+    document.getElementById('c-credit-received').textContent=fmtINR(customerRangeRows.reduce((s,r)=>s+_customerCreditReceived(r),0));
     const derived={
       outstanding:r=>r.total_outstanding??r.outstanding??r.balance??0,
       material_sold:r=>r.material_sold||'No sale',

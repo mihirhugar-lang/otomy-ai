@@ -74,6 +74,26 @@ def customer_balance(opening, sales, receipts, snapshot=None):
     return snapshot if snapshot is not None else opening + sales - receipts
 
 
+def spot_receipt_overlap(spot_rows, adjusted_receipt_rows):
+    """Return the evidenced duplicate collection per customer.
+
+    Adapters provide (customer, date, channel, amount) tuples. Only the
+    receipt's recorded sale adjustment can overlap, capped by spot sales in
+    the SAME date/channel. Credit sales, other-day receipts and independent
+    manual receipts therefore cannot erase genuine collections.
+    """
+    spot, adjusted = {}, {}
+    for rows, target in ((spot_rows, spot), (adjusted_receipt_rows, adjusted)):
+        for customer, day, channel, amount in rows:
+            key = (customer, str(day)[:10], channel)
+            target[key] = target.get(key, 0.0) + max(float(amount or 0.0), 0.0)
+    overlap = {}
+    for key, amount in adjusted.items():
+        customer = key[0]
+        overlap[customer] = overlap.get(customer, 0.0) + min(amount, spot.get(key, 0.0))
+    return {customer: round(amount, 2) for customer, amount in overlap.items()}
+
+
 def accumulate_sale_group(group, amount, quantity, mdp, cash, credit, bank):
     """Add every ticket once; MDP is summed, never substituted with net tonnes."""
     group["ticket_count"] += 1

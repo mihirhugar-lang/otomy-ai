@@ -17,6 +17,7 @@ from shared_calculations import daily_ledger_totals as calculate_daily_ledger_to
 from shared_calculations import exclusive_age_buckets
 from shared_calculations import payable_due_aging as calculate_payable_due_aging
 from shared_calculations import rebalance_book_rows
+from shared_calculations import spot_receipt_overlap
 
 
 def build_control(
@@ -1456,6 +1457,7 @@ def build_customer_range_rows(
     _sale_total,
 ):
     metrics = {}
+    spot_rows, adjusted_receipt_rows = [], []
     for sale in all_sales or []:
         name = str(sale.get("customer_name") or "").strip()
         if not name:
@@ -1490,6 +1492,8 @@ def build_customer_range_rows(
             metric["latest_sale_date"] = sale_date
         amount = _sale_total(sale)
         _sale_cash, sale_credit, _sale_upi = _sale_channels(sale)
+        spot_rows.extend((name, sale_date, channel, amount) for channel, amount in
+                         (("cash", _sale_cash), ("bank", _sale_upi)))
         material = str(sale.get("material") or "Material").strip() or "Material"
         mat = metric["material_totals"].setdefault(material, {"qty": 0.0, "amount": 0.0})
         mat["qty"] += _num(sale.get("qty_mt"))
@@ -1509,6 +1513,15 @@ def build_customer_range_rows(
             "latest_sale_date": "",
         })
         metric["range_payment_received"] += _num(repayment.get("payment_received", repayment.get("amount")))
+
+        # Ledger receipts may include settlement of a spot sale already in
+        # range_total_sales. Preserve the receipt, but count that money once.
+        payment = _num(repayment.get("payment_received", repayment.get("amount")))
+        adjustment = min(max(_num(repayment.get("sale_adjusted")), 0.0), max(payment, 0.0))
+        channel = "cash" if "CASH" in str(repayment.get("mode") or "").upper() else "bank"
+        adjusted_receipt_rows.append((name, repayment.get("date", ""), channel, adjustment))
+
+    overlap_by_name = spot_receipt_overlap(spot_rows, adjusted_receipt_rows)
 
     outstanding_by_name = {}
     use_exact_end_balance = ending_debtors is not None
@@ -1575,6 +1588,7 @@ def build_customer_range_rows(
             "range_total_sales": round(_num(metric.get("range_total_sales")), 2),
             "range_credit_sales": round(_num(metric.get("range_credit_sales")), 2),
             "range_payment_received": round(_num(metric.get("range_payment_received")), 2),
+            "range_spot_receipt_overlap": overlap_by_name.get(name, 0.0),
             "credit_due_15_plus": due_15_plus.get(name, round(max(_num(row.get("credit_due_15_plus")), 0.0), 2)),
             "credit_due_30_plus": due_30_plus.get(name, round(max(_num(row.get("credit_due_30_plus")), 0.0), 2)),
             "credit_due_45_plus": due_45_plus.get(name, round(max(_num(row.get("credit_due_45_plus")), 0.0), 2)),
@@ -1591,5 +1605,4 @@ def build_customer_range_rows(
         str(row.get("name") or ""),
     ))
     return rows
-
 
