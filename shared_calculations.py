@@ -75,22 +75,33 @@ def customer_balance(opening, sales, receipts, snapshot=None):
 
 
 def spot_receipt_overlap(spot_rows, adjusted_receipt_rows):
-    """Return the evidenced duplicate collection per customer.
+    """Match daily spot sales to evidenced ledger receipts, without prorating twice.
 
-    Adapters provide (customer, date, channel, amount) tuples. Only the
-    receipt's recorded sale adjustment can overlap, capped by spot sales in
-    the SAME date/channel. Credit sales, other-day receipts and independent
-    manual receipts therefore cannot erase genuine collections.
+    Sale tuples contain (identity, day, channel, amount); receipt tuples add
+    (adjustment, gross_payment). ERP adjustments are prorated across channels,
+    so their DAILY sum caps overlap. Actual gross receipts cap each channel.
+    Receipts without adjustment evidence cannot consume spot-sale payments.
     """
-    spot, adjusted = {}, {}
-    for rows, target in ((spot_rows, spot), (adjusted_receipt_rows, adjusted)):
-        for customer, day, channel, amount in rows:
-            key = (customer, str(day)[:10], channel)
-            target[key] = target.get(key, 0.0) + max(float(amount or 0.0), 0.0)
+    spot, payments, evidence = {}, {}, {}
+    for customer, day, channel, amount in spot_rows:
+        key = (customer, str(day)[:10], channel)
+        spot[key] = spot.get(key, 0.0) + max(float(amount or 0.0), 0.0)
+    for customer, day, channel, adjustment, payment in adjusted_receipt_rows:
+        daily = (customer, str(day)[:10])
+        key = (*daily, channel)
+        gross = max(float(payment or 0.0), 0.0)
+        adjusted = min(max(float(adjustment or 0.0), 0.0), gross)
+        if adjusted <= 0:
+            continue
+        payments[key] = payments.get(key, 0.0) + gross
+        evidence[daily] = evidence.get(daily, 0.0) + adjusted
+    matched = {}
+    for key, payment in payments.items():
+        daily = key[:2]
+        matched[daily] = matched.get(daily, 0.0) + min(payment, spot.get(key, 0.0))
     overlap = {}
-    for key, amount in adjusted.items():
-        customer = key[0]
-        overlap[customer] = overlap.get(customer, 0.0) + min(amount, spot.get(key, 0.0))
+    for (customer, day), amount in matched.items():
+        overlap[customer] = overlap.get(customer, 0.0) + min(amount, evidence[(customer, day)])
     return {customer: round(amount, 2) for customer, amount in overlap.items()}
 
 

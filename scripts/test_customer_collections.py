@@ -32,6 +32,25 @@ class CollectionTests(unittest.TestCase):
     def test_old_debt_paid_in_addition_to_spot_sale_is_preserved(self):
         self.check_collection([sale()], [receipt(20000,"Cash",15000),receipt(1546,"Bank",1546)],21546,16546)
 
+    def test_prorated_erp_adjustments_preserve_extra_old_debt(self):
+        total = 21546
+        cash_adjustment = round(16546 * 20000 / total, 2)
+        bank_adjustment = round(16546 * 1546 / total, 2)
+        self.check_collection([sale()], [receipt(20000,"Cash",cash_adjustment),
+                              receipt(1546,"Bank",bank_adjustment)],21546,16546)
+
+    def test_same_name_different_customer_ids_do_not_overlap(self):
+        sold = dict(sale(cash=100,bank=0,amount=100),erp_customer_id=11)
+        paid = dict(receipt(100,"Cash",100),erp_customer_id=22)
+        self.check_collection([sold],[paid],200,0)
+
+    def test_idless_legacy_sale_resolves_only_unambiguous_name(self):
+        sold = sale(cash=100,bank=0,amount=100)
+        paid = dict(receipt(100,"Cash",100),erp_customer_id=11)
+        self.check_collection([sold],[paid],100,100)
+        other = dict(receipt(100,"Cash",100),erp_customer_id=22)
+        self.check_collection([sold],[paid,other],300,0)
+
     def test_same_day_credit_sale_receipt_is_not_subtracted(self):
         self.check_collection([sale(cash=0,bank=0,credit=1000,amount=1000)], [receipt(1000,"Cash",1000)],1000,0)
 
