@@ -254,7 +254,7 @@ jobs:
       - name: Verify the generated common bundle
         id: diagnostic_guard
         if: steps.initial_control.outputs.enabled == 'true'
-        shell: bash {0}
+        shell: bash --noprofile --norc -e -o pipefail {0}
         run: |
           # A full source pull can cross midnight in India. Validate the
           # generated bundle's own as-of date, not the runner's later clock.
