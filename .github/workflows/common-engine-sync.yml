@@ -109,7 +109,7 @@ jobs:
           path: ${{ runner.temp }}/otomy-r2-input.enc
           key: otomy-r2-input-v2-sparse-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            otomy-r2-input-v2-sparse-${{ runner.os }}-${{ github.ref_name }}-
+            otomy-r2-input-v2-sparse-${{ runner.os }}-main-
 
       - name: Pull current R2 state with verified incremental downloads
         id: input_pull
@@ -252,6 +252,7 @@ jobs:
           python3 scripts/rebuild_fy_compliance_snapshots.py --root data
 
       - name: Verify the generated common bundle
+        id: diagnostic_guard
         if: steps.initial_control.outputs.enabled == 'true'
         shell: bash {0}
         run: |
@@ -276,6 +277,21 @@ jobs:
           if [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.sync_mode || 'recent' }}" != "vendor_history" ]; then
             echo 'Readback guard was included in the diagnostic.'
           fi
+
+      - name: Encrypt private guard detail
+        if: always() && steps.diagnostic_guard.outcome == 'failure'
+        run: |
+          mkdir -p "$RUNNER_TEMP/otomy-guard-encrypted"
+          openssl rand -hex 32 > "$RUNNER_TEMP/otomy-guard-key"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "$RUNNER_TEMP/otomy-private-guard-error.txt" -out "$RUNNER_TEMP/otomy-guard-encrypted/guard.enc" -pass "file:$RUNNER_TEMP/otomy-guard-key"
+          openssl pkeyutl -encrypt -pubin -inkey scripts/diagnostic-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$RUNNER_TEMP/otomy-guard-key" -out "$RUNNER_TEMP/otomy-guard-encrypted/key.enc"
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.diagnostic_guard.outcome == 'failure'
+        with:
+          name: encrypted-guard-detail
+          path: ${{ runner.temp }}/otomy-guard-encrypted/
+          retention-days: 1
 
       - name: Stop diagnostic before any publication
         run: exit 1
