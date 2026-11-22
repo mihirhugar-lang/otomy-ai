@@ -34,6 +34,10 @@ months = sorted({(start + timedelta(days=n)).strftime('%Y-%m')
 for month in months:
     download(f'archive/{month}.json', root / f'archive-{month}.json')
 download('balance_anchors.json', root / 'balance_anchors.json')
+config = json.loads((root / 'balance_anchors.json').read_text())
+statement = str(config.get('bank_statement_file') or '')
+if statement and '/' not in statement and '..' not in statement:
+    download(statement, root / statement)
 
 def daily(n):
     day = (start + timedelta(days=n)).isoformat()
