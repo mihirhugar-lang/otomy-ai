@@ -2219,6 +2219,13 @@ def main():
             "full-history repayment refresh unavailable; refusing to retain stale archived receipts"
         )
 
+    # Fail closed if the one-time source-backed receipt was not re-derived.
+    if repay_window_start > date(2026, 11, 2) or window_repayments is None:
+        raise ErpFetchError("Honnappa repair requires a fresh repayment window covering 2 November")
+    target_receipts = [r for r in window_repayments if r.get("reference") == "ERP-CREDIT-135304-2026-11-02-BANK"]
+    if len(target_receipts) != 1 or abs(_num(target_receipts[0].get("payment_received")) - 12285) > 0.01:
+        raise ErpFetchError("Honnappa 2 November bank receipt is absent, duplicated or changed in Loctell")
+
     def _repayments_on(rows, day):
         day_s = str(day)
         return [dict(row) for row in rows or [] if str(row.get("date", ""))[:10] == day_s]
@@ -3094,7 +3101,7 @@ def main():
     # One-time November repair: every daily cash/bank snapshot is rebuilt from
     # the same fresh ERP window as the rest of this normal sync.
     from cashbook_refresh import verify_expense_movements, verify_adjustment_sources
-    repair_from = date(2026, 11, 6)
+    repair_from = date(2026, 11, 2)
     if sync_start > repair_from or today < repair_from:
         raise RuntimeError("Fresh ERP window does not cover the requested repair")
     repair_overlay = _balance_overlay()
@@ -3106,6 +3113,10 @@ def main():
         book = build_cashbook_view(day, day, all_sales, all_expenses, all_repayments, opening, all_internal_transfers)
         verify_expense_movements(book, all_expenses, day, day, repair_channel, _num)
         verify_adjustment_sources(book, repair_overlay)
+        if day == repair_from:
+            rows = [r for r in book["bank"]["rows"] if r.get("kind") == "receipt" and str(r.get("party", "")).strip().upper() == "HONNAPPA"]
+            if len(rows) != 1 or abs(_num(rows[0].get("in")) - 12285) > 0.01:
+                raise RuntimeError("Honnappa 2 November bank book receipt does not match Loctell")
         for side, tolerance in (("cash", 0.01), ("bank", 0.50)):
             if abs(_num(book[side]["opening"]) - _num(previous_book[side]["closing"])) > tolerance:
                 raise RuntimeError(f"{side} opening does not match prior closing on {day}")

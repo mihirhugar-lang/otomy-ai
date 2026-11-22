@@ -1493,6 +1493,15 @@ def compute_repayments_from_erp(
         previous_snapshot = current_snapshot
         current_day += timedelta(days=1)
 
+    # One-time, source-backed recovery of a same-day sale and repayment whose
+    # equal amounts leave the debtor snapshot unchanged.
+    repair_day, repair_customer = date(2026, 11, 2), 135304
+    if start <= repair_day <= end and not any(day == repair_day and cid == repair_customer for day, cid, _ in tasks):
+        current = next((row for row in _day_debtors(repair_day) if row.get("erp_customer_id") == repair_customer), None)
+        if not current or str(current.get("name", "")).strip().upper() != "HONNAPPA":
+            raise ValueError("Cannot verify Honnappa debtor identity for receipt repair")
+        tasks.append((repair_day, repair_customer, current))
+
     # --- Phase 3: parallel fetch all customer ledger rows ---
     def _process_one(task):
         day, cid, curr = task
