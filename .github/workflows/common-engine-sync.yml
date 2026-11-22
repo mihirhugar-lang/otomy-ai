@@ -181,6 +181,7 @@ jobs:
           OTOMY_WORKING_SET_STATE: ""
         run: |
           python3 scripts/test_cashbook_parity.py
+          python3 scripts/test_cashbook_refresh.py
           python3 scripts/test_sync_refactor.py
           python3 scripts/test_machinery_range_readings.py
           node scripts/test_machinery_range_ui.js
@@ -193,6 +194,7 @@ jobs:
           python3 scripts/test_r2_working_set.py
 
       - name: Run the single Loctell common engine
+        id: diagnostic_engine
         if: steps.initial_control.outputs.enabled == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -223,8 +225,31 @@ jobs:
           elif [ "$OTOMY_SYNC_MODE" = "vendor_history" ]; then
             python3 scripts/repair_historical_vendor_snapshot.py --from-date "$OTOMY_FULL_FROM" --to-date "$OTOMY_HISTORY_TO"
           else
-            python3 scripts/gha_sync.py
+            python3 scripts/gha_sync.py > "$RUNNER_TEMP/otomy-engine-private.log" 2>&1
           fi
+
+      - name: Encrypt diagnostic books and engine detail
+        if: always() && steps.diagnostic_engine.outcome != 'skipped'
+        run: |
+          mkdir -p "$RUNNER_TEMP/otomy-engine-evidence" "$RUNNER_TEMP/otomy-engine-encrypted"
+          test ! -f "$RUNNER_TEMP/otomy-engine-private.log" || cp "$RUNNER_TEMP/otomy-engine-private.log" "$RUNNER_TEMP/otomy-engine-evidence/engine.log"
+          test ! -f data/archive/2026-11.json || cp data/archive/2026-11.json "$RUNNER_TEMP/otomy-engine-evidence/archive.json"
+          for day in 05 06 07 13; do
+            book_url="/api/sync/erp/cashbook?from_date=2026-11-${day}&to_date=2026-11-${day}"
+            book_key="$(URL="$book_url" python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.environ["URL"].encode()).decode().rstrip("="))')"
+            test ! -f "data/snapshot/api/${book_key}.json" || cp "data/snapshot/api/${book_key}.json" "$RUNNER_TEMP/otomy-engine-evidence/book-${day}.json"
+          done
+          tar -czf "$RUNNER_TEMP/otomy-engine-evidence.tar.gz" -C "$RUNNER_TEMP/otomy-engine-evidence" .
+          openssl rand -hex 32 > "$RUNNER_TEMP/otomy-engine-key"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "$RUNNER_TEMP/otomy-engine-evidence.tar.gz" -out "$RUNNER_TEMP/otomy-engine-encrypted/bundle.enc" -pass "file:$RUNNER_TEMP/otomy-engine-key"
+          openssl pkeyutl -encrypt -pubin -inkey scripts/diagnostic-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$RUNNER_TEMP/otomy-engine-key" -out "$RUNNER_TEMP/otomy-engine-encrypted/key.enc"
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.diagnostic_engine.outcome != 'skipped'
+        with:
+          name: encrypted-engine-evidence
+          path: ${{ runner.temp }}/otomy-engine-encrypted/
+          retention-days: 1
 
       - name: Check bounded working-tree disk budget
         if: steps.initial_control.outputs.enabled == 'true'

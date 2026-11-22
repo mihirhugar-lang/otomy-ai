@@ -16,6 +16,7 @@ import requests
 # Importing this module must not require a caller-provided PYTHONPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from snapshot_retention import is_archive_reconstructible_range_snapshot
+from cashbook_refresh import affected_cashbook_ranges, verify_expense_movements
 try:
     from shared_compliance import (
         build_audit_ca as build_compliance_audit_ca,
@@ -1355,16 +1356,6 @@ def merge_repayment_rows(*row_sets):
         reverse=True,
     )
 
-def merge_full_window_repayments(archived_receipts, fresh_rows, start):
-    """Preserve history before a bounded full refresh; replace its entire window."""
-    cutoff = str(start)
-    prior = [
-        row for row in archive_receipts_to_repayments(archived_receipts)
-        if str(row.get("date", ""))[:10] < cutoff
-        and str(row.get("mode") or "").strip().casefold() != "erp snapshot"
-    ]
-    return merge_repayment_rows(prior, fresh_rows)
-
 def replace_repayment_day(base_rows, day, fresh_rows):
     day_s = str(day)
     kept = [dict(row) for row in base_rows or [] if str(row.get("date", ""))[:10] != day_s]
@@ -2335,12 +2326,9 @@ def main():
         and not (gap_start is not None and str(gap_start) <= str(row.get("date", ""))[:10] <= str(gap_end))
     ]
     if sync_mode == "full":
-        # Fresh rows own the requested window. Earlier receipts remain needed
-        # to calculate opening balances and must not be dropped by a bounded
-        # repair that begins after the financial year or balance anchor.
-        all_repayments = merge_full_window_repayments(
-            archive_rows.get("receipts"), window_repayments, sync_start
-        )
+        # The full window is authoritative.  Do not let a cached receipt
+        # restore an older amount after Loctell has supplied a corrected one.
+        all_repayments = merge_repayment_rows(window_repayments)
     else:
         repayment_map = {}
         for row in archive_repayments + anchor_gap_repayments + repayments_last_month + repayments_mtd:
@@ -3102,20 +3090,33 @@ def main():
             (sync_start + timedelta(days=offset), sync_start + timedelta(days=offset))
             for offset in range((historical_end - sync_start).days + 1)
         )
-    for book_from, book_to in cashbook_ranges:
+    # Older exact-day and custom-range books are retained in R2, but their
+    # underlying expenses, sales or receipts can be edited later. Rebuild every
+    # published book affected by this refresh, including later openings, and
+    # generate an exact-day book for each refreshed date.
+    from r2_working_set import previous_files
+    cashbook_snapshot_keys = set(previous_files()) | {
+        f"snapshot/api/{path.name}" for path in SNAPSHOT_API_DIR.glob("*.json")
+    }
+    cashbook_ranges.extend(affected_cashbook_ranges(
+        sync_start, today, archive_start, cashbook_snapshot_keys
+    ))
+    corrections = _balance_overlay().get("corrections", [])
+    for book_from, book_to in sorted(set(cashbook_ranges)):
         if book_to < book_from:
             continue
+        book = build_cashbook_view(
+            book_from, book_to, all_sales, all_expenses, all_repayments,
+            opening, all_internal_transfers,
+        )
+        verify_expense_movements(
+            book, all_expenses, book_from, book_to,
+            lambda row: _overlay_mode(corrections, row) or _payment_channel(row.get("payment_mode") or "Cash"),
+            _num,
+        )
         write_snapshot(
             f"/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}",
-            build_cashbook_view(
-                book_from,
-                book_to,
-                all_sales,
-                all_expenses,
-                all_repayments,
-                opening,
-                all_internal_transfers,
-            ),
+            book,
         )
     pruned_count, pruned_bytes = prune_obsolete_derived_range_snapshots()
     if pruned_count:
