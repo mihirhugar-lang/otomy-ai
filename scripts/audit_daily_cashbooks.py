@@ -38,6 +38,10 @@ config = json.loads((root / 'balance_anchors.json').read_text())
 statement = str(config.get('bank_statement_file') or '')
 if statement and '/' not in statement and '..' not in statement:
     download(statement, root / statement)
+for name, from_date in (('fytd', start), ('mtd', today.replace(day=1))):
+    url = f'/api/sync/erp/cashbook?from_date={from_date}&to_date={today}'
+    encoded = base64.urlsafe_b64encode(url.encode()).decode().rstrip('=')
+    download(f'snapshot/api/{encoded}.json', root / f'book-{name}.json', optional=True)
 
 def daily(n):
     day = (start + timedelta(days=n)).isoformat()
