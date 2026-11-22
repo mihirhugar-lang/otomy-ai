@@ -49,6 +49,7 @@ jobs:
       - name: Fixture party calculations
         run: python3 scripts/test_party_calculations.py
       - name: Fixture control calculations
+        shell: bash --noprofile --norc -e -o pipefail {0}
         run: python3 scripts/test_control_calculations.py
       - name: Fixture sale split
         run: python3 scripts/test_sale_split_guard.py
