@@ -1355,6 +1355,16 @@ def merge_repayment_rows(*row_sets):
         reverse=True,
     )
 
+def merge_full_window_repayments(archived_receipts, fresh_rows, start):
+    """Preserve history before a bounded full refresh; replace its entire window."""
+    cutoff = str(start)
+    prior = [
+        row for row in archive_receipts_to_repayments(archived_receipts)
+        if str(row.get("date", ""))[:10] < cutoff
+        and str(row.get("mode") or "").strip().casefold() != "erp snapshot"
+    ]
+    return merge_repayment_rows(prior, fresh_rows)
+
 def replace_repayment_day(base_rows, day, fresh_rows):
     day_s = str(day)
     kept = [dict(row) for row in base_rows or [] if str(row.get("date", ""))[:10] != day_s]
@@ -2325,9 +2335,12 @@ def main():
         and not (gap_start is not None and str(gap_start) <= str(row.get("date", ""))[:10] <= str(gap_end))
     ]
     if sync_mode == "full":
-        # The full window is authoritative.  Do not let a cached receipt
-        # restore an older amount after Loctell has supplied a corrected one.
-        all_repayments = merge_repayment_rows(window_repayments)
+        # Fresh rows own the requested window. Earlier receipts remain needed
+        # to calculate opening balances and must not be dropped by a bounded
+        # repair that begins after the financial year or balance anchor.
+        all_repayments = merge_full_window_repayments(
+            archive_rows.get("receipts"), window_repayments, sync_start
+        )
     else:
         repayment_map = {}
         for row in archive_repayments + anchor_gap_repayments + repayments_last_month + repayments_mtd:
