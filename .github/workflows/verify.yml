@@ -35,16 +35,24 @@ jobs:
         run: |
           python3 scripts/test_pull_r2_incremental.py
           python3 scripts/test_r2_working_set.py
-      - name: Run canonical cashbook fixture guard
-        run: |
-          python3 scripts/test_cashbook_parity.py
-          python3 scripts/test_sync_refactor.py
-          python3 scripts/test_shared_calculations.py
-          python3 scripts/test_book_calculations.py
-          python3 scripts/test_party_calculations.py
-          python3 scripts/test_control_calculations.py
-          python3 scripts/test_sale_split_guard.py
-          python3 scripts/test_vendor_aging.py
+      - name: Fixture cashbook
+        run: python3 scripts/test_cashbook_parity.py
+      - name: Fixture bounded repayment
+        run: python3 scripts/test_bounded_repayment_refresh.py
+      - name: Fixture sync refactor
+        run: python3 scripts/test_sync_refactor.py
+      - name: Fixture shared calculations
+        run: python3 scripts/test_shared_calculations.py
+      - name: Fixture book calculations
+        run: python3 scripts/test_book_calculations.py
+      - name: Fixture party calculations
+        run: python3 scripts/test_party_calculations.py
+      - name: Fixture control calculations
+        run: python3 scripts/test_control_calculations.py
+      - name: Fixture sale split
+        run: python3 scripts/test_sale_split_guard.py
+      - name: Fixture vendor aging
+        run: python3 scripts/test_vendor_aging.py
       - name: Run rollback recovery fixture guard
         run: |
           python3 scripts/test_recovery_plan.py

@@ -14,6 +14,7 @@ function indiaClock(now = new Date()) {
     timeZone: "Asia/Kolkata",
     hour: "2-digit",
     minute: "2-digit",
+    day: "2-digit",
     hourCycle: "h23",
   }).formatToParts(now);
   const value = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
@@ -21,7 +22,13 @@ function indiaClock(now = new Date()) {
     timeZone: "Asia/Kolkata",
     weekday: "short",
   }).format(now);
-  return { hour: value("hour"), minute: value("minute"), weekday };
+  return { hour: value("hour"), minute: value("minute"), day: value("day"), weekday };
+}
+
+function currentMonthLookback(now = new Date()) {
+  // Re-read every day of the current month so backdated edits are not left
+  // stale until the weekly 50-day repair. Keep a seven-day cross-month floor.
+  return Math.max(7, indiaClock(now).day);
 }
 
 function shouldDispatchRecent(now = new Date()) {
@@ -173,8 +180,9 @@ export default {
       console.log(`Common engine is paused; skipping ${controller.cron} dispatch`);
       return;
     }
-    console.log(`Dispatching Otomy common engine (recent) for cron ${controller.cron}`);
-    await dispatchCommonEngine(env, "recent", 7);
+    const recentDays = currentMonthLookback();
+    console.log(`Dispatching Otomy common engine (recent ${recentDays}-day) for cron ${controller.cron}`);
+    await dispatchCommonEngine(env, "recent", recentDays);
   },
 
   async fetch(request, env) {
