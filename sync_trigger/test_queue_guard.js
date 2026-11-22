@@ -11,7 +11,7 @@ const context = vm.createContext({
   Date,
   fetch: (...args) => currentFetch(...args),
 });
-vm.runInContext(`${source}\nglobalThis.__hasActive = hasActiveCommonEngineRun;`, context);
+vm.runInContext(`${source}\nglobalThis.__hasActive = hasActiveCommonEngineRun; globalThis.__lookback = currentMonthLookback;`, context);
 
 const env = { GITHUB_ACTIONS_DISPATCH_TOKEN: "test-token" };
 const oldQueued = { id: 7, status: "queued", created_at: "2026-01-01T00:00:00Z" };
@@ -27,6 +27,14 @@ async function hasActive(runs, jobCount) {
 }
 
 (async () => {
+  assert.equal(context.__lookback(new Date('2026-11-21T18:29:00Z')), 21,
+    'lookback uses the India calendar day before midnight');
+  assert.equal(context.__lookback(new Date('2026-11-21T18:30:00Z')), 22,
+    'lookback advances at India midnight');
+  assert.equal(context.__lookback(new Date('2026-12-01T06:00:00Z')), 7,
+    'start of month keeps a seven-day cross-month window');
+  assert.equal(context.__lookback(new Date('2026-12-31T06:00:00Z')), 31,
+    'end of month includes the whole current month');
   assert.equal(await hasActive([oldQueued], 0), false,
     "an old queued run with no job must not block the scheduler");
   assert.equal(await hasActive([oldQueued], 1), true,
