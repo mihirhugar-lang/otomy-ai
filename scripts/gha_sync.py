@@ -2050,6 +2050,18 @@ def main():
 
     all_sales = merge_rows_by_archive_key(archive_rows.get("sales"), fresh_sales, "sales")
     assert_fresh_sale_mdp_preserved(fresh_sales, all_sales)
+    # Require both requested tickets to agree with the current ListSale split.
+    if not sales_fresh:
+        raise RuntimeError("Ticket repair requires a fresh Loctell sales fetch")
+    for ticket in ("11919", "11921"):
+        key = _sale_split_key("2026-11-12", ticket)
+        split = _splits.get(key)
+        matches = [s for s in all_sales if _sale_split_key(s.get("date"), s.get("ticket_no")) == key]
+        if split is None or len(matches) != 1:
+            raise RuntimeError(f"Ticket {ticket} or its source split is missing or duplicated")
+        for field, source in (("cash_amount", "cash"), ("credit_amount", "credit"), ("upi_amount", "upi")):
+            if abs(_num(matches[0].get(field)) - _num(split.get(source))) > 0.01:
+                raise RuntimeError(f"Ticket {ticket} {field} differs from Loctell")
     print(f"  {len(all_sales)} sales tickets")
     # The fresh fetch is the authoritative current state for its window — drop archived
     # expense versions inside that window so an ERP edit (note added, amount corrected)
@@ -3094,7 +3106,7 @@ def main():
     # One-time November repair: every daily cash/bank snapshot is rebuilt from
     # the same fresh ERP window as the rest of this normal sync.
     from cashbook_refresh import verify_expense_movements, verify_adjustment_sources
-    repair_from = date(2026, 11, 6)
+    repair_from = date(2026, 11, 12)
     if sync_start > repair_from or today < repair_from:
         raise RuntimeError("Fresh ERP window does not cover the requested repair")
     repair_overlay = _balance_overlay()
@@ -3106,6 +3118,14 @@ def main():
         book = build_cashbook_view(day, day, all_sales, all_expenses, all_repayments, opening, all_internal_transfers)
         verify_expense_movements(book, all_expenses, day, day, repair_channel, _num)
         verify_adjustment_sources(book, repair_overlay)
+        if day == repair_from:
+            for ticket in ("11919", "11921"):
+                split = _splits[_sale_split_key(day.isoformat(), ticket)]
+                for side, source in (("cash", "cash"), ("bank", "upi")):
+                    actual = sum(_num(row.get("in")) for row in book[side]["rows"]
+                                 if row.get("kind") == "sale" and str(row.get("ticket_no")) == ticket)
+                    if abs(actual - _num(split.get(source))) > 0.01:
+                        raise RuntimeError(f"Ticket {ticket} {side} ledger differs from Loctell")
         for side, tolerance in (("cash", 0.01), ("bank", 0.50)):
             if abs(_num(book[side]["opening"]) - _num(previous_book[side]["closing"])) > tolerance:
                 raise RuntimeError(f"{side} opening does not match prior closing on {day}")
