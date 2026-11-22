@@ -1,12 +1,13 @@
 """Refresh affected canonical Cash/Bank Book snapshots after an ERP sync."""
 from collections import Counter
 from datetime import date, timedelta
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from r2_working_set import snapshot_url
 
 
-def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys):
+def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys, expired_names=()):
     """Map affected daily and previously published ranges to their exact URLs.
 
     A movement can also change the opening of a later range, so every existing
@@ -20,6 +21,8 @@ def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys):
         day = sync_start + timedelta(days=i)
         result[(day, day)] = {f'/api/sync/erp/cashbook?from_date={day}&to_date={day}'}
     for key in snapshot_keys:
+        if Path(str(key)).name in expired_names:
+            continue
         url = snapshot_url(str(key))
         if not url:
             continue

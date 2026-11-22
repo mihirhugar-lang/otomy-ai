@@ -2,6 +2,7 @@
 """Regression coverage for refreshing stale dated cash and bank books."""
 import base64
 from datetime import date
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -39,6 +40,12 @@ class CashbookRefreshTests(unittest.TestCase):
         urls = ranges[(date(2026, 11, 6), date(2026, 11, 6))]
         self.assertIn(alias, urls)
         self.assertIn('/api/sync/erp/cashbook?from_date=2026-11-06&to_date=2026-11-06', urls)
+
+    def test_expired_rolling_snapshots_are_not_resurrected(self):
+        old = key('2026-10-01', '2026-11-07')
+        ranges = affected_cashbook_ranges(date(2026, 11, 5), date(2026, 11, 8),
+                                          date(2026, 4, 1), [old], {Path(old).name})
+        self.assertNotIn((date(2026, 10, 1), date(2026, 11, 7)), ranges)
 
     def test_rejects_rebuild_without_sufficient_archive_history(self):
         with self.assertRaisesRegex(ValueError, 'earlier archive history'):

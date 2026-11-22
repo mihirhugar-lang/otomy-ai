@@ -3056,7 +3056,8 @@ def main():
         f"{snapshot_key(f'/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}')}.json"
         for book_from, book_to in rolling_cashbook_ranges
     }
-    for filename in previous_rolling_files - current_rolling_files:
+    expired_rolling_files = previous_rolling_files - current_rolling_files
+    for filename in expired_rolling_files:
         path = SNAPSHOT_API_DIR / str(filename)
         if path.name == filename and path.suffix == ".json":
             path.unlink(missing_ok=True)
@@ -3099,12 +3100,13 @@ def main():
         f"snapshot/api/{path.name}" for path in SNAPSHOT_API_DIR.glob("*.json")
     }
     affected_cashbooks = affected_cashbook_ranges(
-        sync_start, today, archive_start, cashbook_snapshot_keys
+        sync_start, today, archive_start, cashbook_snapshot_keys, expired_rolling_files
     )
     for book_from, book_to in cashbook_ranges:
         affected_cashbooks.setdefault((book_from, book_to), set()).add(
             f"/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}"
         )
+    print(f"  Refreshing {len(affected_cashbooks)} affected cash/bank book ranges")
     book_overlay = _balance_overlay()
     corrections = book_overlay.get("corrections", [])
     for book_from, book_to in sorted(affected_cashbooks):
