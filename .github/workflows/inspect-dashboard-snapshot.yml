@@ -28,6 +28,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/otomy-private-input" "$RUNNER_TEMP/otomy-encrypted"
           aws s3 cp s3://otomy-data/archive/2026-11.json "$RUNNER_TEMP/otomy-private-input/2026-11.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors
           aws s3 cp s3://otomy-data/archive/2026-10.json "$RUNNER_TEMP/otomy-private-input/2026-10.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          for day in 05 06 07 13; do
+            book_url="/api/sync/erp/cashbook?from_date=2026-11-${day}&to_date=2026-11-${day}"
+            book_key="$(URL="$book_url" python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.environ["URL"].encode()).decode().rstrip("="))')"
+            if ! aws s3 cp "s3://otomy-data/snapshot/api/${book_key}.json" "$RUNNER_TEMP/otomy-private-input/book-${day}.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors; then
+              [ "$day" != "06" ] || exit 1
+            fi
+          done
           tar -czf "$RUNNER_TEMP/otomy-private-input.tar.gz" -C "$RUNNER_TEMP/otomy-private-input" .
           openssl rand -hex 32 > "$RUNNER_TEMP/otomy-one-time-key"
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "$RUNNER_TEMP/otomy-private-input.tar.gz" -out "$RUNNER_TEMP/otomy-encrypted/bundle.enc" -pass "file:$RUNNER_TEMP/otomy-one-time-key"
