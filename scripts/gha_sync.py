@@ -16,7 +16,7 @@ import requests
 # Importing this module must not require a caller-provided PYTHONPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from snapshot_retention import is_archive_reconstructible_range_snapshot
-from cashbook_refresh import affected_cashbook_ranges, verify_expense_movements
+from cashbook_refresh import affected_cashbook_ranges, verify_expense_movements, verify_adjustment_sources
 try:
     from shared_compliance import (
         build_audit_ca as build_compliance_audit_ca,
@@ -3098,11 +3098,16 @@ def main():
     cashbook_snapshot_keys = set(previous_files()) | {
         f"snapshot/api/{path.name}" for path in SNAPSHOT_API_DIR.glob("*.json")
     }
-    cashbook_ranges.extend(affected_cashbook_ranges(
+    affected_cashbooks = affected_cashbook_ranges(
         sync_start, today, archive_start, cashbook_snapshot_keys
-    ))
-    corrections = _balance_overlay().get("corrections", [])
-    for book_from, book_to in sorted(set(cashbook_ranges)):
+    )
+    for book_from, book_to in cashbook_ranges:
+        affected_cashbooks.setdefault((book_from, book_to), set()).add(
+            f"/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}"
+        )
+    book_overlay = _balance_overlay()
+    corrections = book_overlay.get("corrections", [])
+    for book_from, book_to in sorted(affected_cashbooks):
         if book_to < book_from:
             continue
         book = build_cashbook_view(
@@ -3114,10 +3119,9 @@ def main():
             lambda row: _overlay_mode(corrections, row) or _payment_channel(row.get("payment_mode") or "Cash"),
             _num,
         )
-        write_snapshot(
-            f"/api/sync/erp/cashbook?from_date={book_from}&to_date={book_to}",
-            book,
-        )
+        verify_adjustment_sources(book, book_overlay)
+        for book_url in sorted(affected_cashbooks[(book_from, book_to)]):
+            write_snapshot(book_url, book)
     pruned_count, pruned_bytes = prune_obsolete_derived_range_snapshots()
     if pruned_count:
         print(

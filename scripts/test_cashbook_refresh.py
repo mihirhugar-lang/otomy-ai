@@ -6,11 +6,15 @@ import unittest
 from unittest.mock import patch
 
 import gha_sync as engine
-from cashbook_refresh import affected_cashbook_ranges, verify_expense_movements
+from cashbook_refresh import affected_cashbook_ranges, verify_expense_movements, verify_adjustment_sources
 
 
 def key(start, end):
     url = f'/api/sync/erp/cashbook?from_date={start}&to_date={end}'
+    return 'snapshot/api/' + base64.urlsafe_b64encode(url.encode()).decode().rstrip('=') + '.json'
+
+
+def url_key(url):
     return 'snapshot/api/' + base64.urlsafe_b64encode(url.encode()).decode().rstrip('=') + '.json'
 
 
@@ -28,10 +32,31 @@ class CashbookRefreshTests(unittest.TestCase):
         self.assertIn((date(2026, 11, 7), date(2026, 11, 8)), result)
         self.assertNotIn((date(2026, 10, 1), date(2026, 10, 31)), result)
 
+    def test_existing_url_alias_is_updated_too(self):
+        alias = '/api/sync/erp/cashbook?to_date=2026-11-06&from_date=2026-11-06'
+        ranges = affected_cashbook_ranges(date(2026, 11, 6), date(2026, 11, 6),
+                                          date(2026, 4, 1), [url_key(alias)])
+        urls = ranges[(date(2026, 11, 6), date(2026, 11, 6))]
+        self.assertIn(alias, urls)
+        self.assertIn('/api/sync/erp/cashbook?from_date=2026-11-06&to_date=2026-11-06', urls)
+
     def test_rejects_rebuild_without_sufficient_archive_history(self):
         with self.assertRaisesRegex(ValueError, 'earlier archive history'):
             affected_cashbook_ranges(date(2026, 11, 5), date(2026, 11, 8),
                                      date(2026, 4, 1), [key('2025-04-01', '2026-11-06')])
+
+    def test_adjustments_require_dated_real_evidence(self):
+        book = {'cash': {'rows': [{'kind': 'adjustment', 'date': '2026-06-28',
+                                  'particulars': 'Verified balance adjustment (physical cash count)'}]},
+                'bank': {'rows': [{'kind': 'adjustment', 'date': '2026-06-27',
+                                  'particulars': 'Verified balance adjustment (bank statement)'}]}}
+        overlay = {'anchors': [{'date': '2026-06-28', 'cash': 100}],
+                   'stmt_rows': [{'date': '2026-06-27'}]}
+        verify_adjustment_sources(book, overlay)
+        with self.assertRaisesRegex(ValueError, 'bank book contains an adjustment'):
+            verify_adjustment_sources(book, {**overlay, 'stmt_rows': []})
+        with self.assertRaisesRegex(ValueError, 'cash book contains an adjustment'):
+            verify_adjustment_sources(book, {**overlay, 'anchors': []})
 
     def test_stale_single_day_book_is_rebuilt_with_every_cash_and_bank_expense(self):
         day = date(2026, 11, 6)

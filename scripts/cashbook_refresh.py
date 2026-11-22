@@ -7,7 +7,7 @@ from r2_working_set import snapshot_url
 
 
 def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys):
-    """Return daily and previously published ranges affected by this sync.
+    """Map affected daily and previously published ranges to their exact URLs.
 
     A movement can also change the opening of a later range, so every existing
     book ending on or after the refreshed window must be rebuilt. Never rebuild
@@ -15,8 +15,10 @@ def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys):
     """
     if sync_start > today:
         raise ValueError('cashbook sync start is after today')
-    result = {(sync_start + timedelta(days=i), sync_start + timedelta(days=i))
-              for i in range((today - sync_start).days + 1)}
+    result = {}
+    for i in range((today - sync_start).days + 1):
+        day = sync_start + timedelta(days=i)
+        result[(day, day)] = {f'/api/sync/erp/cashbook?from_date={day}&to_date={day}'}
     for key in snapshot_keys:
         url = snapshot_url(str(key))
         if not url:
@@ -38,8 +40,8 @@ def affected_cashbook_ranges(sync_start, today, archive_start, snapshot_keys):
             continue
         if start < archive_start:
             raise ValueError('affected cashbook needs earlier archive history')
-        result.add((start, end))
-    return sorted(result)
+        result.setdefault((start, end), set()).add(url)
+    return result
 
 
 def verify_expense_movements(book, expenses, start, end, channel_for, number):
@@ -65,3 +67,19 @@ def verify_expense_movements(book, expenses, start, end, channel_for, number):
                          for row in rows if row.get('kind') == 'expense')
         if actual != expected[channel]:
             raise ValueError(f'{channel} book expense rows do not match source for {start}..{end}')
+
+
+def verify_adjustment_sources(book, overlay):
+    """Never introduce a balance adjustment without a dated source."""
+    cash_dates = {str(row.get('date', ''))[:10] for row in overlay.get('anchors', [])
+                  if row.get('cash') is not None}
+    bank_dates = {str(row.get('date', ''))[:10] for row in overlay.get('stmt_rows', [])}
+    for channel, dates, label in (
+        ('cash', cash_dates, 'Verified balance adjustment (physical cash count)'),
+        ('bank', bank_dates, 'Verified balance adjustment (bank statement)'),
+    ):
+        for row in (book.get(channel) or {}).get('rows') or []:
+            if row.get('kind') != 'adjustment' and not row.get('adjustment'):
+                continue
+            if row.get('particulars') != label or str(row.get('date', ''))[:10] not in dates:
+                raise ValueError(f'{channel} book contains an adjustment without a dated source')
