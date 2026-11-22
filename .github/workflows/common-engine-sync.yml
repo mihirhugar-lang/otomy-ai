@@ -569,3 +569,12 @@ jobs:
             echo 'The run stopped before publishing because the engine was paused.'
             echo 'The last verified dataset remains live.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save encrypted failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-repair-error
+          path: ${{ runner.temp }}/otomy-private-failure/
+          if-no-files-found: ignore
+          retention-days: 1
