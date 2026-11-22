@@ -2057,6 +2057,8 @@ def main():
     _fresh_window = {(sync_start + timedelta(days=i)).isoformat() for i in range((today - sync_start).days + 1)}
     _archive_exp = [e for e in (archive_rows.get("expenses") or []) if str(e.get("date"))[:10] not in _fresh_window]
     all_expenses = merge_rows_by_archive_key(_archive_exp, fresh_expenses, "expenses")
+    if not expenses_fresh:
+        raise RuntimeError("One-time cashbook repair requires a fresh Loctell expense fetch")
     if expenses_fresh:
         assert_fresh_source_rows_preserved("Expenses", fresh_expenses, all_expenses, _expense_content_key)
     print(f"  {len(all_expenses)} expenses")
@@ -3089,6 +3091,26 @@ def main():
             (sync_start + timedelta(days=offset), sync_start + timedelta(days=offset))
             for offset in range((historical_end - sync_start).days + 1)
         )
+    # One-time November repair: every daily cash/bank snapshot is rebuilt from
+    # the same fresh ERP window as the rest of this normal sync.
+    from cashbook_refresh import verify_expense_movements, verify_adjustment_sources
+    repair_from = date(2026, 11, 6)
+    if sync_start > repair_from or today < repair_from:
+        raise RuntimeError("Fresh ERP window does not cover the requested repair")
+    repair_overlay = _balance_overlay()
+    def repair_channel(row):
+        return _overlay_mode(repair_overlay.get("corrections", []), row) or _payment_channel(row.get("payment_mode") or "Cash")
+    previous_book = build_cashbook_view(repair_from - timedelta(days=1), repair_from - timedelta(days=1), all_sales, all_expenses, all_repayments, opening, all_internal_transfers)
+    for offset in range((today - repair_from).days + 1):
+        day = repair_from + timedelta(days=offset)
+        book = build_cashbook_view(day, day, all_sales, all_expenses, all_repayments, opening, all_internal_transfers)
+        verify_expense_movements(book, all_expenses, day, day, repair_channel, _num)
+        verify_adjustment_sources(book, repair_overlay)
+        for side, tolerance in (("cash", 0.01), ("bank", 0.50)):
+            if abs(_num(book[side]["opening"]) - _num(previous_book[side]["closing"])) > tolerance:
+                raise RuntimeError(f"{side} opening does not match prior closing on {day}")
+        write_snapshot(f"/api/sync/erp/cashbook?from_date={day}&to_date={day}", book)
+        previous_book = book
     for book_from, book_to in cashbook_ranges:
         if book_to < book_from:
             continue
