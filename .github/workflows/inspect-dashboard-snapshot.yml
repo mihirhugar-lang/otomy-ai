@@ -17,6 +17,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Install read-only audit dependency
+        shell: python3 scripts/private_workflow_step.py {0}
+        run: python3 -m pip install --quiet 'boto3==1.42.97'
       - name: Read and encrypt archive
         shell: python3 scripts/private_workflow_step.py {0}
         env:
@@ -35,6 +38,7 @@ jobs:
               [ "$day" != "06" ] || exit 1
             fi
           done
+          python3 scripts/audit_daily_cashbooks.py
           tar -czf "$RUNNER_TEMP/otomy-private-input.tar.gz" -C "$RUNNER_TEMP/otomy-private-input" .
           openssl rand -hex 32 > "$RUNNER_TEMP/otomy-one-time-key"
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 -in "$RUNNER_TEMP/otomy-private-input.tar.gz" -out "$RUNNER_TEMP/otomy-encrypted/bundle.enc" -pass "file:$RUNNER_TEMP/otomy-one-time-key"
