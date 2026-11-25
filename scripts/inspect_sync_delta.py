@@ -65,6 +65,26 @@ def archive_delta(before, after):
     return changes
 
 
+def changed_fields(before, after, path=""):
+    if before == after:
+        return Counter()
+    if isinstance(before, dict) and isinstance(after, dict):
+        changes = Counter()
+        for field in before.keys() | after.keys():
+            nested = f"{path}.{field}" if path else field
+            if field not in before or field not in after:
+                changes[nested] += 1
+            else:
+                changes.update(changed_fields(before[field], after[field], nested))
+        return changes
+    if isinstance(before, list) and isinstance(after, list) and len(before) == len(after):
+        changes = Counter()
+        for old, new in zip(before, after):
+            changes.update(changed_fields(old, new, f"{path}[]"))
+        return changes
+    return Counter({path: 1})
+
+
 def compare(s3, root):
     def pack(run):
         prefix = f"recovery/{run}"
@@ -112,6 +132,12 @@ def compare(s3, root):
         for key in sorted(changed)
         if key.startswith("archive/") and key != "archive/manifest.json" and key in before["files"]
     }
+    non_book = {
+        category(key): changed_fields(json.loads(previous.read(key)), read_after(key))
+        if key in before["files"] else {"new_object": 1}
+        for key in sorted(changed)
+        if category(key) != "/api/sync/erp/cashbook"
+    }
     books = {}
     for day in ("2026-11-21", "2026-11-22"):
         key = key_for_day(day)
@@ -126,7 +152,7 @@ def compare(s3, root):
             "after": figures(new_bank),
             "same_movements": movements(old_bank) == movements(new_bank),
         }
-    return {"run": TARGET, "changed": Counter(map(category, changed)),
+    return {"run": TARGET, "changed": Counter(map(category, changed)), "non_book": non_book,
             "deleted": Counter(map(category, deleted)), "archives": archive, "books": books}
 
 
