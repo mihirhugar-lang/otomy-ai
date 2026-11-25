@@ -1,36 +1,46 @@
-name: Inspect Otomy dashboard snapshot
-
-defaults:
-  run:
-    shell: python3 scripts/private_workflow_step.py {0}
-
+name: Private read-only sync comparison
 on:
   workflow_dispatch:
     inputs:
       from_date:
-        description: "Inclusive start date (YYYY-MM-DD)"
+        description: Existing workflow input
         required: true
-        default: "2026-08-01"
       to_date:
-        description: "Inclusive end date (YYYY-MM-DD)"
+        description: Existing workflow input
         required: true
-        default: "2026-08-10"
-
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/codex/otomy-readonly-sync-audit-20261125'
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
+    defaults:
+      run:
+        shell: python3 scripts/private_workflow_step.py {0}
     steps:
       - uses: actions/checkout@v4
-      - name: Read dashboard snapshot from R2
+      - name: Install R2 reader
+        run: python3 -m pip install --quiet 'boto3==1.42.97'
+      - name: Verify read-only publication comparison and encrypt the result
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          FROM_DATE: ${{ inputs.from_date }}
-          TO_DATE: ${{ inputs.to_date }}
-        run: bash scripts/inspect_dashboard_snapshot.sh
+        run: |
+          umask 077
+          mkdir "$RUNNER_TEMP/encrypted-audit"
+          python3 scripts/inspect_sync_delta.py > "$RUNNER_TEMP/summary.json"
+          openssl rand -hex 32 > "$RUNNER_TEMP/audit-key"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+            -in "$RUNNER_TEMP/summary.json" -out "$RUNNER_TEMP/encrypted-audit/summary.enc" \
+            -pass "file:$RUNNER_TEMP/audit-key"
+          openssl pkeyutl -encrypt -pubin -inkey scripts/diagnostic-public.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in "$RUNNER_TEMP/audit-key" -out "$RUNNER_TEMP/encrypted-audit/key.enc"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-sync-comparison
+          path: ${{ runner.temp }}/encrypted-audit/
+          retention-days: 1
