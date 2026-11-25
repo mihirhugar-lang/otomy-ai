@@ -156,5 +156,34 @@ def compare(s3, root):
             "deleted": Counter(map(category, deleted)), "archives": archive, "books": books}
 
 
-with tempfile.TemporaryDirectory() as directory:
-    print(json.dumps(compare(client(), Path(directory)), sort_keys=True))
+def inspect_today(s3):
+    manifest = json.loads(read(s3, MANIFEST))
+
+    def get(key):
+        payload = read(s3, key)
+        if not verified(payload, manifest["files"][key]):
+            raise ValueError("Published payload differs from its manifest")
+        return json.loads(payload)
+
+    archive = get("archive/2026-11.json")
+    statement_config = get("balance_anchors.json")
+    statement = get(statement_config["bank_statement_file"])
+    rows = statement if isinstance(statement, list) else statement["rows"]
+    result = {
+        "run": manifest["run_id"],
+        "generated_at": manifest["generated_at"],
+        "statement_to": max(row["date"] for row in rows),
+        "archive": {
+            name: [row for row in archive[name] if str(row.get("date", ""))[:10] >= "2026-11-23"]
+            for name in ("sales", "expenses", "receipts", "bank", "internal_transfers")
+        },
+        "books": {day: get(key_for_day(day))["bank"] for day in (
+            "2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25"
+        )},
+    }
+    if json.loads(read(s3, MANIFEST))["root_sha256"] != manifest["root_sha256"]:
+        raise ValueError("A newer publish began during this inspection")
+    return result
+
+
+print(json.dumps(inspect_today(client()), sort_keys=True))
