@@ -1161,6 +1161,28 @@ def verify_bank_page_presets() -> None:
 _CLOSING_ROUNDING_TOLERANCE = 0.50
 
 
+def verify_daily_cashbook_continuity(mtd_start, today, mtd_book) -> None:
+    """Reject stale single-day books before publishing the current month."""
+    channels = ("cash", "bank")
+    previous_closing = {channel: mtd_book[channel]["opening"] for channel in channels}
+    for offset in range((today - mtd_start).days + 1):
+        day = mtd_start + dt.timedelta(days=offset)
+        _, book = api_snapshot(f"/api/sync/erp/cashbook?from_date={day}&to_date={day}")
+        if book.get("from") != str(day) or book.get("to") != str(day):
+            fail(f"Daily cashbook snapshot does not cover {day}")
+        for channel in channels:
+            opening = number_value(book[channel]["opening"], f"{day} {channel} opening")
+            prior = number_value(previous_closing[channel], f"{day} prior {channel} closing")
+            if abs(opening - prior) > _CLOSING_ROUNDING_TOLERANCE:
+                fail(f"{day} {channel} opening {opening:.2f} differs from prior closing {prior:.2f}")
+            previous_closing[channel] = book[channel]["closing"]
+    for channel in channels:
+        daily_close = number_value(previous_closing[channel], f"{today} {channel} closing")
+        mtd_close = number_value(mtd_book[channel]["closing"], f"MTD {channel} closing")
+        if abs(daily_close - mtd_close) > _CLOSING_ROUNDING_TOLERANCE:
+            fail(f"{today} {channel} closing {daily_close:.2f} differs from MTD closing {mtd_close:.2f}")
+
+
 def verify_fytd_cashbook_parity() -> None:
     """A same-date FYTD book must close where MTD/current closes.
 
@@ -1211,7 +1233,8 @@ def verify_fytd_cashbook_parity() -> None:
                 f"MTD book={mtd_close} dashboard={mtd_dashboard} "
                 f"(tolerance ₹{_CLOSING_ROUNDING_TOLERANCE:.2f})"
             )
-    print(f"FYTD cashbook guard passed: FYTD and MTD closings are within ₹{_CLOSING_ROUNDING_TOLERANCE:.2f} on {today}.")
+    verify_daily_cashbook_continuity(mtd_start, today, mtd_book)
+    print(f"Cashbook guard passed: daily continuity and FYTD/MTD closings agree through {today}.")
 
 
 def main() -> None:

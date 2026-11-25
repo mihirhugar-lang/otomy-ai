@@ -1206,6 +1206,16 @@ def write_snapshot(url, data):
     _WRITTEN_SNAPSHOT_FILES.add(filename)
 
 
+def daily_cashbook_ranges(sync_start, last_month_start, today):
+    # Refresh this month, last month and any earlier days in the ERP refresh
+    # window. A correction to an earlier transaction changes later openings
+    # even when those days' own movements are unchanged.
+    start = min(sync_start, last_month_start)
+    for offset in range((today - start).days + 1):
+        day = start + timedelta(days=offset)
+        yield day, day
+
+
 def _snapshot_url_from_path(path: Path) -> Optional[str]:
     """Decode a static API filename back to its canonical request URL."""
     try:
@@ -3011,8 +3021,6 @@ def main():
     # These are the ranges exposed by the Cash/Bank page presets. Publish each one from the
     # canonical builder so the browser never falls back to its independent balance calculator.
     cashbook_ranges = [
-        (today, today),
-        (yesterday, yesterday),
         (week_start, today),
         (last_week_start, last_week_end),
         (month_start, today),
@@ -3082,14 +3090,8 @@ def main():
             if month_from <= month_to:
                 cashbook_ranges.append((month_from, month_to))
             month_cursor = next_month
-        # Historical dashboard ranges can ask for one exact day (for example 31-Jul).
-        # Publish the same canonical cashbook object for every day in the completed window so
-        # the browser never falls back to a second balance calculation for a historical day.
-        cashbook_ranges.extend(
-            (sync_start + timedelta(days=offset), sync_start + timedelta(days=offset))
-            for offset in range((historical_end - sync_start).days + 1)
-        )
-    for book_from, book_to in cashbook_ranges:
+    cashbook_ranges.extend(daily_cashbook_ranges(sync_start, last_month_start, today))
+    for book_from, book_to in dict.fromkeys(cashbook_ranges):
         if book_to < book_from:
             continue
         write_snapshot(

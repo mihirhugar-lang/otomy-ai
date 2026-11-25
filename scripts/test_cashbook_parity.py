@@ -10,8 +10,10 @@ publish R2 data.
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import unittest
+from contextlib import redirect_stderr
 from copy import deepcopy
 from datetime import date
 from pathlib import Path
@@ -107,6 +109,57 @@ class CashbookParityTests(unittest.TestCase):
     def test_canonical_cashbook_keeps_named_verified_reanchors(self):
         fixture = self.fixture["verified_reanchor"]
         self.assertEqual(self._cloud_book(fixture), fixture["expected"])
+
+    def test_recent_sync_rebuilds_earlier_days_and_carries_corrected_balance(self):
+        engine = load_engine()
+        from verify_dashboard_parity import verify_daily_cashbook_continuity
+
+        month_start = date(2026, 11, 1)
+        today = date(2026, 11, 25)
+        last_month_start = date(2026, 10, 1)
+        ranges = list(engine.daily_cashbook_ranges(date(2026, 11, 19), last_month_start, today))
+        self.assertEqual(ranges[0], (last_month_start, last_month_start))
+        self.assertEqual(ranges[-1], (today, today))
+        self.assertEqual(len(ranges), (today - last_month_start).days + 1)
+        older = date(2026, 9, 30)
+        self.assertEqual(next(engine.daily_cashbook_ranges(older, last_month_start, today)), (older, older))
+
+        opening = {"bank_balance": 1000.0, "cash_balance_office": 300.0}
+        overlay = {
+            "anchors": [{"date": "2026-10-31", "bank": 1000.0, "cash": 300.0}],
+            "corrections": [],
+            "stmt_rows": [],
+            "stmt_to": None,
+        }
+        expenses = [
+            {"date": "2026-11-20", "amount": 125.0, "payment_mode": "Bank"},
+            {"date": "2026-11-21", "amount": 20.0, "payment_mode": "Bank"},
+        ]
+        with patch.object(engine, "_balance_overlay", return_value=overlay):
+            affected_days = (date(2026, 11, 20), date(2026, 11, 21))
+            stale = {
+                str(day): engine.build_cashbook_view(day, day, [], expenses[1:], [], opening)
+                for day in affected_days
+            }
+            daily = {
+                str(day): engine.build_cashbook_view(day, end, [], expenses, [], opening)
+                for day, end in ranges if day >= month_start
+            }
+            mtd = engine.build_cashbook_view(month_start, today, [], expenses, [], opening)
+
+        def read_snapshot(url):
+            return url, daily[url.rsplit("=", 1)[-1]]
+
+        with patch("verify_dashboard_parity.api_snapshot", side_effect=read_snapshot):
+            self.assertEqual(daily["2026-11-21"]["bank"]["closing"], 855.0)
+            self.assertEqual(daily["2026-11-22"]["bank"]["opening"], 855.0)
+            self.assertEqual(daily["2026-11-22"]["bank"]["rows"], [])
+            verify_daily_cashbook_continuity(month_start, today, mtd)
+            daily.update(stale)
+            with redirect_stderr(io.StringIO()) as diagnostic:
+                with self.assertRaises(SystemExit):
+                    verify_daily_cashbook_continuity(month_start, today, mtd)
+            self.assertIn("2026-11-22 bank opening", diagnostic.getvalue())
 
     def test_workbook_closing_never_generates_a_cashbook_row(self):
         # Workbook figures are retained as evidence only.  They must never
